@@ -6,37 +6,51 @@ import random
 import string
 import psycopg2
 from psycopg2.extras import RealDictCursor
+from flask import Flask
+from threading import Thread
 
-# --- CARICAMENTO CONFIGURAZIONE DI SICUREZZA (Render Env Vars) ---
+# --- CONFIGURAZIONE FLASK (Per Render) ---
+app = Flask('')
+
+@app.route('/')
+def home():
+    return "Sistema CAD Online!"
+
+def run():
+    app.run(host='0.0.0.0', port=8080)
+
+def keep_alive():
+    t = Thread(target=run)
+    t.start()
+
+# --- CONFIGURAZIONE SICUREZZA ---
 TOKEN = os.getenv("DISCORD_TOKEN")
 DATABASE_URL = os.getenv("DATABASE_URL")
 
 # --- CONFIGURAZIONE MULTI-SERVER ---
-# Inserisci gli ID corretti per i tuoi due server
 SERVER_CONFIG = {
-    1233353915559313478: {  # ID SERVER 1
+    123456789012345678: {  # ID SERVER 1
         "ruolo_polizia": 1363487988570521670,
-        "canale_log_arresti": 1496978741442773063,
-        "canale_log_multe": 1482757565145288754,
-        "canale_log_denunce": 1459560041563816129,
-        "canale_log_sequestri": 1482753448951681214
+        "canale_log_arresti": 111,
+        "canale_log_multe": 222,
+        "canale_log_denunce": 333,
+        "canale_log_sequestri": 444
     },
-    1499394373270507701: {  # ID SERVER 2
-        "ruolo_polizia": 1499394715634761789,
-        "canale_log_arresti": 1499398686067658897,
-        "canale_log_multe": 1499398731504685207,
-        "canale_log_denunce": 1499398857979727872,
-        "canale_log_sequestri": 1499398820851744799
+    987654321098765432: {  # ID SERVER 2
+        "ruolo_polizia": 144444444444444444,
+        "canale_log_arresti": 555,
+        "canale_log_multe": 666,
+        "canale_log_denunce": 777,
+        "canale_log_sequestri": 888
     }
 }
 
 # --- CONNESSIONE DATABASE ---
 def get_db_connection():
     try:
-        conn = psycopg2.connect(DATABASE_URL, sslmode='require')
-        return conn
+        return psycopg2.connect(DATABASE_URL, sslmode='require')
     except Exception as e:
-        print(f"❌ Errore connessione Database: {e}")
+        print(f"❌ Errore DB: {e}")
         return None
 
 # --- SETUP BOT ---
@@ -51,8 +65,7 @@ class MyBot(discord.Client):
 bot = MyBot()
 
 # --- UTILS ---
-def get_cfg(guild_id): 
-    return SERVER_CONFIG.get(guild_id)
+def get_cfg(guild_id): return SERVER_CONFIG.get(guild_id)
 
 def is_polizia(interaction: Interaction):
     cfg = get_cfg(interaction.guild_id)
@@ -61,193 +74,159 @@ def is_polizia(interaction: Interaction):
 async def invia_log(interaction, tipo_log_key, embed):
     cfg = get_cfg(interaction.guild_id)
     if not cfg: return
-    channel_id = cfg.get(tipo_log_key)
-    channel = interaction.guild.get_channel(channel_id)
+    channel = interaction.guild.get_channel(cfg.get(tipo_log_key))
     if channel: await channel.send(embed=embed)
 
-# --- COMANDI POLIZIA ---
-@bot.tree.command(name="sequestra_oggetto", description="Rimuove un oggetto dall'inventario e lo sposta nel deposito sequestri")
-@app_commands.describe(
-    utente="Il cittadino a cui sequestrare l'oggetto",
-    item_id="ID o nome tecnico dell'oggetto",
-    quantita="Quantità da sequestrare"
-)
-async def sequestra_oggetto(interaction: Interaction, utente: discord.Member, item_id: str, quantita: int):
-    if not is_polizia(interaction): 
-        return await interaction.response.send_message("❌ Non hai i permessi per eseguire questa operazione.", ephemeral=True)
-    
-    if quantita <= 0:
-        return await interaction.response.send_message("❌ La quantità deve essere superiore a 0.", ephemeral=True)
+# --- COMANDI POLIZIA BASE ---
 
-    await interaction.response.defer()
-    cfg = get_cfg(interaction.guild_id)
-    id_fazione = str(cfg["ruolo_polizia"])
-
-    conn = get_db_connection()
-    if not conn: 
-        return await interaction.followup.send("❌ Database non raggiungibile.")
-    
-    cur = conn.cursor(cursor_factory=RealDictCursor)
-
-    try:
-        # 1. Verifica disponibilità nell'inventario dell'utente
-        cur.execute("SELECT amount FROM inventory WHERE user_id = %s AND item_id = %s", (str(utente.id), item_id))
-        res = cur.fetchone()
-
-        if not res or res['amount'] < quantita:
-            return await interaction.followup.send(f"❌ Il cittadino non possiede abbastanza `{item_id}`.")
-
-        # 2. Rimozione dall'utente (Tabella inventory)
-        cur.execute("UPDATE inventory SET amount = amount - %s WHERE user_id = %s AND item_id = %s", 
-                    (quantita, str(utente.id), item_id))
-        
-        # Pulizia righe vuote
-        cur.execute("DELETE FROM inventory WHERE amount <= 0")
-
-        # 3. Aggiunta al deposito della fazione (Tabella depositi_oggetti)
-        cur.execute("""
-            INSERT INTO depositi_oggetti (role_id, item_id, amount) 
-            VALUES (%s, %s, %s) 
-            ON CONFLICT (role_id, item_id) 
-            DO UPDATE SET amount = depositi_oggetti.amount + EXCLUDED.amount
-        """, (id_fazione, item_id, quantita))
-
-        conn.commit()
-
-        # LOG - Utilizza lo stesso canale dei sequestri veicoli
-        emb = discord.Embed(title="📦 SEQUESTRO OGGETTI", color=discord.Color.dark_orange(), timestamp=discord.utils.utcnow())
-        emb.add_field(name="Soggetto", value=utente.mention, inline=True)
-        emb.add_field(name="Agente", value=interaction.user.mention, inline=True)
-        emb.add_field(name="Oggetto", value=f"{quantita}x `{item_id}`", inline=False)
-        emb.set_footer(text=f"Server ID: {interaction.guild_id}")
-
-        await invia_log(interaction, "canale_log_sequestri", emb)
-        await interaction.followup.send(f"✅ Hai sequestrato **{quantita}x {item_id}** a {utente.mention}.")
-
-    except Exception as e:
-        print(f"Errore sequestro: {e}")
-        await interaction.followup.send("❌ Errore critico durante l'aggiornamento del database.")
-    finally:
-        cur.close(); conn.close()
-
-@bot.tree.command(name="arresto", description="Registra un arresto nel database")
+@bot.tree.command(name="arresto", description="Registra un arresto")
 async def arresto(interaction: Interaction, utente: discord.Member, tempo_minuti: int, motivo: str):
-    if not is_polizia(interaction): return await interaction.response.send_message("❌ Accesso negato.", ephemeral=True)
-    
+    if not is_polizia(interaction): return await interaction.response.send_message("❌ No Permessi.", ephemeral=True)
     await interaction.response.defer()
-    data_attuale = datetime.datetime.now().strftime("%d/%m/%Y %H:%M")
-    conn = get_db_connection()
-    if not conn: return await interaction.followup.send("❌ Database offline.")
-    
-    cur = conn.cursor()
-    cur.execute("INSERT INTO arresti (user_id, agente_id, motivo, tempo, data) VALUES (%s, %s, %s, %s, %s)",
-                (str(utente.id), str(interaction.user.id), motivo, tempo_minuti, data_attuale))
-    conn.commit(); cur.close(); conn.close()
-
-    emb = discord.Embed(title="⚖️ VERBALE DI ARRESTO", color=discord.Color.dark_blue(), timestamp=discord.utils.utcnow())
-    emb.add_field(name="👤 Detenuto", value=utente.mention, inline=True)
-    emb.add_field(name="⏳ Pena", value=f"{tempo_minuti} minuti", inline=True)
-    emb.add_field(name="👮 Agente", value=interaction.user.mention, inline=False)
-    emb.add_field(name="📝 Motivo", value=motivo, inline=False)
-
-    await invia_log(interaction, "canale_log_arresti", emb)
-    await interaction.followup.send(content=f"🚨 Arresto registrato per {utente.mention}.", embed=emb)
-
-@bot.tree.command(name="denuncia", description="Registra una denuncia penale")
-async def denuncia(interaction: Interaction, cittadino: discord.Member, descrizione: str):
-    if not is_polizia(interaction): return await interaction.response.send_message("❌ Solo Polizia.", ephemeral=True)
-    
-    data_attuale = datetime.datetime.now().strftime("%d/%m/%Y")
     conn = get_db_connection(); cur = conn.cursor()
-    cur.execute("INSERT INTO arresti (user_id, agente_id, motivo, tempo, data) VALUES (%s, %s, %s, 0, %s)",
-                (str(cittadino.id), str(interaction.user.id), f"[DENUNCIA] {descrizione}", data_attuale))
+    cur.execute("INSERT INTO arresti (user_id, agente_id, motivo, tempo, data) VALUES (%s, %s, %s, %s, %s)",
+                (str(utente.id), str(interaction.user.id), motivo, tempo_minuti, datetime.datetime.now().strftime("%d/%m/%Y %H:%M")))
     conn.commit(); cur.close(); conn.close()
+    emb = discord.Embed(title="⚖️ VERBALE DI ARRESTO", color=discord.Color.dark_blue()); emb.add_field(name="Soggetto", value=utente.mention); emb.add_field(name="Pena", value=f"{tempo_minuti}m")
+    await invia_log(interaction, "canale_log_arresti", emb)
+    await interaction.followup.send(f"🚨 Arresto registrato per {utente.mention}.")
 
-    emb = discord.Embed(title="📂 NUOVA DENUNCIA", color=discord.Color.orange(), timestamp=discord.utils.utcnow())
-    emb.add_field(name="Cittadino", value=cittadino.mention)
-    emb.add_field(name="Descrizione", value=descrizione, inline=False)
-    
-    await invia_log(interaction, "canale_log_denunce", emb)
-    await interaction.response.send_message(f"✅ Denuncia registrata per {cittadino.mention}.")
-
-@bot.tree.command(name="multa", description="Emetti una sanzione amministrativa")
+@bot.tree.command(name="multa", description="Emetti sanzione")
 async def multa(interaction: Interaction, utente: discord.Member, ammontare: int, motivo: str):
-    if not is_polizia(interaction): return await interaction.response.send_message("❌ Solo Polizia.", ephemeral=True)
-    
+    if not is_polizia(interaction): return await interaction.response.send_message("❌ No Permessi.", ephemeral=True)
     await interaction.response.defer()
-    cfg = get_cfg(interaction.guild_id)
-    id_m = ''.join(random.choices(string.ascii_letters + string.digits, k=8))
-    data_attuale = datetime.datetime.now().strftime("%d/%m/%Y")
-
+    cfg = get_cfg(interaction.guild_id); id_m = ''.join(random.choices(string.ascii_letters + string.digits, k=8))
     conn = get_db_connection(); cur = conn.cursor()
     cur.execute("INSERT INTO multe (id_multa, user_id, ammontare, id_azienda, motivo, data) VALUES (%s, %s, %s, %s, %s, %s)",
-                (id_m, str(utente.id), ammontare, str(cfg["ruolo_polizia"]), motivo, data_attuale))
+                (id_m, str(utente.id), ammontare, str(cfg["ruolo_polizia"]), motivo, datetime.datetime.now().strftime("%d/%m/%Y")))
     conn.commit(); cur.close(); conn.close()
-
-    emb = discord.Embed(title="🚨 MULTA EMESSA", color=discord.Color.red())
-    emb.add_field(name="Soggetto", value=utente.mention)
-    emb.add_field(name="Importo", value=f"{ammontare}$")
-    emb.set_footer(text=f"ID Multa: {id_m}")
-
+    emb = discord.Embed(title="🚨 MULTA EMESSA", color=discord.Color.red()); emb.add_field(name="Soggetto", value=utente.mention); emb.add_field(name="Importo", value=f"{ammontare}$")
     await invia_log(interaction, "canale_log_multe", emb)
-    await interaction.followup.send(f"✅ Multa notificata a {utente.mention}.", embed=emb)
+    await interaction.followup.send(f"✅ Multa emessa (ID: {id_m}).")
 
-@bot.tree.command(name="sequestra_mezzo", description="Metti sotto sequestro un veicolo")
-async def sequestra_mezzo(interaction: Interaction, targa: str):
-    if not is_polizia(interaction): return await interaction.response.send_message("❌ Accesso negato.", ephemeral=True)
+@bot.tree.command(name="denuncia", description="Registra denuncia")
+async def denuncia(interaction: Interaction, cittadino: discord.Member, descrizione: str):
+    if not is_polizia(interaction): return await interaction.response.send_message("❌ No Permessi.", ephemeral=True)
+    conn = get_db_connection(); cur = conn.cursor()
+    cur.execute("INSERT INTO arresti (user_id, agente_id, motivo, tempo, data) VALUES (%s, %s, %s, 0, %s)",
+                (str(cittadino.id), str(interaction.user.id), f"[DENUNCIA] {descrizione}", datetime.datetime.now().strftime("%d/%m/%Y")))
+    conn.commit(); cur.close(); conn.close()
+    emb = discord.Embed(title="📂 DENUNCIA", color=discord.Color.orange()); emb.add_field(name="Soggetto", value=cittadino.mention); emb.add_field(name="Nota", value=descrizione)
+    await invia_log(interaction, "canale_log_denunce", emb)
+    await interaction.response.send_message(f"✅ Denuncia salvata.")
+
+# --- GESTIONE SEQUESTRI AVANZATA ---
+
+@bot.tree.command(name="sequestra_oggetto", description="Sposta item da inventory a sequestri_oggetti")
+async def sequestra_oggetto(interaction: Interaction, utente: discord.Member, item_id: str, quantita: int):
+    if not is_polizia(interaction): return await interaction.response.send_message("❌ No Permessi.", ephemeral=True)
+    await interaction.response.defer()
+    conn = get_db_connection(); cur = conn.cursor(cursor_factory=RealDictCursor)
+    
+    cur.execute("SELECT amount FROM inventory WHERE user_id = %s AND item_id = %s", (str(utente.id), item_id))
+    res = cur.fetchone()
+    if not res or res['amount'] < quantita:
+        cur.close(); conn.close()
+        return await interaction.followup.send("❌ Oggetti insufficienti nell'inventario del cittadino.")
+
+    cur.execute("UPDATE inventory SET amount = amount - %s WHERE user_id = %s AND item_id = %s", (quantita, str(utente.id), item_id))
+    cur.execute("DELETE FROM inventory WHERE amount <= 0")
+    
+    cur.execute("""INSERT INTO sequestri_oggetti (guild_id, item_id, amount, agente_id, data) 
+                   VALUES (%s, %s, %s, %s, %s)""", 
+                (str(interaction.guild_id), item_id, quantita, str(interaction.user.id), datetime.datetime.now().strftime("%d/%m/%Y %H:%M")))
+    
+    conn.commit(); cur.close(); conn.close()
+    emb = discord.Embed(title="📦 OGGETTO SEQUESTRATO", color=discord.Color.dark_orange())
+    emb.add_field(name="Soggetto", value=utente.mention); emb.add_field(name="Item", value=f"{quantita}x {item_id}")
+    await invia_log(interaction, "canale_log_sequestri", emb)
+    await interaction.followup.send(f"✅ Sequestro completato.")
+
+@bot.tree.command(name="prendi_sequestro", description="Preleva oggetti dal deposito sequestri e mettili nel tuo inventario")
+async def prendi_sequestro(interaction: Interaction, item_id: str, quantita: int):
+    if not is_polizia(interaction): return await interaction.response.send_message("❌ No Permessi.", ephemeral=True)
+    await interaction.response.defer()
     
     conn = get_db_connection(); cur = conn.cursor(cursor_factory=RealDictCursor)
-    cur.execute("UPDATE veicoli SET sequestrato = TRUE WHERE targa = %s RETURNING modello, owner_id", (targa.upper(),))
-    v = cur.fetchone()
-    if not v:
+    
+    # 1. Controlla se l'oggetto esiste nel deposito sequestri per questa guild
+    cur.execute("SELECT SUM(amount) as totale FROM sequestri_oggetti WHERE guild_id = %s AND item_id = %s", (str(interaction.guild_id), item_id))
+    res = cur.fetchone()
+    
+    if not res or not res['totale'] or res['totale'] < quantita:
         cur.close(); conn.close()
-        return await interaction.response.send_message("❌ Targa non trovata.")
+        return await interaction.followup.send(f"❌ Non ci sono abbastanza `{item_id}` nel deposito sequestri.")
+
+    # 2. Rimuovi dalla tabella sequestri (logica FIFO o semplice riduzione)
+    # Riduciamo la quantità partendo dai record più vecchi
+    cur.execute("SELECT id, amount FROM sequestri_oggetti WHERE guild_id = %s AND item_id = %s ORDER BY id ASC", (str(interaction.guild_id), item_id))
+    rows = cur.fetchall()
+    
+    rimanente = quantita
+    for row in rows:
+        if rimanente <= 0: break
+        if row['amount'] <= rimanente:
+            cur.execute("DELETE FROM sequestri_oggetti WHERE id = %s", (row['id'],))
+            rimanente -= row['amount']
+        else:
+            cur.execute("UPDATE sequestri_oggetti SET amount = amount - %s WHERE id = %s", (rimanente, row['id']))
+            rimanente = 0
+
+    # 3. Aggiungi all'inventario dell'agente che esegue il comando
+    cur.execute("""INSERT INTO inventory (user_id, item_id, amount) VALUES (%s, %s, %s)
+                   ON CONFLICT (user_id, item_id) DO UPDATE SET amount = inventory.amount + EXCLUDED.amount""",
+                (str(interaction.user.id), item_id, quantita))
     
     conn.commit(); cur.close(); conn.close()
-    emb = discord.Embed(title="🚔 SEQUESTRO MEZZO", color=discord.Color.dark_red())
-    emb.add_field(name="Veicolo", value=f"{v['modello']} ({targa.upper()})")
-    emb.add_field(name="Proprietario", value=f"<@{v['owner_id']}>")
-
-    await invia_log(interaction, "canale_log_sequestri", emb)
-    await interaction.response.send_message(f"🚫 Veicolo **{v['modello']}** ({targa.upper()}) sequestrato.")
-
-@bot.tree.command(name="registra_arma", description="Registra un'arma nel registro matricole")
-async def registra_arma(interaction: Interaction, utente: discord.Member, modello: str, matricola: str, motivo: str):
-    if not is_polizia(interaction): return await interaction.response.send_message("❌ Solo Polizia.", ephemeral=True)
     
-    conn = get_db_connection(); cur = conn.cursor()
-    try:
-        cur.execute("INSERT INTO registro_armi (user_id, modello, matricola, motivo) VALUES (%s, %s, %s, %s)",
-                    (str(utente.id), modello, matricola.upper(), motivo))
-        conn.commit()
-        await interaction.response.send_message(f"✅ Arma `{modello}` ({matricola.upper()}) registrata.")
-    except:
-        await interaction.response.send_message("❌ Errore: Matricola già esistente.")
-    finally:
-        cur.close(); conn.close()
+    emb = discord.Embed(title="📤 RITIRO SEQUESTRO", color=discord.Color.blue())
+    emb.add_field(name="Agente", value=interaction.user.mention)
+    emb.add_field(name="Item Prelevato", value=f"{quantita}x {item_id}")
+    
+    await invia_log(interaction, "canale_log_sequestri", emb)
+    await interaction.followup.send(f"✅ Hai prelevato **{quantita}x {item_id}** dal deposito.")
 
-@bot.tree.command(name="pagamulta", description="Saldare l'ultima multa pendente")
+@bot.tree.command(name="deposito_sequestri", description="Mostra oggetti in deposito")
+async def deposito_sequestri(interaction: Interaction):
+    if not is_polizia(interaction): return await interaction.response.send_message("❌ No Permessi.", ephemeral=True)
+    await interaction.response.defer(ephemeral=True)
+    conn = get_db_connection(); cur = conn.cursor(cursor_factory=RealDictCursor)
+    cur.execute("SELECT item_id, SUM(amount) as totale FROM sequestri_oggetti WHERE guild_id = %s GROUP BY item_id", (str(interaction.guild_id),))
+    items = cur.fetchall(); cur.close(); conn.close()
+    if not items: return await interaction.followup.send("📦 Deposito vuoto.")
+    emb = discord.Embed(title="📂 ARCHIVIO SEQUESTRI", color=discord.Color.blue())
+    emb.description = "\n".join([f"• **{i['item_id']}**: {i['totale']}" for i in items])
+    await interaction.followup.send(embed=emb)
+
+@bot.tree.command(name="sequestra_mezzo", description="Sequestra veicolo")
+async def sequestra_mezzo(interaction: Interaction, targa: str):
+    if not is_polizia(interaction): return await interaction.response.send_message("❌ No Permessi.", ephemeral=True)
+    conn = get_db_connection(); cur = conn.cursor(cursor_factory=RealDictCursor)
+    cur.execute("UPDATE veicoli SET sequestrato = TRUE WHERE targa = %s RETURNING modello", (targa.upper(),))
+    v = cur.fetchone()
+    if not v: return await interaction.response.send_message("❌ Targa inesistente.")
+    conn.commit(); cur.close(); conn.close()
+    emb = discord.Embed(title="🚔 SEQUESTRO MEZZO", color=discord.Color.dark_red()); emb.add_field(name="Targa", value=targa.upper())
+    await invia_log(interaction, "canale_log_sequestri", emb)
+    await interaction.response.send_message(f"🚫 Veicolo sequestrato.")
+
+@bot.tree.command(name="pagamulta", description="Paga sanzione")
 async def pagamulta(interaction: Interaction):
     await interaction.response.defer(ephemeral=True)
     conn = get_db_connection(); cur = conn.cursor(cursor_factory=RealDictCursor)
-    
     cur.execute("SELECT * FROM multe WHERE user_id = %s LIMIT 1", (str(interaction.user.id),))
     m = cur.fetchone()
-    if not m: return await interaction.followup.send("✅ Non hai multe pendenti.")
-
+    if not m: return await interaction.followup.send("✅ Nessuna multa.")
     cur.execute("SELECT wallet FROM users WHERE user_id = %s", (str(interaction.user.id),))
-    w = cur.fetchone()
-    if not w or w['wallet'] < m['ammontare']: 
-        return await interaction.followup.send(f"❌ Wallet insufficiente ({m['ammontare']}$).")
-
-    # Transazione
+    u = cur.fetchone()
+    if not u or u['wallet'] < m['ammontare']: return await interaction.followup.send("❌ Contanti insufficienti.")
     cur.execute("UPDATE users SET wallet = wallet - %s WHERE user_id = %s", (m['ammontare'], str(interaction.user.id)))
-    cur.execute("INSERT INTO depositi (role_id, money) VALUES (%s, %s) ON CONFLICT (role_id) DO UPDATE SET money = depositi.money + EXCLUDED.money", 
-                (m['id_azienda'], m['ammontare']))
+    cur.execute("INSERT INTO depositi (role_id, money) VALUES (%s, %s) ON CONFLICT (role_id) DO UPDATE SET money = depositi.money + EXCLUDED.money", (m['id_azienda'], m['ammontare']))
     cur.execute("DELETE FROM multe WHERE id_multa = %s", (m['id_multa'],))
-    
     conn.commit(); cur.close(); conn.close()
-    await interaction.followup.send("✅ Multa pagata correttamente.")
+    await interaction.followup.send(f"✅ Multa pagata.")
 
 # --- AVVIO ---
-bot.run(TOKEN)
+if __name__ == "__main__":
+    keep_alive()
+    bot.run(TOKEN)
