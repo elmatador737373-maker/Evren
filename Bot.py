@@ -115,15 +115,15 @@ def is_admin(interaction: discord.Interaction):
 @bot.tree.command(name="crea_tesserino", description="[ADMIN] Crea/Aggiorna il tesserino ufficiale di un agente")
 @app_commands.describe(
     utente="L'agente a cui assegnare il tesserino",
-    nome="Nome e Cognome IC",
+    nome="Nome e Cognome IC (es. M.Rossi)",
     grado="Grado (Rank)",
-    badge="Numero di distintivo (Badge #)",
+    badge="Numero di Matricola (Badge #)",
     unita="Unità (Unit)",
     id_personale="ID Personale (ID #)",
     nascita="Data di nascita (D.O.B.)",
-    scadenza="Data di scadenza (Expires)",
+    scadenza="Data di scadenza (1 mese dalla creazione) (Expires)",
     foto="Carica la foto dell'agente",
-    firma="Nome per la firma dell'ufficiale"
+    firma="Firma Dell'agente a cui viene emesso"
 )
 async def crea_tesserino(
     interaction: discord.Interaction, 
