@@ -153,77 +153,76 @@ async def crea_tesserino(
     await interaction.followup.send(f"✅ Tesserino per {utente.mention} registrato con successo.")
 
 
-@bot.tree.command(name="mostra_tesserino", description="Genera il tuo tesserino LAPD ufficiale")
+@bot.tree.command(name="mostra_tesserino", description="Genera il tuo tesserino LAPD con coordinate precise")
 async def mostra_tesserino(interaction: discord.Interaction):
-    await interaction.response.defer()
+    # 1. Defer immediato per evitare il timeout (404 Unknown Interaction)
+    try:
+        await interaction.response.defer()
+    except:
+        return
+
     user_id = str(interaction.user.id)
     
-    conn = get_db_connection(); cur = conn.cursor()
-    cur.execute("""
-        SELECT nome_completo, grado, badge_num, unita, id_num, data_nascita, data_emissione, data_scadenza, foto_url 
-        FROM tesserini WHERE user_id = %s
-    """, (user_id,))
-    row = cur.fetchone()
-    cur.close(); conn.close()
-
-    if not row:
-        return await interaction.followup.send("❌ Tesserino non trovato!", ephemeral=True)
-
-    nome, grado, badge, unita, id_pers, nascita, emissione, scadenza, foto_url = row
-
     try:
-        template = Image.open("IMG_0328.jpeg").convert("RGBA")
+        # 2. Recupero dati dal database
+        conn = get_db_connection()
+        cur = conn.cursor()
+        cur.execute("SELECT nome, grado, badge, unita, id_pers, nascita, emissione, scadenza FROM tesserini WHERE user_id = %s", (user_id,))
+        row = cur.fetchone()
+        cur.close()
+        conn.close()
+
+        if not row:
+            await interaction.followup.send("⚠️ Non hai ancora un tesserino registrato. Usa `/crea_tesserino`.")
+            return
+
+        nome, grado, badge, unita, id_pers, nascita, emissione, scadenza = row
+
+        # 3. Elaborazione Immagine
+        template_path = "template.png" # Assicurati che il nome sia corretto
+        if not os.path.exists(template_path):
+            await interaction.followup.send("❌ Errore: Template non trovato sul server.")
+            return
+
+        template = Image.open(template_path).convert("RGBA")
         draw = ImageDraw.Draw(template)
-        
-        try:
-            font = ImageFont.truetype("arial.ttf", 20)
-        except:
-            font = ImageFont.load_default()
 
-        # --- 1. FOTO (Coordinate P15: 46, 95) ---
-        try:
-            response = requests.get(foto_url, timeout=10)
-            agente_foto = Image.open(io.BytesIO(response.content)).convert("RGBA")
-            agente_foto = agente_foto.resize((235, 289)) 
-            template.paste(agente_foto, (46, 95), agente_foto)
-        except:
-            pass
-
-                      # --- COORDINATE CHIRURGICHE (X, Y) ---
-        # Ho alzato progressivamente le ultime 3 righe per compensare il template
-        posizioni = {
-            "NAME":     (480, 102),
-            "RANK":     (480, 137),
-            "BADGE":    (480, 172),
-            "UNIT":     (480, 207),
-            "ID":       (480, 242),
-            "DOB":      (480, 276), # Alzata di 2px rispetto al passo standard
-            "ISSUED":   (480, 310), # Alzata di 4px per recuperare spazio
-            "EXPIRES":  (480, 344)  # Alzata drasticamente per non farla scendere
-        }
-
-        # Consiglio: usa anchor="ls" (Left-baseline) 
-        # e riduci leggermente il font a 18 per dare più "aria" nelle caselle strette
+        # Caricamento Font (Dimensione 18 consigliata per quelle caselle)
         try:
             font = ImageFont.truetype("arial.ttf", 18)
         except:
             font = ImageFont.load_default()
 
-        # Disegno dei campi
-        draw.text(posizioni["NAME"],    str(nome).upper(),      font=font, fill=(0, 0, 0), anchor="ls")
-        draw.text(posizioni["RANK"],    str(grado).upper(),     font=font, fill=(0, 0, 0), anchor="ls")
-        draw.text(posizioni["BADGE"],   str(badge).upper(),     font=font, fill=(0, 0, 0), anchor="ls")
-        draw.text(posizioni["UNIT"],    str(unita).upper(),     font=font, fill=(0, 0, 0), anchor="ls")
-        draw.text(posizioni["ID"],      str(id_pers).upper(),   font=font, fill=(0, 0, 0), anchor="ls")
-        draw.text(posizioni["DOB"],     str(nascita).upper(),   font=font, fill=(0, 0, 0), anchor="ls")
-        draw.text(posizioni["ISSUED"],  str(emissione).upper(), font=font, fill=(0, 0, 0), anchor="ls")
-        draw.text(posizioni["EXPIRES"], str(scadenza).upper(),  font=font, fill=(0, 0, 0), anchor="ls")
+        # 4. COORDINATE PRECISE DAGLI SCREENSHOT
+        # Ho usato i tuoi punti P (P7, P10, P18, ecc.) come riferimento
+        campi = [
+            (nome.upper(),     (395, 100)), # Basato su P7
+            (grado.upper(),    (393, 138)), # Basato su P10
+            (badge.upper(),    (421, 170)), # Basato su P18
+            (unita.upper(),    (384, 203)), # Basato su P25
+            (id_pers.upper(),  (394, 260)), # Basato su P31
+            (nascita.upper(),  (404, 302)), # Basato su P34
+            (emissione.upper(),(424, 328)), # Basato su P38
+            (scadenza.upper(), (424, 355))  # Compensazione finale per EXPIRES
+        ]
+
+        # Scrittura dei testi
+        for testo, pos in campi:
+            draw.text(pos, str(testo), font=font, fill=(0, 0, 0), anchor="ls")
+
+        # 5. INVIO RISULTATO
+        with io.BytesIO() as image_binary:
+            template.save(image_binary, 'PNG')
+            image_binary.seek(0)
+            await interaction.followup.send(
+                content=f"Ecco il tuo tesserino, Ufficiale {interaction.user.display_name}!",
+                file=discord.File(fp=image_binary, filename=f"tesserino_{user_id}.png")
+            )
+
     except Exception as e:
-        print(f"Errore: {e}")
-        try:
-            await interaction.followup.send(f"❌ Errore durante la generazione: {e}", ephemeral=True)
-        except:
-            pass
+        print(f"ERRORE CRITICO: {e}")
+        await interaction.followup.send(f"❌ Errore durante la generazione: {e}")
+
 
 # --- FINE COMANDO MOSTRA_TESSERINO ---
 
