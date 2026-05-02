@@ -223,9 +223,10 @@ async def mostra_tesserino(interaction: discord.Interaction):
             (firma,             (282, 423))   # OFFICER SIGNATURE (sotto la foto)
         ]
 
-        for testo, pos in campi:
-            # fill=(0,0,0) per testo nero nitido
-            draw.text(pos, str(testo), font=font_testo, fill=(0, 0, 0), anchor="ls")
+            for testo, pos in campi:
+            # Ho rimosso , anchor="ls" 
+            # Ora il bot usa l'angolo in alto a sinistra di default
+            draw.text(pos, str(testo), font=font_testo, fill=(0, 0, 0))
 
         # 5. INVIO DEL RISULTATO
         with io.BytesIO() as img_bin:
