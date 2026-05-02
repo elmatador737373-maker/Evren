@@ -158,73 +158,63 @@ import datetime
 
 # --- COMANDI TESSERINI ---
 
-@bot.tree.command(name="mostra_tesserino", description="Genera il tesserino LAPD con i tuoi dati dinamici")
+
+@bot.tree.command(name="mostra_tesserino", description="Genera il tuo tesserino LAPD ufficiale")
 async def mostra_tesserino(interaction: discord.Interaction):
-    # 1. RECUPERO ID UTENTE E DATI DAL DATABASE
+    # 1. DEFER: Questo impedisce l'errore "L'applicazione non ha risposto"
+    await interaction.response.defer()
+
     user_id = str(interaction.user.id)
     
-    # 'tesserini_salvati' è il dizionario/database che abbiamo definito insieme
+    # Recupero dati dal database che abbiamo configurato
     if user_id not in tesserini_salvati:
-        return await interaction.response.send_message(
-            "Non risulti nel database. Crea prima il tuo tesserino!", 
-            ephemeral=True
-        )
+        await interaction.followup.send("Non hai ancora creato un tesserino! Usa il comando di creazione.", ephemeral=True)
+        return
     
     dati = tesserini_salvati[user_id]
 
-    # 2. APERTURA DEL TEMPLATE CORRETTO
+    # 2. ELABORAZIONE IMMAGINE (IMG_0328.jpeg)
     try:
-        # Usiamo il nome file che hai specificato
         template = Image.open("IMG_0328.jpeg").convert("RGBA")
-    except FileNotFoundError:
-        return await interaction.response.send_message(
-            "Errore: Il file IMG_0328.jpeg non è stato trovato nella cartella del bot.", 
-            ephemeral=True
-        )
+        draw = ImageDraw.Draw(template)
         
-    draw = ImageDraw.Draw(template)
-    
-    # Caricamento Font
-    try:
-        font = ImageFont.truetype("arial.ttf", 22)
-    except:
-        font = ImageFont.load_default()
+        try:
+            font = ImageFont.truetype("arial.ttf", 22)
+        except:
+            font = ImageFont.load_default()
 
-    # 3. COORDINATE CALIBRATE (P4 e P13)
-    # X_CENTRO=540: Centro orizzontale delle caselle bianche
-    # Y_START=105: Allineamento verticale iniziale (NAME) basato su P4 (98)
-    # OFFSET_Y=36: Spazio tra le righe (134 - 98 = 36)
-    X_CENTRO = 540 
-    Y_START = 105
-    OFFSET_Y = 36 
+        # 3. COORDINATE CALIBRATE (P4=98, P13=134)
+        X_CENTRO = 540 
+        Y_START = 105  # Centrato su P4 (98)
+        OFFSET_Y = 36  # Distanza tra P4 e P13
 
-    # 4. MAPPA DEI DATI DINAMICI (Ordine preciso del template)
-    campi_tesserino = [
-        dati['nome'],      # NAME
-        dati['grado'],     # RANK
-        dati['badge'],     # BADGE #
-        dati['unita'],     # UNIT
-        dati['id_agente'], # ID #
-        dati['nascita']    # D.O.B.
-    ]
+        campi_tesserino = [
+            dati['nome'],      # NAME
+            dati['grado'],     # RANK
+            dati['badge'],     # BADGE #
+            dati['unita'],     # UNIT
+            dati['id_agente'], # ID #
+            dati['nascita']    # D.O.B.
+        ]
 
-    # 5. SCRITTURA CON CENTRATURA AUTOMATICA
-    for i, contenuto in enumerate(campi_tesserino):
-        pos_y = Y_START + (i * OFFSET_Y)
-        # 'anchor="mm"' risolve il decentramento: il testo si espande dal centro della riga
-        draw.text((X_CENTRO, pos_y), str(contenuto).upper(), font=font, fill=(0, 0, 0), anchor="mm")
+        # Scrittura con centratura millimetrica
+        for i, contenuto in enumerate(campi_tesserino):
+            pos_y = Y_START + (i * OFFSET_Y)
+            draw.text((X_CENTRO, pos_y), str(contenuto).upper(), font=font, fill=(0, 0, 0), anchor="mm")
 
-    # 6. INVIO DEL FILE DINAMICO
-    with io.BytesIO() as image_binary:
-        template.save(image_binary, 'PNG')
-        image_binary.seek(0)
-        
-        # Il nome del file inviato includerà il nome dell'agente per chiarezza
-        filename = f"Tesserino_{dati['nome']}.png"
-        await interaction.response.send_message(
-            content=f"Ecco il tuo tesserino ufficiale, Agente {dati['nome']}!",
-            file=discord.File(fp=image_binary, filename=filename)
-        )
+        # 4. INVIO DEL RISULTATO (Usiamo followup.send perché abbiamo usato defer)
+        with io.BytesIO() as image_binary:
+            template.save(image_binary, 'PNG')
+            image_binary.seek(0)
+            await interaction.followup.send(
+                content=f"Tesserino generato per l'Agente {dati['nome']}",
+                file=discord.File(fp=image_binary, filename=f"Tesserino_{user_id}.png")
+            )
+
+    except Exception as e:
+        print(f"Errore generazione: {e}")
+        await interaction.followup.send("Si è verificato un errore durante la generazione del tesserino.")
+
 
 @bot.tree.command(name="elimina_tesserino", description="[ADMIN] Elimina un tesserino dal database")
 @app_commands.describe(utente="L'agente a cui revocare il tesserino")
