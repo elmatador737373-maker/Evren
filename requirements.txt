@@ -4,3 +4,4 @@ discord.py
 psycopg2-binary
 flask
 Pillow
+requests
