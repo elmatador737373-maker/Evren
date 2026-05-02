@@ -152,6 +152,7 @@ async def crea_tesserino(
     
     await interaction.followup.send(f"✅ Tesserino per {utente.mention} registrato con successo.")
 
+
 @bot.tree.command(name="mostra_tesserino", description="Genera il tuo tesserino LAPD ufficiale")
 async def mostra_tesserino(interaction: discord.Interaction):
     await interaction.response.defer()
@@ -175,12 +176,11 @@ async def mostra_tesserino(interaction: discord.Interaction):
         draw = ImageDraw.Draw(template)
         
         try:
-            # Font 19: leggermente più piccolo per evitare collisioni se il nome è lungo
-            font = ImageFont.truetype("arial.ttf", 19)
+            font = ImageFont.truetype("arial.ttf", 20)
         except:
             font = ImageFont.load_default()
 
-        # --- 1. FOTO (Coordinate confermate da image_10.png) ---
+        # --- 1. FOTO (Coordinate P15: 46, 95) ---
         try:
             response = requests.get(foto_url, timeout=10)
             agente_foto = Image.open(io.BytesIO(response.content)).convert("RGBA")
@@ -189,29 +189,29 @@ async def mostra_tesserino(interaction: discord.Interaction):
         except:
             pass
 
-        # --- 2. CALIBRAZIONE TESTO (RISOLUTIVA) ---
-        # X=410: Più a sinistra per stare nel raggio delle caselle
-        # Y_START=92: Alzato per allineare il "NAME" alla prima striscia
-        # OFFSET_Y=34.5: Più stretto per non far finire l'EXPIRES in basso
-        X_TESTO = 410 
-        Y_START = 92 
-        OFFSET_Y = 34.5 
+        # --- 2. POSIZIONAMENTO MANUALE INDIPENDENTE (X, Y) ---
+        # Abbiamo mappato ogni casella di image_14.png per centrare il testo
+        
+        posizioni = {
+            "NAME":     (475, 102),
+            "RANK":     (475, 138),
+            "BADGE":    (495, 174), # Spostato un po' a destra per l'etichetta "BADGE #:"
+            "UNIT":     (475, 210),
+            "ID":       (460, 246),
+            "DOB":      (485, 282), # Spostato per "D.O.B.:"
+            "ISSUED":   (490, 318),
+            "EXPIRES":  (500, 354)
+        }
 
-        dati_ordinati = [
-            nome,      # NAME
-            grado,     # RANK
-            badge,     # BADGE #
-            unita,     # UNIT
-            id_pers,   # ID #
-            nascita,   # D.O.B.
-            emissione, # ISSUED
-            scadenza   # EXPIRES
-        ]
-
-        for i, testo in enumerate(dati_ordinati):
-            pos_y = Y_START + (i * OFFSET_Y)
-            # 'la' (Left-Ascender) allinea il testo perfettamente all'altezza specificata
-            draw.text((X_TESTO, pos_y), str(testo).upper(), font=font, fill=(0, 0, 0), anchor="la")
+        # Disegno ogni campo con la propria coordinata
+        draw.text(posizioni["NAME"],    str(nome).upper(),      font=font, fill=(0, 0, 0), anchor="mm")
+        draw.text(posizioni["RANK"],    str(grado).upper(),     font=font, fill=(0, 0, 0), anchor="mm")
+        draw.text(posizioni["BADGE"],   str(badge).upper(),     font=font, fill=(0, 0, 0), anchor="mm")
+        draw.text(posizioni["UNIT"],    str(unita).upper(),     font=font, fill=(0, 0, 0), anchor="mm")
+        draw.text(posizioni["ID"],      str(id_pers).upper(),   font=font, fill=(0, 0, 0), anchor="mm")
+        draw.text(posizioni["DOB"],     str(nascita).upper(),   font=font, fill=(0, 0, 0), anchor="mm")
+        draw.text(posizioni["ISSUED"],  str(emissione).upper(), font=font, fill=(0, 0, 0), anchor="mm")
+        draw.text(posizioni["EXPIRES"], str(scadenza).upper(),  font=font, fill=(0, 0, 0), anchor="mm")
 
         # --- 3. INVIO ---
         with io.BytesIO() as image_binary:
@@ -222,8 +222,7 @@ async def mostra_tesserino(interaction: discord.Interaction):
             )
             
     except Exception as e:
-        await interaction.followup.send(f"❌ Errore calibrazione: {e}")
-
+        await interaction.followup.send(f"❌ Errore: {e}")
 
 @bot.tree.command(name="elimina_tesserino", description="[ADMIN] Elimina un tesserino dal database")
 async def elimina_tesserino(interaction: discord.Interaction, utente: discord.Member):
