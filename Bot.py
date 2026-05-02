@@ -189,40 +189,34 @@ async def mostra_tesserino(interaction: discord.Interaction):
         except:
             pass
 
-        # --- 2. POSIZIONAMENTO MANUALE INDIPENDENTE (X, Y) ---
-        # Abbiamo mappato ogni casella di image_14.png per centrare il testo
+              # --- 2. POSIZIONAMENTO MANUALE INDIPENDENTE ---
+        # Ho calibrato queste coordinate basandomi sull'ultima immagine (image_15.png)
+        # X: Aumentata per distanziarla dalle etichette (NAME, RANK, ecc.)
+        # Y: Aumentata di qualche pixel per centrare il testo verticalmente
         
         posizioni = {
-            "NAME":     (475, 102),
-            "RANK":     (475, 138),
-            "BADGE":    (495, 174), # Spostato un po' a destra per l'etichetta "BADGE #:"
-            "UNIT":     (475, 210),
-            "ID":       (460, 246),
-            "DOB":      (485, 282), # Spostato per "D.O.B.:"
-            "ISSUED":   (490, 318),
-            "EXPIRES":  (500, 354)
+            "NAME":     (530, 110),
+            "RANK":     (530, 146),
+            "BADGE":    (530, 182),
+            "UNIT":     (530, 218),
+            "ID":       (530, 254),
+            "DOB":      (530, 290),
+            "ISSUED":   (530, 326),
+            "EXPIRES":  (530, 362)
         }
 
-        # Disegno ogni campo con la propria coordinata
-        draw.text(posizioni["NAME"],    str(nome).upper(),      font=font, fill=(0, 0, 0), anchor="mm")
-        draw.text(posizioni["RANK"],    str(grado).upper(),     font=font, fill=(0, 0, 0), anchor="mm")
-        draw.text(posizioni["BADGE"],   str(badge).upper(),     font=font, fill=(0, 0, 0), anchor="mm")
-        draw.text(posizioni["UNIT"],    str(unita).upper(),     font=font, fill=(0, 0, 0), anchor="mm")
-        draw.text(posizioni["ID"],      str(id_pers).upper(),   font=font, fill=(0, 0, 0), anchor="mm")
-        draw.text(posizioni["DOB"],     str(nascita).upper(),   font=font, fill=(0, 0, 0), anchor="mm")
-        draw.text(posizioni["ISSUED"],  str(emissione).upper(), font=font, fill=(0, 0, 0), anchor="mm")
-        draw.text(posizioni["EXPIRES"], str(scadenza).upper(),  font=font, fill=(0, 0, 0), anchor="mm")
-
-        # --- 3. INVIO ---
-        with io.BytesIO() as image_binary:
-            template.save(image_binary, 'PNG')
-            image_binary.seek(0)
-            await interaction.followup.send(
-                file=discord.File(fp=image_binary, filename=f"Tesserino_{user_id}.png")
-            )
-            
-    except Exception as e:
-        await interaction.followup.send(f"❌ Errore: {e}")
+        # Usiamo anchor="ls" (Left-Baseline) per un controllo millimetrico
+        # Se il testo risulta troppo a destra, abbassa il 530 (es. 520)
+        # Se il testo risulta troppo in basso, abbassa la Y (es. 110 -> 108)
+        
+        draw.text(posizioni["NAME"],    str(nome).upper(),      font=font, fill=(0, 0, 0), anchor="ls")
+        draw.text(posizioni["RANK"],    str(grado).upper(),     font=font, fill=(0, 0, 0), anchor="ls")
+        draw.text(posizioni["BADGE"],   str(badge).upper(),     font=font, fill=(0, 0, 0), anchor="ls")
+        draw.text(posizioni["UNIT"],    str(unita).upper(),     font=font, fill=(0, 0, 0), anchor="ls")
+        draw.text(posizioni["ID"],      str(id_pers).upper(),   font=font, fill=(0, 0, 0), anchor="ls")
+        draw.text(posizioni["DOB"],     str(nascita).upper(),   font=font, fill=(0, 0, 0), anchor="ls")
+        draw.text(posizioni["ISSUED"],  str(emissione).upper(), font=font, fill=(0, 0, 0), anchor="ls")
+        draw.text(posizioni["EXPIRES"], str(scadenza).upper(),  font=font, fill=(0, 0, 0), anchor="ls")
 
 @bot.tree.command(name="elimina_tesserino", description="[ADMIN] Elimina un tesserino dal database")
 async def elimina_tesserino(interaction: discord.Interaction, utente: discord.Member):
