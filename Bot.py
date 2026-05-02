@@ -211,11 +211,11 @@ async def mostra_tesserino(interaction: discord.Interaction):
             (grado.upper(),     (393, 135)),  # RANK
             (str(badge),        (421, 172)),  # BADGE #
             (unita.upper(),     (384, 205)),  # UNIT
-            (str(id_pers),      (394, 265)),  # ID #
-            (nascita,           (404, 305)),  # D.O.B.
-            (emissione,         (424, 332)),  # ISSUED
-            (scadenza,          (424, 358)),  # EXPIRES
-            (firma,             (200, 425))   # OFFICER SIGNATURE (sotto la foto)
+            (str(id_pers),      (389, 265)),  # ID #
+            (nascita,           (398, 305)),  # D.O.B.
+            (emissione,         (405, 332)),  # ISSUED
+            (scadenza,          (419, 358)),  # EXPIRES
+            (firma,             (282, 423))   # OFFICER SIGNATURE (sotto la foto)
         ]
 
         for testo, pos in campi:
