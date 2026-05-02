@@ -184,15 +184,20 @@ async def mostra_tesserino(interaction: discord.Interaction):
         tesserino = Image.open("IMG_0328.jpeg").convert("RGBA")
         draw = ImageDraw.Draw(tesserino)
 
-        # 3. CARICAMENTO E INSERIMENTO FOTO AGENTE
-        # La foto viene inserita nel riquadro bluastro a sinistra
+              # 3. CARICAMENTO E INSERIMENTO FOTO AGENTE
+        # Calibrato sui punti: P15(46,95), P18(48,381), P20(281,384), P21(286,90)
         try:
             response = requests.get(foto_url)
             foto_agente = Image.open(io.BytesIO(response.content)).convert("RGBA")
-            # Dimensioni per il riquadro della foto (approssimative, da calibrare)
-            foto_agente = foto_agente.resize((235, 290)) 
-            # Posizione della foto (riquadro sinistro)
-            tesserino.paste(foto_agente, (155, 105), foto_agente)
+            
+            # Ridimensioniamo la foto per coprire perfettamente l'area blu
+            # Larghezza: 240px, Altezza: 286px
+            foto_agente = foto_agente.resize((240, 286), Image.Resampling.LANCZOS) 
+            
+            # Incolliamo la foto al punto P15 (46, 95)
+            # Usiamo foto_agente come maschera per gestire eventuali trasparenze
+            tesserino.paste(foto_agente, (46, 95), foto_agente)
+            
         except Exception as e:
             print(f"Errore caricamento foto: {e}")
 
