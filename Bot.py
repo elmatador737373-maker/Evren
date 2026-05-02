@@ -110,6 +110,8 @@ import datetime
 def is_admin(interaction: discord.Interaction):
     return interaction.user.guild_permissions.administrator
 
+# --- COMANDI TESSERINI (DATABASE VERSION) ---
+
 @bot.tree.command(name="crea_tesserino", description="[ADMIN] Crea/Aggiorna il tesserino ufficiale di un agente")
 @app_commands.describe(
     utente="L'agente a cui assegnare il tesserino",
@@ -151,83 +153,80 @@ async def crea_tesserino(
     
     await interaction.followup.send(f"✅ Tesserino per {utente.mention} registrato con successo.")
 
-from PIL import Image, ImageDraw, ImageFont
-import io
-import requests
-import datetime
-
-# --- COMANDI TESSERINI ---
-
 
 @bot.tree.command(name="mostra_tesserino", description="Genera il tuo tesserino LAPD ufficiale")
 async def mostra_tesserino(interaction: discord.Interaction):
-    # 1. DEFER: Questo impedisce l'errore "L'applicazione non ha risposto"
+    # Defer fondamentale per evitare il timeout visto in image_7.png
     await interaction.response.defer()
 
     user_id = str(interaction.user.id)
     
-    # Recupero dati dal database che abbiamo configurato
-    if user_id not in tesserini_salvati:
-        await interaction.followup.send("Non hai ancora creato un tesserino! Usa il comando di creazione.", ephemeral=True)
-        return
-    
-    dati = tesserini_salvati[user_id]
+    # Recupero dati dal database PostgreSQL (le stesse colonne di crea_tesserino)
+    conn = get_db_connection(); cur = conn.cursor()
+    cur.execute("""
+        SELECT nome_completo, grado, badge_num, unita, id_num, data_nascita, data_emissione, data_scadenza 
+        FROM tesserini WHERE user_id = %s
+    """, (user_id,))
+    row = cur.fetchone()
+    cur.close(); conn.close()
 
-    # 2. ELABORAZIONE IMMAGINE (IMG_0328.jpeg)
+    if not row:
+        return await interaction.followup.send("❌ Non hai un tesserino registrato. Chiedi a un Admin!", ephemeral=True)
+
+    # Spacchettamento dati dal DB
+    nome, grado, badge, unita, id_pers, nascita, emissione, scadenza = row
+
     try:
+        # Apertura del template corretto specificato
         template = Image.open("IMG_0328.jpeg").convert("RGBA")
         draw = ImageDraw.Draw(template)
         
         try:
+            # Font standard (assicurati che il file .ttf sia presente o usa il default)
             font = ImageFont.truetype("arial.ttf", 22)
         except:
             font = ImageFont.load_default()
 
-        # 3. COORDINATE CALIBRATE (P4=98, P13=134)
+        # --- COORDINATE CALIBRATE (P4=98, P13=134) ---
         X_CENTRO = 540 
-        Y_START = 105  # Centrato su P4 (98)
-        OFFSET_Y = 36  # Distanza tra P4 e P13
+        Y_START = 105  # Punto di partenza centrato sulla riga NAME basato su P4
+        OFFSET_Y = 36  # Distanza calcolata tra le righe (134 - 98)
 
-        campi_tesserino = [
-            dati['nome'],      # NAME
-            dati['grado'],     # RANK
-            dati['badge'],     # BADGE #
-            dati['unita'],     # UNIT
-            dati['id_agente'], # ID #
-            dati['nascita']    # D.O.B.
-        ]
+        # Lista ordinata per il ciclo di scrittura
+        campi = [nome, grado, badge, unita, id_pers, nascita]
 
-        # Scrittura con centratura millimetrica
-        for i, contenuto in enumerate(campi_tesserino):
+        # Scrittura dati principali con centratura millimetrica (anchor="mm")
+        for i, testo in enumerate(campi):
             pos_y = Y_START + (i * OFFSET_Y)
-            draw.text((X_CENTRO, pos_y), str(contenuto).upper(), font=font, fill=(0, 0, 0), anchor="mm")
+            draw.text((X_CENTRO, pos_y), str(testo).upper(), font=font, fill=(0, 0, 0), anchor="mm")
 
-        # 4. INVIO DEL RISULTATO (Usiamo followup.send perché abbiamo usato defer)
+        # Scrittura date ISSUED e EXPIRES (calcolate in base allo stesso offset)
+        draw.text((X_CENTRO, 321), str(emissione), font=font, fill=(0, 0, 0), anchor="mm")
+        draw.text((X_CENTRO, 357), str(scadenza), font=font, fill=(0, 0, 0), anchor="mm")
+
+        # Invio immagine finale tramite followup
         with io.BytesIO() as image_binary:
             template.save(image_binary, 'PNG')
             image_binary.seek(0)
             await interaction.followup.send(
-                content=f"Tesserino generato per l'Agente {dati['nome']}",
+                content=f"Agente {nome}, ecco il tuo tesserino ufficiale!",
                 file=discord.File(fp=image_binary, filename=f"Tesserino_{user_id}.png")
             )
-
     except Exception as e:
-        print(f"Errore generazione: {e}")
-        await interaction.followup.send("Si è verificato un errore durante la generazione del tesserino.")
+        await interaction.followup.send(f"❌ Errore nella generazione dell'immagine: {e}")
 
 
 @bot.tree.command(name="elimina_tesserino", description="[ADMIN] Elimina un tesserino dal database")
 @app_commands.describe(utente="L'agente a cui revocare il tesserino")
 async def elimina_tesserino(interaction: discord.Interaction, utente: discord.Member):
-    if not interaction.user.guild_permissions.administrator:
+    if not is_admin(interaction):
         return await interaction.response.send_message("❌ Solo gli Admin possono farlo.", ephemeral=True)
     
     conn = get_db_connection(); cur = conn.cursor()
     cur.execute("DELETE FROM tesserini WHERE user_id = %s", (str(utente.id),))
     conn.commit(); cur.close(); conn.close()
     
-    await interaction.response.send_message(f"🗑️ Tesserino di {utente.mention} eliminato con successo.", ephemeral=True)
-
+    await interaction.response.send_message(f"🗑️ Tesserino di {utente.mention} eliminato con successo dal database.", ephemeral=True)
 
 @bot.tree.command(name="pattuglia", description="[POLIZIA] Registra l'uscita di una pattuglia nel canale corrente")
 @app_commands.describe(
