@@ -176,45 +176,42 @@ async def mostra_tesserino(interaction: discord.Interaction):
         draw = ImageDraw.Draw(template)
         
         try:
-            # Arial 21 è un compromesso perfetto per non toccare i bordi delle caselle
-            font = ImageFont.truetype("arial.ttf", 21)
+            # Font Arial o simile, dimensione 18/20 per stare nelle caselle
+            font = ImageFont.truetype("arial.ttf", 20)
         except:
             font = ImageFont.load_default()
 
-        # --- 1. POSIZIONAMENTO FOTO (Calibrato su image_9.png) ---
+        # --- 1. POSIZIONAMENTO FOTO (Basato sui tuoi punti P15-P20) ---
         try:
             response = requests.get(foto_url, timeout=10)
             agente_foto = Image.open(io.BytesIO(response.content)).convert("RGBA")
-            agente_foto = agente_foto.resize((262, 292)) 
-            # Inserimento preciso nel riquadro blu
-            template.paste(agente_foto, (45, 157), agente_foto)
-        except Exception as e:
-            print(f"Errore foto: {e}")
+            # Dimensioni ricalibrate sul riquadro
+            agente_foto = agente_foto.resize((235, 289)) 
+            template.paste(agente_foto, (46, 95), agente_foto)
+        except:
+            pass
 
-        # --- 2. COORDINATE MILLIMETRICHE (X e Y) ---
-        # X=565: Centra il testo nello spazio bianco rimanente dopo le scritte fisse
-        # Y_START=112: Abbassato per centrare il testo in altezza rispetto alla riga NAME
-        # OFFSET_Y=35.8: Interlinea precisa per mantenere la centratura su tutte le 8 righe
-        X_CENTRO_PERFETTO = 565 
-        Y_START = 112 
-        OFFSET_Y = 35.8 
+        # --- 2. COORDINATE RICALIBRATE (PER TESTO NELLE CASELLE) ---
+        # X_TESTO: Abbassata a 480 per portarla dentro le caselle bianche a sinistra
+        # Y_START: 108 per allineare la prima riga (NAME)
+        # OFFSET_Y: 36.5 per mantenere il passo costante
+        X_TESTO = 480 
+        Y_START = 108 
+        OFFSET_Y = 36.5 
 
-        dati_tesserino = [
-            nome, grado, badge, unita, id_pers, nascita, emissione, scadenza
-        ]
+        dati = [nome, grado, badge, unita, id_pers, nascita, emissione, scadenza]
 
-        # Scrittura con ancoraggio 'mm' (Middle-Middle)
-        # Questo centra il testo sia in larghezza che in ALTEZZA rispetto alla coordinata
-        for i, testo in enumerate(dati_tesserino):
+        for i, testo in enumerate(dati):
             pos_y = Y_START + (i * OFFSET_Y)
-            draw.text((X_CENTRO_PERFETTO, pos_y), str(testo).upper(), font=font, fill=(0, 0, 0), anchor="mm")
+            # Usiamo anchor="ls" (Left-baseline) per allineare il testo all'inizio della casella
+            # oppure "ms" per centrarlo. Proviamo "ls" per farlo partire da sinistra nella casella.
+            draw.text((X_TESTO, pos_y), str(testo).upper(), font=font, fill=(0, 0, 0))
 
         # --- 3. INVIO ---
         with io.BytesIO() as image_binary:
             template.save(image_binary, 'PNG')
             image_binary.seek(0)
             await interaction.followup.send(
-                content=f"Agente {nome}, il tuo tesserino è stato ricalibrato e generato.",
                 file=discord.File(fp=image_binary, filename=f"Tesserino_{user_id}.png")
             )
             
