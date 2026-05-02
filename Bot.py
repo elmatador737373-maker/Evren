@@ -158,65 +158,73 @@ import datetime
 
 # --- COMANDI TESSERINI ---
 
-@bot.tree.command(name="mostra_tesserino", description="Mostra il tuo tesserino LAPD compilato")
+@bot.tree.command(name="mostra_tesserino", description="Genera il tesserino LAPD con i tuoi dati dinamici")
 async def mostra_tesserino(interaction: discord.Interaction):
-    await interaction.response.defer()
+    # 1. RECUPERO ID UTENTE E DATI DAL DATABASE
+    user_id = str(interaction.user.id)
     
-    conn = get_db_connection(); cur = conn.cursor(cursor_factory=RealDictCursor)
-    cur.execute("SELECT * FROM tesserini WHERE user_id = %s", (str(interaction.user.id),))
-    t = cur.fetchone()
-    cur.close(); conn.close()
+    # 'tesserini_salvati' è il dizionario/database che abbiamo definito insieme
+    if user_id not in tesserini_salvati:
+        return await interaction.response.send_message(
+            "Non risulti nel database. Crea prima il tuo tesserino!", 
+            ephemeral=True
+        )
     
-    if not t:
-        return await interaction.followup.send("❌ Non hai un tesserino registrato. Contatta un Admin.")
+    dati = tesserini_salvati[user_id]
 
+    # 2. APERTURA DEL TEMPLATE CORRETTO
     try:
-        # Carichiamo il template specifico
+        # Usiamo il nome file che hai specificato
         template = Image.open("IMG_0328.jpeg").convert("RGBA")
-        draw = ImageDraw.Draw(template)
+    except FileNotFoundError:
+        return await interaction.response.send_message(
+            "Errore: Il file IMG_0328.jpeg non è stato trovato nella cartella del bot.", 
+            ephemeral=True
+        )
         
-        # Caricamento Font (Arial o simili)
-        try:
-            font = ImageFont.truetype("arial.ttf", 28) # Font per i dati
-            font_firma = ImageFont.truetype("arial.ttf", 22) # Font per la firma
-        except:
-            font = ImageFont.load_default()
-            font_firma = ImageFont.load_default()
+    draw = ImageDraw.Draw(template)
+    
+    # Caricamento Font
+    try:
+        font = ImageFont.truetype("arial.ttf", 22)
+    except:
+        font = ImageFont.load_default()
 
-        # COORDINATE CALIBRATE (X, Y)
-        # Il valore X = 440 allinea il testo all'inizio delle barre grigie
-        x_pos = 440 
+    # 3. COORDINATE CALIBRATE (P4 e P13)
+    # X_CENTRO=540: Centro orizzontale delle caselle bianche
+    # Y_START=105: Allineamento verticale iniziale (NAME) basato su P4 (98)
+    # OFFSET_Y=36: Spazio tra le righe (134 - 98 = 36)
+    X_CENTRO = 540 
+    Y_START = 105
+    OFFSET_Y = 36 
+
+    # 4. MAPPA DEI DATI DINAMICI (Ordine preciso del template)
+    campi_tesserino = [
+        dati['nome'],      # NAME
+        dati['grado'],     # RANK
+        dati['badge'],     # BADGE #
+        dati['unita'],     # UNIT
+        dati['id_agente'], # ID #
+        dati['nascita']    # D.O.B.
+    ]
+
+    # 5. SCRITTURA CON CENTRATURA AUTOMATICA
+    for i, contenuto in enumerate(campi_tesserino):
+        pos_y = Y_START + (i * OFFSET_Y)
+        # 'anchor="mm"' risolve il decentramento: il testo si espande dal centro della riga
+        draw.text((X_CENTRO, pos_y), str(contenuto).upper(), font=font, fill=(0, 0, 0), anchor="mm")
+
+    # 6. INVIO DEL FILE DINAMICO
+    with io.BytesIO() as image_binary:
+        template.save(image_binary, 'PNG')
+        image_binary.seek(0)
         
-        draw.text((x_pos, 165), t['nome_completo'], fill=(30, 30, 30), font=font)
-        draw.text((x_pos, 220), t['grado'], fill=(30, 30, 30), font=font)
-        draw.text((x_pos, 275), t['badge_num'], fill=(30, 30, 30), font=font)
-        draw.text((x_pos, 330), t['unita'], fill=(30, 30, 30), font=font)
-        draw.text((x_pos, 385), t['id_num'], fill=(30, 30, 30), font=font)
-        draw.text((x_pos, 440), t['data_nascita'], fill=(30, 30, 30), font=font)
-        draw.text((x_pos, 495), t['data_emissione'], fill=(30, 30, 30), font=font)
-        draw.text((x_pos, 550), t['data_scadenza'], fill=(30, 30, 30), font=font)
-        
-        # Posizionamento Firma (sopra la riga "OFFICER SIGNATURE")
-        draw.text((385, 715), t['firma_ufficiale'], fill=(0, 0, 0), font=font_firma)
-
-        # Gestione Foto Agente (Riquadro a sinistra)
-        if t['foto_url']:
-            resp = requests.get(t['foto_url'], stream=True)
-            agente_img = Image.open(io.BytesIO(resp.content)).convert("RGBA")
-            # Ridimensioniamo la foto per coprire il riquadro blu (misure stimate 300x415)
-            agente_img = agente_img.resize((305, 415))
-            template.paste(agente_img, (45, 155), agente_img)
-
-        # Salvataggio e invio
-        buffer = io.BytesIO()
-        template.save(buffer, format="PNG")
-        buffer.seek(0)
-        
-        file = discord.File(fp=buffer, filename=f"tesserino_{interaction.user.id}.png")
-        await interaction.followup.send(content=f"🆔 **Tesserino Ufficiale esibito da:** {interaction.user.mention}", file=file)
-
-    except Exception as e:
-        await interaction.followup.send(f"❌ Errore nella generazione grafica: {e}")
+        # Il nome del file inviato includerà il nome dell'agente per chiarezza
+        filename = f"Tesserino_{dati['nome']}.png"
+        await interaction.response.send_message(
+            content=f"Ecco il tuo tesserino ufficiale, Agente {dati['nome']}!",
+            file=discord.File(fp=image_binary, filename=filename)
+        )
 
 @bot.tree.command(name="elimina_tesserino", description="[ADMIN] Elimina un tesserino dal database")
 @app_commands.describe(utente="L'agente a cui revocare il tesserino")
