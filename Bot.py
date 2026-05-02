@@ -100,6 +100,128 @@ async def arresto(interaction: Interaction, utente: discord.Member, nome: str, c
     emb.set_image(url=foto.url)
     await invia_log_globale("canale_log_arresti", emb)
     await interaction.followup.send("✅ Verbale di arresto registrato globalmente.")
+from PIL import Image, ImageDraw, ImageFont
+import io
+import requests
+import datetime
+
+# --- COMANDI TESSERINI ---
+
+def is_admin(interaction: discord.Interaction):
+    return interaction.user.guild_permissions.administrator
+
+@bot.tree.command(name="crea_tesserino", description="[ADMIN] Crea/Aggiorna il tesserino ufficiale di un agente")
+@app_commands.describe(
+    utente="L'agente a cui assegnare il tesserino",
+    nome="Nome e Cognome IC",
+    grado="Grado (Rank)",
+    badge="Numero di distintivo (Badge #)",
+    unita="Unità (Unit)",
+    id_personale="ID Personale (ID #)",
+    nascita="Data di nascita (D.O.B.)",
+    scadenza="Data di scadenza (Expires)",
+    foto="Carica la foto dell'agente",
+    firma="Nome per la firma dell'ufficiale"
+)
+async def crea_tesserino(
+    interaction: discord.Interaction, 
+    utente: discord.Member, nome: str, grado: str, badge: str, 
+    unita: str, id_personale: str, nascita: str, scadenza: str, 
+    foto: discord.Attachment, firma: str
+):
+    if not is_admin(interaction):
+        return await interaction.response.send_message("❌ Solo gli Admin possono creare tesserini.", ephemeral=True)
+    
+    await interaction.response.defer(ephemeral=True)
+    
+    # Orario italiano (+2 ore)
+    data_emissione = (datetime.datetime.now() + datetime.timedelta(hours=2)).strftime("%d/%m/%Y")
+    
+    conn = get_db_connection(); cur = conn.cursor()
+    cur.execute("""
+        INSERT INTO tesserini (user_id, nome_completo, grado, badge_num, unita, id_num, data_nascita, data_emissione, data_scadenza, foto_url, firma_ufficiale)
+        VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+        ON CONFLICT (user_id) DO UPDATE SET 
+        nome_completo=EXCLUDED.nome_completo, grado=EXCLUDED.grado, badge_num=EXCLUDED.badge_num, 
+        unita=EXCLUDED.unita, id_num=EXCLUDED.id_num, data_nascita=EXCLUDED.data_nascita, 
+        data_emissione=EXCLUDED.data_emissione, data_scadenza=EXCLUDED.data_scadenza, 
+        foto_url=EXCLUDED.foto_url, firma_ufficiale=EXCLUDED.firma_ufficiale
+    """, (str(utente.id), nome, grado, badge, unita, id_personale, nascita, data_emissione, scadenza, foto.url, firma))
+    conn.commit(); cur.close(); conn.close()
+    
+    await interaction.followup.send(f"✅ Tesserino per {utente.mention} registrato con successo.")
+
+@bot.tree.command(name="mostra_tesserino", description="Mostra il tuo tesserino LAPD compilato")
+async def mostra_tesserino(interaction: discord.Interaction):
+    await interaction.response.defer()
+    
+    conn = get_db_connection(); cur = conn.cursor(cursor_factory=RealDictCursor)
+    cur.execute("SELECT * FROM tesserini WHERE user_id = %s", (str(interaction.user.id),))
+    t = cur.fetchone()
+    cur.close(); conn.close()
+    
+    if not t:
+        return await interaction.followup.send("❌ Non hai un tesserino registrato. Contatta un Admin.")
+
+    try:
+        # Carichiamo il template IMG_0328.jpeg
+        template = Image.open("IMG_0328.jpeg").convert("RGBA")
+        draw = ImageDraw.Draw(template)
+        
+        # Font - Se arial.ttf non esiste, usa quello di sistema
+        try:
+            font = ImageFont.truetype("arial.ttf", 26)
+            font_firma = ImageFont.truetype("arial.ttf", 22)
+        except:
+            font = ImageFont.load_default()
+            font_firma = ImageFont.load_default()
+
+        # COORDINATE PRECISE (Basate su template LAPD standard 1000x600 circa)
+        # Formato: (X, Y)
+        colonna_testo = 445
+        draw.text((colonna_testo, 162), t['nome_completo'], fill=(40, 40, 40), font=font)
+        draw.text((colonna_testo, 216), t['grado'], fill=(40, 40, 40), font=font)
+        draw.text((colonna_testo, 271), t['badge_num'], fill=(40, 40, 40), font=font)
+        draw.text((colonna_testo, 326), t['unita'], fill=(40, 40, 40), font=font)
+        draw.text((colonna_testo, 381), t['id_num'], fill=(40, 40, 40), font=font)
+        draw.text((colonna_testo, 436), t['data_nascita'], fill=(40, 40, 40), font=font)
+        draw.text((colonna_testo, 491), t['data_emissione'], fill=(40, 40, 40), font=font)
+        draw.text((colonna_testo, 546), t['data_scadenza'], fill=(40, 40, 40), font=font)
+        
+        # Firma Ufficiale (Posizionata sopra la linea OFFICER SIGNATURE)
+        draw.text((390, 712), t['firma_ufficiale'], fill=(20, 20, 20), font=font_firma)
+
+        # Inserimento Foto (Riquadro Blu a sinistra)
+        if t['foto_url']:
+            resp = requests.get(t['foto_url'], stream=True)
+            agente_img = Image.open(io.BytesIO(resp.content)).convert("RGBA")
+            # Ridimensionamento proporzionato per il box dell'immagine
+            agente_img = agente_img.resize((300, 415))
+            template.paste(agente_img, (50, 158), agente_img)
+
+        # Preparazione file per Discord
+        buffer = io.BytesIO()
+        template.save(buffer, format="PNG")
+        buffer.seek(0)
+        
+        file = discord.File(fp=buffer, filename=f"ID_{interaction.user.id}.png")
+        await interaction.followup.send(content=f"🆔 **LOS ANGELES POLICE DEPARTMENT**\nEsibito da: {interaction.user.mention}", file=file)
+
+    except Exception as e:
+        await interaction.followup.send(f"❌ Errore grafico: {e}")
+
+@bot.tree.command(name="elimina_tesserino", description="[ADMIN] Elimina definitivamente un tesserino")
+@app_commands.describe(utente="L'utente a cui revocare il tesserino")
+async def elimina_tesserino(interaction: discord.Interaction, utente: discord.Member):
+    if not is_admin(interaction):
+        return await interaction.response.send_message("❌ Solo gli Admin possono eliminare i tesserini.", ephemeral=True)
+    
+    conn = get_db_connection(); cur = conn.cursor()
+    cur.execute("DELETE FROM tesserini WHERE user_id = %s", (str(utente.id),))
+    conn.commit(); cur.close(); conn.close()
+    
+    await interaction.response.send_message(f"🗑️ Tesserino di {utente.mention} rimosso dal database globale.", ephemeral=True)
+
 @bot.tree.command(name="pattuglia", description="[POLIZIA] Registra l'uscita di una pattuglia nel canale corrente")
 @app_commands.describe(
     nominativo="Seleziona il nominativo radio dell'unità",
