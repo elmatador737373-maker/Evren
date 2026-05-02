@@ -66,6 +66,69 @@ async def invia_log(interaction, tipo_log_key, embed):
     if channel: await channel.send(embed=embed)
 
 # --- COMANDI POLIZIA ---
+@bot.tree.command(name="sequestra_oggetto", description="Rimuove un oggetto dall'inventario e lo sposta nel deposito sequestri")
+@app_commands.describe(
+    utente="Il cittadino a cui sequestrare l'oggetto",
+    item_id="ID o nome tecnico dell'oggetto",
+    quantita="Quantità da sequestrare"
+)
+async def sequestra_oggetto(interaction: Interaction, utente: discord.Member, item_id: str, quantita: int):
+    if not is_polizia(interaction): 
+        return await interaction.response.send_message("❌ Non hai i permessi per eseguire questa operazione.", ephemeral=True)
+    
+    if quantita <= 0:
+        return await interaction.response.send_message("❌ La quantità deve essere superiore a 0.", ephemeral=True)
+
+    await interaction.response.defer()
+    cfg = get_cfg(interaction.guild_id)
+    id_fazione = str(cfg["ruolo_polizia"])
+
+    conn = get_db_connection()
+    if not conn: 
+        return await interaction.followup.send("❌ Database non raggiungibile.")
+    
+    cur = conn.cursor(cursor_factory=RealDictCursor)
+
+    try:
+        # 1. Verifica disponibilità nell'inventario dell'utente
+        cur.execute("SELECT amount FROM inventory WHERE user_id = %s AND item_id = %s", (str(utente.id), item_id))
+        res = cur.fetchone()
+
+        if not res or res['amount'] < quantita:
+            return await interaction.followup.send(f"❌ Il cittadino non possiede abbastanza `{item_id}`.")
+
+        # 2. Rimozione dall'utente (Tabella inventory)
+        cur.execute("UPDATE inventory SET amount = amount - %s WHERE user_id = %s AND item_id = %s", 
+                    (quantita, str(utente.id), item_id))
+        
+        # Pulizia righe vuote
+        cur.execute("DELETE FROM inventory WHERE amount <= 0")
+
+        # 3. Aggiunta al deposito della fazione (Tabella depositi_oggetti)
+        cur.execute("""
+            INSERT INTO depositi_oggetti (role_id, item_id, amount) 
+            VALUES (%s, %s, %s) 
+            ON CONFLICT (role_id, item_id) 
+            DO UPDATE SET amount = depositi_oggetti.amount + EXCLUDED.amount
+        """, (id_fazione, item_id, quantita))
+
+        conn.commit()
+
+        # LOG - Utilizza lo stesso canale dei sequestri veicoli
+        emb = discord.Embed(title="📦 SEQUESTRO OGGETTI", color=discord.Color.dark_orange(), timestamp=discord.utils.utcnow())
+        emb.add_field(name="Soggetto", value=utente.mention, inline=True)
+        emb.add_field(name="Agente", value=interaction.user.mention, inline=True)
+        emb.add_field(name="Oggetto", value=f"{quantita}x `{item_id}`", inline=False)
+        emb.set_footer(text=f"Server ID: {interaction.guild_id}")
+
+        await invia_log(interaction, "canale_log_sequestri", emb)
+        await interaction.followup.send(f"✅ Hai sequestrato **{quantita}x {item_id}** a {utente.mention}.")
+
+    except Exception as e:
+        print(f"Errore sequestro: {e}")
+        await interaction.followup.send("❌ Errore critico durante l'aggiornamento del database.")
+    finally:
+        cur.close(); conn.close()
 
 @bot.tree.command(name="arresto", description="Registra un arresto nel database")
 async def arresto(interaction: Interaction, utente: discord.Member, tempo_minuti: int, motivo: str):
