@@ -218,6 +218,14 @@ async def mostra_tesserino(interaction: discord.Interaction):
         draw.text(posizioni["DOB"],     str(nascita).upper(),   font=font, fill=(0, 0, 0), anchor="ls")
         draw.text(posizioni["ISSUED"],  str(emissione).upper(), font=font, fill=(0, 0, 0), anchor="ls")
         draw.text(posizioni["EXPIRES"], str(scadenza).upper(),  font=font, fill=(0, 0, 0), anchor="ls")
+    except Exception as e:
+        print(f"Errore: {e}")
+        try:
+            await interaction.followup.send(f"❌ Errore durante la generazione: {e}", ephemeral=True)
+        except:
+            pass
+
+# --- FINE COMANDO MOSTRA_TESSERINO ---
 
 @bot.tree.command(name="elimina_tesserino", description="[ADMIN] Elimina un tesserino dal database")
 async def elimina_tesserino(interaction: discord.Interaction, utente: discord.Member):
