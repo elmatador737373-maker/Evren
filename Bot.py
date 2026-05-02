@@ -184,7 +184,7 @@ async def mostra_tesserino(interaction: discord.Interaction):
         nome, grado, badge, unita, id_pers, nascita, emissione, scadenza, firma = row
 
         # 3. Preparazione immagine
-        template_path = "template.png" 
+        template_path = "IMG_0328.jpeg" 
         if not os.path.exists(template_path):
             await interaction.followup.send("❌ Errore: File template.png non trovato.")
             return
