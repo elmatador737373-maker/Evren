@@ -213,9 +213,9 @@ async def mostra_tesserino(interaction: discord.Interaction):
         # Ho aggiunto un piccolo offset per allinearli alle righe del tuo template
         campi = [
             (nome.upper(),      (398, 86)),   # NAME
-            (grado.upper(),     (386, 128)),  # RANK
+            (grado.upper(),     (385, 123)),  # RANK
             (str(badge),        (421, 152)),  # BADGE #
-            (unita.upper(),     (375, 180)),  # UNIT
+            (unita.upper(),     (380, 183)),  # UNIT
             (str(id_pers),      (371, 219)),  # ID #
             (nascita,           (398, 249)),  # D.O.B.
             (emissione,         (410, 285)),  # ISSUED
