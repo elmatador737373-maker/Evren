@@ -189,26 +189,27 @@ async def mostra_tesserino(interaction: discord.Interaction):
         except:
             pass
 
-              # --- 2. POSIZIONAMENTO MANUALE INDIPENDENTE ---
-        # Ho calibrato queste coordinate basandomi sull'ultima immagine (image_15.png)
-        # X: Aumentata per distanziarla dalle etichette (NAME, RANK, ecc.)
-        # Y: Aumentata di qualche pixel per centrare il testo verticalmente
-        
+                      # --- COORDINATE CHIRURGICHE (X, Y) ---
+        # Ho alzato progressivamente le ultime 3 righe per compensare il template
         posizioni = {
-            "NAME":     (530, 110),
-            "RANK":     (530, 146),
-            "BADGE":    (530, 182),
-            "UNIT":     (530, 218),
-            "ID":       (530, 254),
-            "DOB":      (530, 290),
-            "ISSUED":   (530, 326),
-            "EXPIRES":  (530, 362)
+            "NAME":     (480, 102),
+            "RANK":     (480, 137),
+            "BADGE":    (480, 172),
+            "UNIT":     (480, 207),
+            "ID":       (480, 242),
+            "DOB":      (480, 276), # Alzata di 2px rispetto al passo standard
+            "ISSUED":   (480, 310), # Alzata di 4px per recuperare spazio
+            "EXPIRES":  (480, 344)  # Alzata drasticamente per non farla scendere
         }
 
-        # Usiamo anchor="ls" (Left-Baseline) per un controllo millimetrico
-        # Se il testo risulta troppo a destra, abbassa il 530 (es. 520)
-        # Se il testo risulta troppo in basso, abbassa la Y (es. 110 -> 108)
-        
+        # Consiglio: usa anchor="ls" (Left-baseline) 
+        # e riduci leggermente il font a 18 per dare più "aria" nelle caselle strette
+        try:
+            font = ImageFont.truetype("arial.ttf", 18)
+        except:
+            font = ImageFont.load_default()
+
+        # Disegno dei campi
         draw.text(posizioni["NAME"],    str(nome).upper(),      font=font, fill=(0, 0, 0), anchor="ls")
         draw.text(posizioni["RANK"],    str(grado).upper(),     font=font, fill=(0, 0, 0), anchor="ls")
         draw.text(posizioni["BADGE"],   str(badge).upper(),     font=font, fill=(0, 0, 0), anchor="ls")
