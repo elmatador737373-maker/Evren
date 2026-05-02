@@ -230,17 +230,6 @@ async def elimina_tesserino(interaction: discord.Interaction, utente: discord.Me
     
     await interaction.response.send_message(f"🗑️ Tesserino di {utente.mention} eliminato con successo.", ephemeral=True)
 
-@bot.tree.command(name="elimina_tesserino", description="[ADMIN] Elimina definitivamente un tesserino")
-@app_commands.describe(utente="L'utente a cui revocare il tesserino")
-async def elimina_tesserino(interaction: discord.Interaction, utente: discord.Member):
-    if not is_admin(interaction):
-        return await interaction.response.send_message("❌ Solo gli Admin possono eliminare i tesserini.", ephemeral=True)
-    
-    conn = get_db_connection(); cur = conn.cursor()
-    cur.execute("DELETE FROM tesserini WHERE user_id = %s", (str(utente.id),))
-    conn.commit(); cur.close(); conn.close()
-    
-    await interaction.response.send_message(f"🗑️ Tesserino di {utente.mention} rimosso dal database globale.", ephemeral=True)
 
 @bot.tree.command(name="pattuglia", description="[POLIZIA] Registra l'uscita di una pattuglia nel canale corrente")
 @app_commands.describe(
