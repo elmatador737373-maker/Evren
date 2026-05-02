@@ -212,10 +212,10 @@ async def mostra_tesserino(interaction: discord.Interaction):
         # Coordinate basate sui tuoi screenshot precedenti (P7, P10, P18, ecc.)
         # Ho aggiunto un piccolo offset per allinearli alle righe del tuo template
         campi = [
-            (nome.upper(),      (395, 98)),   # NAME
-            (grado.upper(),     (393, 135)),  # RANK
-            (str(badge),        (421, 172)),  # BADGE #
-            (unita.upper(),     (384, 205)),  # UNIT
+            (nome.upper(),      (398, 86)),   # NAME
+            (grado.upper(),     (386, 128)),  # RANK
+            (str(badge),        (421, 152)),  # BADGE #
+            (unita.upper(),     (375, 180)),  # UNIT
             (str(id_pers),      (371, 219)),  # ID #
             (nascita,           (398, 249)),  # D.O.B.
             (emissione,         (410, 285)),  # ISSUED
