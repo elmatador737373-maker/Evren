@@ -133,10 +133,12 @@ async def pattuglia(
     if not is_polizia(interaction): 
         return await interaction.response.send_message("❌ Permessi insufficienti.", ephemeral=True)
     
-    # Risposta immediata silenziosa per evitare il "Il bot sta pensando"
-    await interaction.response.send_message("✅ Registrazione in corso...", ephemeral=True)
+    # Conferma immediata invisibile agli altri
+    await interaction.response.send_message("✅ Pattuglia registrata.", ephemeral=True)
     
-    ora_uscita = datetime.datetime.now().strftime("%H:%M")
+    # Correzione Orario (+2 ore per fuso orario italiano)
+    ora_corretta = datetime.datetime.now() + datetime.timedelta(hours=2)
+    ora_uscita = ora_corretta.strftime("%H:%M")
     
     # Gestione menzioni operatori extra
     op_3_str = operatore_3.mention if operatore_3 else "N/A"
@@ -158,12 +160,8 @@ async def pattuglia(
 > 
 > • ɴᴏᴛᴇ: **{note}**"""
 
-    # 1. INVIO NEL CANALE CORRENTE (Dove è stato usato il comando)
+    # Invio SOLO nel canale dove è stato usato il comando
     await interaction.channel.send(embed=emb)
-    
-    # 2. INVIO LOG GLOBALE (Per i database di entrambi i server)
-    # Ho impostato "canale_log_arresti" come backup, ma puoi cambiarlo
-    await invia_log_globale("canale_log_arresti", emb)
 
 @bot.tree.command(name="multa", description="[POLIZIA] Emetti una sanzione amministrativa")
 @app_commands.describe(
