@@ -204,7 +204,7 @@ async def mostra_tesserino(interaction: discord.Interaction):
         # 4. SCRITTURA DEI TESTI SUL TESSERINO
         try:
             font_testo = ImageFont.truetype("arial.ttf", 18)
-            font_firma = ImageFont.truetype("arial.ttf", 20) # Puoi usare un font corsivo se disponibile
+            font_firma = ImageFont.truetype("Serenity PersonalUseOnly.ttf", 20) # Puoi usare un font corsivo se disponibile
         except:
             font_testo = ImageFont.load_default()
             font_firma = ImageFont.load_default()
@@ -216,11 +216,11 @@ async def mostra_tesserino(interaction: discord.Interaction):
             (grado.upper(),     (393, 135)),  # RANK
             (str(badge),        (421, 172)),  # BADGE #
             (unita.upper(),     (384, 205)),  # UNIT
-            (str(id_pers),      (389, 265)),  # ID #
-            (nascita,           (398, 305)),  # D.O.B.
-            (emissione,         (405, 332)),  # ISSUED
-            (scadenza,          (419, 358)),  # EXPIRES
-            (firma,             (282, 423))   # OFFICER SIGNATURE (sotto la foto)
+            (str(id_pers),      (371, 219)),  # ID #
+            (nascita,           (398, 249)),  # D.O.B.
+            (emissione,         (410, 285)),  # ISSUED
+            (scadenza,          (415, 314)),  # EXPIRES
+            (firma,             (275, 417))   # OFFICER SIGNATURE (sotto la foto)
         ]
 
             for testo, pos in campi:
