@@ -152,7 +152,6 @@ async def crea_tesserino(
     
     await interaction.followup.send(f"✅ Tesserino per {utente.mention} registrato con successo.")
 
-
 @bot.tree.command(name="mostra_tesserino", description="Genera il tuo tesserino LAPD ufficiale")
 async def mostra_tesserino(interaction: discord.Interaction):
     await interaction.response.defer()
@@ -176,36 +175,36 @@ async def mostra_tesserino(interaction: discord.Interaction):
         draw = ImageDraw.Draw(template)
         
         try:
-            # Font Arial o simile, dimensione 18/20 per stare nelle caselle
+            # Font Arial dimensione 20 per precisione
             font = ImageFont.truetype("arial.ttf", 20)
         except:
             font = ImageFont.load_default()
 
-        # --- 1. POSIZIONAMENTO FOTO (Basato sui tuoi punti P15-P20) ---
+        # --- 1. POSIZIONAMENTO FOTO (P15: 46, 95) ---
         try:
             response = requests.get(foto_url, timeout=10)
             agente_foto = Image.open(io.BytesIO(response.content)).convert("RGBA")
-            # Dimensioni ricalibrate sul riquadro
             agente_foto = agente_foto.resize((235, 289)) 
             template.paste(agente_foto, (46, 95), agente_foto)
         except:
             pass
 
-        # --- 2. COORDINATE RICALIBRATE (PER TESTO NELLE CASELLE) ---
-        # X_TESTO: Abbassata a 480 per portarla dentro le caselle bianche a sinistra
-        # Y_START: 108 per allineare la prima riga (NAME)
-        # OFFSET_Y: 36.5 per mantenere il passo costante
-        X_TESTO = 480 
-        Y_START = 108 
-        OFFSET_Y = 36.5 
+        # --- 2. COORDINATE RICALIBRATE (PIÙ A SINISTRA E PIÙ IN ALTO) ---
+        # X=420: Spostato molto a sinistra per entrare nelle caselle grigie
+        # Y_START=98: Alzato per allinearsi alla prima riga "NAME"
+        # OFFSET_Y=35.5: Passo tra le righe ridotto per precisione
+        X_ALLINEAMENTO = 420 
+        Y_START = 98 
+        OFFSET_Y = 35.5 
 
-        dati = [nome, grado, badge, unita, id_pers, nascita, emissione, scadenza]
+        dati_ordinati = [
+            nome, grado, badge, unita, id_pers, nascita, emissione, scadenza
+        ]
 
-        for i, testo in enumerate(dati):
+        for i, testo in enumerate(dati_ordinati):
             pos_y = Y_START + (i * OFFSET_Y)
-            # Usiamo anchor="ls" (Left-baseline) per allineare il testo all'inizio della casella
-            # oppure "ms" per centrarlo. Proviamo "ls" per farlo partire da sinistra nella casella.
-            draw.text((X_TESTO, pos_y), str(testo).upper(), font=font, fill=(0, 0, 0))
+            # Usiamo anchor="la" (Left-Ascender) per un allineamento preciso a sinistra e in alto
+            draw.text((X_ALLINEAMENTO, pos_y), str(testo).upper(), font=font, fill=(0, 0, 0), anchor="la")
 
         # --- 3. INVIO ---
         with io.BytesIO() as image_binary:
@@ -216,7 +215,7 @@ async def mostra_tesserino(interaction: discord.Interaction):
             )
             
     except Exception as e:
-        await interaction.followup.send(f"❌ Errore: {e}")
+        await interaction.followup.send(f"❌ Errore di posizionamento: {e}")
 
 
 @bot.tree.command(name="elimina_tesserino", description="[ADMIN] Elimina un tesserino dal database")
