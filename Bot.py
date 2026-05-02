@@ -166,7 +166,7 @@ async def mostra_tesserino(interaction: discord.Interaction):
     cur.close(); conn.close()
 
     if not row:
-        return await interaction.followup.send("❌ Errore: Tesserino non trovato.", ephemeral=True)
+        return await interaction.followup.send("❌ Tesserino non trovato!", ephemeral=True)
 
     nome, grado, badge, unita, id_pers, nascita, emissione, scadenza, foto_url = row
 
@@ -175,12 +175,12 @@ async def mostra_tesserino(interaction: discord.Interaction):
         draw = ImageDraw.Draw(template)
         
         try:
-            # Font Arial 20, perfetto per queste caselle
-            font = ImageFont.truetype("arial.ttf", 20)
+            # Font 19: leggermente più piccolo per evitare collisioni se il nome è lungo
+            font = ImageFont.truetype("arial.ttf", 19)
         except:
             font = ImageFont.load_default()
 
-        # --- 1. POSIZIONAMENTO FOTO (P15: 46, 95) ---
+        # --- 1. FOTO (Coordinate confermate da image_10.png) ---
         try:
             response = requests.get(foto_url, timeout=10)
             agente_foto = Image.open(io.BytesIO(response.content)).convert("RGBA")
@@ -189,14 +189,14 @@ async def mostra_tesserino(interaction: discord.Interaction):
         except:
             pass
 
-        # --- 2. COORDINATE RICALIBRATE (FOCUS SU IMAGE_12.PNG) ---
-        # Spostiamo X a 430 (molto a sinistra)
-        # Alziamo Y a 88 (per compensare l'effetto "discesa")
-        X_ALLINEAMENTO = 430 
-        Y_START = 88 
-        OFFSET_Y = 36.8 # Interlinea leggermente aumentata per centrare le righe basse
+        # --- 2. CALIBRAZIONE TESTO (RISOLUTIVA) ---
+        # X=410: Più a sinistra per stare nel raggio delle caselle
+        # Y_START=92: Alzato per allineare il "NAME" alla prima striscia
+        # OFFSET_Y=34.5: Più stretto per non far finire l'EXPIRES in basso
+        X_TESTO = 410 
+        Y_START = 92 
+        OFFSET_Y = 34.5 
 
-        # Mappa precisa dei dati per evitare l'errore della DOB slittata
         dati_ordinati = [
             nome,      # NAME
             grado,     # RANK
@@ -210,8 +210,8 @@ async def mostra_tesserino(interaction: discord.Interaction):
 
         for i, testo in enumerate(dati_ordinati):
             pos_y = Y_START + (i * OFFSET_Y)
-            # Usiamo anchor="ls" (Left-Baseline) per "appoggiare" il testo al centro della riga
-            draw.text((X_ALLINEAMENTO, pos_y), str(testo).upper(), font=font, fill=(0, 0, 0), anchor="ls")
+            # 'la' (Left-Ascender) allinea il testo perfettamente all'altezza specificata
+            draw.text((X_TESTO, pos_y), str(testo).upper(), font=font, fill=(0, 0, 0), anchor="la")
 
         # --- 3. INVIO ---
         with io.BytesIO() as image_binary:
@@ -222,7 +222,7 @@ async def mostra_tesserino(interaction: discord.Interaction):
             )
             
     except Exception as e:
-        await interaction.followup.send(f"❌ Errore tecnico: {e}")
+        await interaction.followup.send(f"❌ Errore calibrazione: {e}")
 
 
 @bot.tree.command(name="elimina_tesserino", description="[ADMIN] Elimina un tesserino dal database")
