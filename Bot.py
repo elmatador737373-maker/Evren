@@ -1,188 +1,190 @@
-import discord
-from discord import app_commands
-from discord.ext import commands
-import json
 import os
-from typing import List, Optional
+import discord
+from discord import app_commands, Interaction
+import datetime
+import random
+import string
+import psycopg2
+from psycopg2.extras import RealDictCursor
 
-# --- CARICAMENTO TOKEN DA SECRET ---
-# In Base44, assicurati di aver creato una variabile chiamata 'DISCORD_TOKEN' 
-# nelle impostazioni "Startup" o "Secrets" della tua dashboard.
-TOKEN = os.getenv('DISCORD_TOKEN')
+# --- CARICAMENTO CONFIGURAZIONE DI SICUREZZA (Render Env Vars) ---
+TOKEN = os.getenv("DISCORD_TOKEN")
+DATABASE_URL = os.getenv("DATABASE_URL")
 
-# --- CONFIGURAZIONE DATABASE ---
-DATABASE_FILE = "evren_city_db.json"
+# --- CONFIGURAZIONE MULTI-SERVER ---
+# Inserisci gli ID corretti per i tuoi due server
+SERVER_CONFIG = {
+    1233353915559313478: {  # ID SERVER 1
+        "ruolo_polizia": 1363487988570521670,
+        "canale_log_arresti": 1496978741442773063,
+        "canale_log_multe": 1482757565145288754,
+        "canale_log_denunce": 1459560041563816129,
+        "canale_log_sequestri": 1482753448951681214
+    },
+    1499394373270507701: {  # ID SERVER 2
+        "ruolo_polizia": 1499394715634761789,
+        "canale_log_arresti": 1499398686067658897,
+        "canale_log_multe": 1499398731504685207,
+        "canale_log_denunce": 1499398857979727872,
+        "canale_log_sequestri": 1499398820851744799
+    }
+}
 
-def load_db():
-    if not os.path.exists(DATABASE_FILE):
-        return {
-            "config": {"staff_role": None, "citizen_role": None},
-            "users": {}, 
-            "shop": {}
-        }
-    with open(DATABASE_FILE, "r", encoding="utf-8") as f:
-        return json.load(f)
+# --- CONNESSIONE DATABASE ---
+def get_db_connection():
+    try:
+        conn = psycopg2.connect(DATABASE_URL, sslmode='require')
+        return conn
+    except Exception as e:
+        print(f"❌ Errore connessione Database: {e}")
+        return None
 
-def save_db(data):
-    with open(DATABASE_FILE, "w", encoding="utf-8") as f:
-        json.dump(data, f, indent=4)
-
-def get_user_data(db, user_id):
-    u_id = str(user_id)
-    if u_id not in db["users"]:
-        db["users"][u_id] = {"cash": 500, "bank": 1000, "inventory": {}}
-    return db["users"][u_id]
-
-# --- CLASSE BOT ---
-class EvrenBot(commands.Bot):
+# --- SETUP BOT ---
+class MyBot(discord.Client):
     def __init__(self):
-        intents = discord.Intents.default()
-        intents.members = True
-        intents.message_content = True
-        super().__init__(command_prefix="!", intents=intents)
+        super().__init__(intents=discord.Intents.default())
+        self.tree = app_commands.CommandTree(self)
 
     async def setup_hook(self):
         await self.tree.sync()
-        print(f"✅ Evren City Bot Online - Comandi Slash Sincronizzati")
 
-bot = EvrenBot()
+bot = MyBot()
 
-# --- AUTOCOMPLETE RICERCA ITEM ---
-async def item_autocomplete(interaction: discord.Interaction, current: str) -> List[app_commands.Choice[str]]:
-    db = load_db()
-    items = list(db["shop"].keys())
-    return [
-        app_commands.Choice(name=item, value=item)
-        for item in items if current.lower() in item.lower()
-    ][:25]
+# --- UTILS ---
+def get_cfg(guild_id): 
+    return SERVER_CONFIG.get(guild_id)
 
-# --- COMANDI STAFF (SETUP & GESTIONE) ---
+def is_polizia(interaction: Interaction):
+    cfg = get_cfg(interaction.guild_id)
+    return cfg and any(role.id == cfg["ruolo_polizia"] for role in interaction.user.roles)
 
-@bot.tree.command(name="setup_evren", description="Configura i ruoli per lo Staff e i Cittadini")
-@app_commands.checks.has_permissions(administrator=True)
-async def setup_evren(interaction: discord.Interaction, staff: discord.Role, cittadino: discord.Role):
-    db = load_db()
-    db["config"]["staff_role"] = staff.id
-    db["config"]["citizen_role"] = cittadino.id
-    save_db(db)
-    await interaction.response.send_message(f"✅ Configurazione salvata: Staff={staff.name}, Cittadino={cittadino.name}", ephemeral=True)
+async def invia_log(interaction, tipo_log_key, embed):
+    cfg = get_cfg(interaction.guild_id)
+    if not cfg: return
+    channel_id = cfg.get(tipo_log_key)
+    channel = interaction.guild.get_channel(channel_id)
+    if channel: await channel.send(embed=embed)
 
-@bot.tree.command(name="crea_item", description="[STAFF] Aggiunge un oggetto allo shop")
-async def crea_item(interaction: discord.Interaction, nome: str, prezzo: int, ruolo_richiesto: Optional[discord.Role] = None):
-    db = load_db()
-    staff_id = db["config"].get("staff_role")
-    if not any(r.id == staff_id for r in interaction.user.roles):
-        return await interaction.response.send_message("❌ Devi essere Staff per creare item.", ephemeral=True)
+# --- COMANDI POLIZIA ---
 
-    db["shop"][nome] = {"prezzo": prezzo, "role_req": ruolo_richiesto.id if ruolo_richiesto else None}
-    save_db(db)
-    await interaction.response.send_message(f"✅ Item `{nome}` creato a {prezzo}€.")
-
-@bot.tree.command(name="set_money", description="[STAFF] Modifica i soldi di un utente")
-async def set_money(interaction: discord.Interaction, utente: discord.Member, quantita: int, dove: str):
-    db = load_db()
-    staff_id = db["config"].get("staff_role")
-    if not any(r.id == staff_id for r in interaction.user.roles):
-        return await interaction.response.send_message("❌ Solo lo Staff può farlo.", ephemeral=True)
-
-    u_data = get_user_data(db, utente.id)
-    if dove.lower() == "banca": u_data["bank"] = quantita
-    else: u_data["cash"] = quantita
-    save_db(db)
-    await interaction.response.send_message(f"💰 {utente.display_name} ora ha {quantita}€ in {dove}.")
-
-# --- COMANDI CITTADINI ---
-
-@bot.tree.command(name="balance", description="Mostra il tuo saldo o quello di un cittadino")
-async def balance(interaction: discord.Interaction, utente: Optional[discord.Member] = None):
-    db = load_db()
-    target = utente or interaction.user
+@bot.tree.command(name="arresto", description="Registra un arresto nel database")
+async def arresto(interaction: Interaction, utente: discord.Member, tempo_minuti: int, motivo: str):
+    if not is_polizia(interaction): return await interaction.response.send_message("❌ Accesso negato.", ephemeral=True)
     
-    # Controllo Staff per vedere bilancio altrui
-    if utente and utente != interaction.user:
-        staff_id = db["config"].get("staff_role")
-        if not any(r.id == staff_id for r in interaction.user.roles):
-            return await interaction.response.send_message("❌ Non puoi vedere il conto di altri.", ephemeral=True)
-
-    u_data = get_user_data(db, target.id)
-    embed = discord.Embed(title=f"🏦 Evren Bank - {target.display_name}", color=0x2ecc71)
-    embed.add_field(name="💵 Tasca", value=f"{u_data['cash']}€", inline=True)
-    embed.add_field(name="💳 Conto", value=f"{u_data['bank']}€", inline=True)
-    await interaction.response.send_message(embed=embed)
-
-@bot.tree.command(name="paga", description="Trasferisce contanti a un altro giocatore")
-async def paga(interaction: discord.Interaction, ricevente: discord.Member, quantita: int):
-    if quantita <= 0: return await interaction.response.send_message("❌ Somma non valida.", ephemeral=True)
+    await interaction.response.defer()
+    data_attuale = datetime.datetime.now().strftime("%d/%m/%Y %H:%M")
+    conn = get_db_connection()
+    if not conn: return await interaction.followup.send("❌ Database offline.")
     
-    db = load_db()
-    m_data = get_user_data(db, interaction.user.id)
-    r_data = get_user_data(db, ricevente.id)
+    cur = conn.cursor()
+    cur.execute("INSERT INTO arresti (user_id, agente_id, motivo, tempo, data) VALUES (%s, %s, %s, %s, %s)",
+                (str(utente.id), str(interaction.user.id), motivo, tempo_minuti, data_attuale))
+    conn.commit(); cur.close(); conn.close()
 
-    if m_data["cash"] < quantita:
-        return await interaction.response.send_message("❌ Non hai abbastanza contanti.", ephemeral=True)
+    emb = discord.Embed(title="⚖️ VERBALE DI ARRESTO", color=discord.Color.dark_blue(), timestamp=discord.utils.utcnow())
+    emb.add_field(name="👤 Detenuto", value=utente.mention, inline=True)
+    emb.add_field(name="⏳ Pena", value=f"{tempo_minuti} minuti", inline=True)
+    emb.add_field(name="👮 Agente", value=interaction.user.mention, inline=False)
+    emb.add_field(name="📝 Motivo", value=motivo, inline=False)
 
-    m_data["cash"] -= quantita
-    r_data["cash"] += quantita
-    save_db(db)
-    await interaction.response.send_message(f"💸 Hai consegnato {quantita}€ a {ricevente.mention}.")
+    await invia_log(interaction, "canale_log_arresti", emb)
+    await interaction.followup.send(content=f"🚨 Arresto registrato per {utente.mention}.", embed=emb)
 
-@bot.tree.command(name="shop", description="Mostra il catalogo degli oggetti")
-async def shop(interaction: discord.Interaction):
-    db = load_db()
-    if not db["shop"]: return await interaction.response.send_message("Il negozio è vuoto.")
+@bot.tree.command(name="denuncia", description="Registra una denuncia penale")
+async def denuncia(interaction: Interaction, cittadino: discord.Member, descrizione: str):
+    if not is_polizia(interaction): return await interaction.response.send_message("❌ Solo Polizia.", ephemeral=True)
     
-    embed = discord.Embed(title="🛒 Negozio Evren City", color=0x3498db)
-    for n, i in db["shop"].items():
-        prezzo = i["prezzo"]
-        req = " (🔒 Speciale)" if i["role_req"] else ""
-        embed.add_field(name=f"{n}{req}", value=f"{prezzo}€", inline=True)
-    await interaction.response.send_message(embed=embed)
+    data_attuale = datetime.datetime.now().strftime("%d/%m/%Y")
+    conn = get_db_connection(); cur = conn.cursor()
+    cur.execute("INSERT INTO arresti (user_id, agente_id, motivo, tempo, data) VALUES (%s, %s, %s, 0, %s)",
+                (str(cittadino.id), str(interaction.user.id), f"[DENUNCIA] {descrizione}", data_attuale))
+    conn.commit(); cur.close(); conn.close()
 
-@bot.tree.command(name="compra", description="Acquista un oggetto dallo shop")
-@app_commands.autocomplete(item=item_autocomplete)
-async def compra(interaction: discord.Interaction, item: str):
-    db = load_db()
-    if item not in db["shop"]: return await interaction.response.send_message("❌ Articolo non trovato.", ephemeral=True)
+    emb = discord.Embed(title="📂 NUOVA DENUNCIA", color=discord.Color.orange(), timestamp=discord.utils.utcnow())
+    emb.add_field(name="Cittadino", value=cittadino.mention)
+    emb.add_field(name="Descrizione", value=descrizione, inline=False)
     
-    i_data = db["shop"][item]
-    u_data = get_user_data(db, interaction.user.id)
+    await invia_log(interaction, "canale_log_denunce", emb)
+    await interaction.response.send_message(f"✅ Denuncia registrata per {cittadino.mention}.")
 
-    if i_data["role_req"] and not any(r.id == i_data["role_req"] for r in interaction.user.roles):
-        return await interaction.response.send_message("❌ Non hai i requisiti per questo articolo.", ephemeral=True)
-
-    if u_data["cash"] < i_data["prezzo"]:
-        return await interaction.response.send_message("❌ Ti mancano contanti per l'acquisto.", ephemeral=True)
-
-    u_data["cash"] -= i_data["prezzo"]
-    u_data["inventory"][item] = u_data["inventory"].get(item, 0) + 1
-    save_db(db)
-    await interaction.response.send_message(f"📦 Hai acquistato: {item}!")
-
-@bot.tree.command(name="inventario", description="Guarda cosa hai nello zaino")
-async def inventario(interaction: discord.Interaction):
-    db = load_db()
-    u_data = get_user_data(db, interaction.user.id)
-    items = [f"• {k} (x{v})" for k, v in u_data["inventory"].items() if v > 0]
-    output = "\n".join(items) if items else "Lo zaino è vuoto."
-    await interaction.response.send_message(f"🎒 **Zaino di {interaction.user.name}:**\n{output}")
-
-@bot.tree.command(name="dai_item", description="Passa un oggetto a un altro cittadino")
-@app_commands.autocomplete(item=item_autocomplete)
-async def dai_item(interaction: discord.Interaction, ricevente: discord.Member, item: str, quantita: int = 1):
-    db = load_db()
-    u_data = get_user_data(db, interaction.user.id)
-    r_data = get_user_data(db, ricevente.id)
+@bot.tree.command(name="multa", description="Emetti una sanzione amministrativa")
+async def multa(interaction: Interaction, utente: discord.Member, ammontare: int, motivo: str):
+    if not is_polizia(interaction): return await interaction.response.send_message("❌ Solo Polizia.", ephemeral=True)
     
-    if u_data["inventory"].get(item, 0) < quantita:
-        return await interaction.response.send_message("❌ Non ne hai abbastanza.", ephemeral=True)
+    await interaction.response.defer()
+    cfg = get_cfg(interaction.guild_id)
+    id_m = ''.join(random.choices(string.ascii_letters + string.digits, k=8))
+    data_attuale = datetime.datetime.now().strftime("%d/%m/%Y")
 
-    u_data["inventory"][item] -= quantita
-    r_data["inventory"][item] = r_data["inventory"].get(item, 0) + quantita
-    save_db(db)
-    await interaction.response.send_message(f"🤝 Hai dato {quantita}x {item} a {ricevente.mention}.")
+    conn = get_db_connection(); cur = conn.cursor()
+    cur.execute("INSERT INTO multe (id_multa, user_id, ammontare, id_azienda, motivo, data) VALUES (%s, %s, %s, %s, %s, %s)",
+                (id_m, str(utente.id), ammontare, str(cfg["ruolo_polizia"]), motivo, data_attuale))
+    conn.commit(); cur.close(); conn.close()
 
-# --- ESECUZIONE ---
-if TOKEN:
-    bot.run(TOKEN)
-else:
-    print("⚠️ ERRORE: Variabile 'DISCORD_TOKEN' non trovata nei Secret di Base44.")
+    emb = discord.Embed(title="🚨 MULTA EMESSA", color=discord.Color.red())
+    emb.add_field(name="Soggetto", value=utente.mention)
+    emb.add_field(name="Importo", value=f"{ammontare}$")
+    emb.set_footer(text=f"ID Multa: {id_m}")
+
+    await invia_log(interaction, "canale_log_multe", emb)
+    await interaction.followup.send(f"✅ Multa notificata a {utente.mention}.", embed=emb)
+
+@bot.tree.command(name="sequestra_mezzo", description="Metti sotto sequestro un veicolo")
+async def sequestra_mezzo(interaction: Interaction, targa: str):
+    if not is_polizia(interaction): return await interaction.response.send_message("❌ Accesso negato.", ephemeral=True)
+    
+    conn = get_db_connection(); cur = conn.cursor(cursor_factory=RealDictCursor)
+    cur.execute("UPDATE veicoli SET sequestrato = TRUE WHERE targa = %s RETURNING modello, owner_id", (targa.upper(),))
+    v = cur.fetchone()
+    if not v:
+        cur.close(); conn.close()
+        return await interaction.response.send_message("❌ Targa non trovata.")
+    
+    conn.commit(); cur.close(); conn.close()
+    emb = discord.Embed(title="🚔 SEQUESTRO MEZZO", color=discord.Color.dark_red())
+    emb.add_field(name="Veicolo", value=f"{v['modello']} ({targa.upper()})")
+    emb.add_field(name="Proprietario", value=f"<@{v['owner_id']}>")
+
+    await invia_log(interaction, "canale_log_sequestri", emb)
+    await interaction.response.send_message(f"🚫 Veicolo **{v['modello']}** ({targa.upper()}) sequestrato.")
+
+@bot.tree.command(name="registra_arma", description="Registra un'arma nel registro matricole")
+async def registra_arma(interaction: Interaction, utente: discord.Member, modello: str, matricola: str, motivo: str):
+    if not is_polizia(interaction): return await interaction.response.send_message("❌ Solo Polizia.", ephemeral=True)
+    
+    conn = get_db_connection(); cur = conn.cursor()
+    try:
+        cur.execute("INSERT INTO registro_armi (user_id, modello, matricola, motivo) VALUES (%s, %s, %s, %s)",
+                    (str(utente.id), modello, matricola.upper(), motivo))
+        conn.commit()
+        await interaction.response.send_message(f"✅ Arma `{modello}` ({matricola.upper()}) registrata.")
+    except:
+        await interaction.response.send_message("❌ Errore: Matricola già esistente.")
+    finally:
+        cur.close(); conn.close()
+
+@bot.tree.command(name="pagamulta", description="Saldare l'ultima multa pendente")
+async def pagamulta(interaction: Interaction):
+    await interaction.response.defer(ephemeral=True)
+    conn = get_db_connection(); cur = conn.cursor(cursor_factory=RealDictCursor)
+    
+    cur.execute("SELECT * FROM multe WHERE user_id = %s LIMIT 1", (str(interaction.user.id),))
+    m = cur.fetchone()
+    if not m: return await interaction.followup.send("✅ Non hai multe pendenti.")
+
+    cur.execute("SELECT wallet FROM users WHERE user_id = %s", (str(interaction.user.id),))
+    w = cur.fetchone()
+    if not w or w['wallet'] < m['ammontare']: 
+        return await interaction.followup.send(f"❌ Wallet insufficiente ({m['ammontare']}$).")
+
+    # Transazione
+    cur.execute("UPDATE users SET wallet = wallet - %s WHERE user_id = %s", (m['ammontare'], str(interaction.user.id)))
+    cur.execute("INSERT INTO depositi (role_id, money) VALUES (%s, %s) ON CONFLICT (role_id) DO UPDATE SET money = depositi.money + EXCLUDED.money", 
+                (m['id_azienda'], m['ammontare']))
+    cur.execute("DELETE FROM multe WHERE id_multa = %s", (m['id_multa'],))
+    
+    conn.commit(); cur.close(); conn.close()
+    await interaction.followup.send("✅ Multa pagata correttamente.")
+
+# --- AVVIO ---
+bot.run(TOKEN)
