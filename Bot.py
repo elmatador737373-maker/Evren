@@ -156,7 +156,6 @@ async def crea_tesserino(
 @bot.tree.command(name="mostra_tesserino", description="Genera il tuo tesserino LAPD ufficiale")
 async def mostra_tesserino(interaction: discord.Interaction):
     await interaction.response.defer()
-
     user_id = str(interaction.user.id)
     
     conn = get_db_connection(); cur = conn.cursor()
@@ -168,7 +167,7 @@ async def mostra_tesserino(interaction: discord.Interaction):
     cur.close(); conn.close()
 
     if not row:
-        return await interaction.followup.send("❌ Tesserino non trovato. Chiedi a un Admin!", ephemeral=True)
+        return await interaction.followup.send("❌ Tesserino non trovato!", ephemeral=True)
 
     nome, grado, badge, unita, id_pers, nascita, emissione, scadenza, foto_url = row
 
@@ -177,46 +176,50 @@ async def mostra_tesserino(interaction: discord.Interaction):
         draw = ImageDraw.Draw(template)
         
         try:
-            font = ImageFont.truetype("arial.ttf", 22)
+            # Arial 21 è un compromesso perfetto per non toccare i bordi delle caselle
+            font = ImageFont.truetype("arial.ttf", 21)
         except:
             font = ImageFont.load_default()
 
-        # --- GESTIONE FOTO AGENTE ---
+        # --- 1. POSIZIONAMENTO FOTO (Calibrato su image_9.png) ---
         try:
-            response = requests.get(foto_url)
+            response = requests.get(foto_url, timeout=10)
             agente_foto = Image.open(io.BytesIO(response.content)).convert("RGBA")
-            # Ridimensiona per adattarsi al quadrato blu (circa 250x280)
-            agente_foto = agente_foto.resize((254, 285))
-            # Incolla nel riquadro (X=46, Y=158 coordinate approssimative per IMG_0328)
-            template.paste(agente_foto, (46, 158), agente_foto)
+            agente_foto = agente_foto.resize((262, 292)) 
+            # Inserimento preciso nel riquadro blu
+            template.paste(agente_foto, (45, 157), agente_foto)
         except Exception as e:
-            print(f"Errore caricamento foto: {e}")
+            print(f"Errore foto: {e}")
 
-        # --- COORDINATE CALIBRATE (Spostate a sinistra: X=520) ---
-        X_TESTO = 520 
-        Y_START = 105 
-        OFFSET_Y = 36 
+        # --- 2. COORDINATE MILLIMETRICHE (X e Y) ---
+        # X=565: Centra il testo nello spazio bianco rimanente dopo le scritte fisse
+        # Y_START=112: Abbassato per centrare il testo in altezza rispetto alla riga NAME
+        # OFFSET_Y=35.8: Interlinea precisa per mantenere la centratura su tutte le 8 righe
+        X_CENTRO_PERFETTO = 565 
+        Y_START = 112 
+        OFFSET_Y = 35.8 
 
-        campi = [nome, grado, badge, unita, id_pers, nascita]
+        dati_tesserino = [
+            nome, grado, badge, unita, id_pers, nascita, emissione, scadenza
+        ]
 
-        for i, testo in enumerate(campi):
+        # Scrittura con ancoraggio 'mm' (Middle-Middle)
+        # Questo centra il testo sia in larghezza che in ALTEZZA rispetto alla coordinata
+        for i, testo in enumerate(dati_tesserino):
             pos_y = Y_START + (i * OFFSET_Y)
-            # anchor="mm" mantiene il testo centrato sulla nuova X
-            draw.text((X_TESTO, pos_y), str(testo).upper(), font=font, fill=(0, 0, 0), anchor="mm")
+            draw.text((X_CENTRO_PERFETTO, pos_y), str(testo).upper(), font=font, fill=(0, 0, 0), anchor="mm")
 
-        # Date ISSUED e EXPIRES
-        draw.text((X_TESTO, 321), str(emissione), font=font, fill=(0, 0, 0), anchor="mm")
-        draw.text((X_TESTO, 357), str(scadenza), font=font, fill=(0, 0, 0), anchor="mm")
-
+        # --- 3. INVIO ---
         with io.BytesIO() as image_binary:
             template.save(image_binary, 'PNG')
             image_binary.seek(0)
             await interaction.followup.send(
-                content=f"Agente {nome}, ecco il tuo tesserino!",
+                content=f"Agente {nome}, il tuo tesserino è stato ricalibrato e generato.",
                 file=discord.File(fp=image_binary, filename=f"Tesserino_{user_id}.png")
             )
+            
     except Exception as e:
-        await interaction.followup.send(f"❌ Errore generazione immagine: {e}")
+        await interaction.followup.send(f"❌ Errore: {e}")
 
 
 @bot.tree.command(name="elimina_tesserino", description="[ADMIN] Elimina un tesserino dal database")
