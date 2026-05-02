@@ -153,9 +153,9 @@ async def crea_tesserino(
     await interaction.followup.send(f"✅ Tesserino per {utente.mention} registrato con successo.")
 
 
-@bot.tree.command(name="mostra_tesserino", description="Genera il tuo tesserino LAPD con coordinate precise")
+@bot.tree.command(name="mostra_tesserino", description="Genera il tuo tesserino LAPD ufficiale")
 async def mostra_tesserino(interaction: discord.Interaction):
-    # 1. Defer immediato per evitare il timeout (404 Unknown Interaction)
+    # 1. Defer immediato per evitare il timeout 10062
     try:
         await interaction.response.defer()
     except:
@@ -164,64 +164,72 @@ async def mostra_tesserino(interaction: discord.Interaction):
     user_id = str(interaction.user.id)
     
     try:
-        # 2. Recupero dati dal database
+        # 2. Query con i nomi colonne corretti dal tuo schema
         conn = get_db_connection()
         cur = conn.cursor()
-        cur.execute("SELECT nome, grado, badge, unita, id_pers, nascita, emissione, scadenza FROM tesserini WHERE user_id = %s", (user_id,))
+        cur.execute("""
+            SELECT nome_completo, grado, badge_num, unita, id_num, data_nascita, data_emissione, data_scadenza, firma_ufficiale 
+            FROM tesserini 
+            WHERE user_id = %s
+        """, (user_id,))
         row = cur.fetchone()
         cur.close()
         conn.close()
 
         if not row:
-            await interaction.followup.send("⚠️ Non hai ancora un tesserino registrato. Usa `/crea_tesserino`.")
+            await interaction.followup.send("⚠️ Non hai un tesserino. Chiedi a un Admin di crearlo con `/crea_tesserino`.")
             return
 
-        nome, grado, badge, unita, id_pers, nascita, emissione, scadenza = row
+        # Assegnazione variabili (seguendo l'ordine della SELECT sopra)
+        nome, grado, badge, unita, id_pers, nascita, emissione, scadenza, firma = row
 
-        # 3. Elaborazione Immagine
-        template_path = "template.png" # Assicurati che il nome sia corretto
+        # 3. Preparazione immagine
+        template_path = "template.png" 
         if not os.path.exists(template_path):
-            await interaction.followup.send("❌ Errore: Template non trovato sul server.")
+            await interaction.followup.send("❌ Errore: File template.png non trovato.")
             return
 
         template = Image.open(template_path).convert("RGBA")
         draw = ImageDraw.Draw(template)
 
-        # Caricamento Font (Dimensione 18 consigliata per quelle caselle)
+        # Caricamento Font (Arial o simile)
         try:
             font = ImageFont.truetype("arial.ttf", 18)
+            font_firma = ImageFont.truetype("arial.ttf", 15) # Font per la firma
         except:
             font = ImageFont.load_default()
+            font_firma = ImageFont.load_default()
 
-        # 4. COORDINATE PRECISE DAGLI SCREENSHOT
-        # Ho usato i tuoi punti P (P7, P10, P18, ecc.) come riferimento
+        # 4. COORDINATE PRECISE (Basate sui tuoi screenshot image_18.png a image_24.png)
+        # Ho regolato leggermente la Y per far appoggiare il testo sulle linee
         campi = [
-            (nome.upper(),     (395, 100)), # Basato su P7
-            (grado.upper(),    (393, 138)), # Basato su P10
-            (badge.upper(),    (421, 170)), # Basato su P18
-            (unita.upper(),    (384, 203)), # Basato su P25
-            (id_pers.upper(),  (394, 260)), # Basato su P31
-            (nascita.upper(),  (404, 302)), # Basato su P34
-            (emissione.upper(),(424, 328)), # Basato su P38
-            (scadenza.upper(), (424, 355))  # Compensazione finale per EXPIRES
+            (nome.upper(),      (395, 95)),  # Vicino a P7
+            (grado.upper(),     (393, 133)), # Vicino a P10
+            (badge,             (421, 169)), # Vicino a P18
+            (unita.upper(),     (384, 198)), # Vicino a P25
+            (id_pers,           (394, 255)), # Vicino a P31
+            (nascita,           (404, 297)), # Vicino a P34
+            (emissione,         (424, 323)), # Vicino a P38
+            (scadenza,          (424, 350)), # Riga finale
+            (firma,             (270, 420))  # Posizione indicativa sotto "OFFICER SIGNATURE"
         ]
 
-        # Scrittura dei testi
+        # Scrittura dati sul template
         for testo, pos in campi:
-            draw.text(pos, str(testo), font=font, fill=(0, 0, 0), anchor="ls")
+            draw.text(pos, str(testo), font=font, fill=(40, 40, 40), anchor="ls")
 
-        # 5. INVIO RISULTATO
+        # 5. Invio del file
         with io.BytesIO() as image_binary:
             template.save(image_binary, 'PNG')
             image_binary.seek(0)
             await interaction.followup.send(
-                content=f"Ecco il tuo tesserino, Ufficiale {interaction.user.display_name}!",
-                file=discord.File(fp=image_binary, filename=f"tesserino_{user_id}.png")
+                content=f"Badge ufficiale dell'Ufficiale {nome}:",
+                file=discord.File(fp=image_binary, filename=f"badge_{user_id}.png")
             )
 
     except Exception as e:
-        print(f"ERRORE CRITICO: {e}")
-        await interaction.followup.send(f"❌ Errore durante la generazione: {e}")
+        print(f"ERRORE: {e}")
+        await interaction.followup.send(f"❌ Errore tecnico: {e}")
 
 
 # --- FINE COMANDO MOSTRA_TESSERINO ---
