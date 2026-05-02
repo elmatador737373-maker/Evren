@@ -100,6 +100,70 @@ async def arresto(interaction: Interaction, utente: discord.Member, nome: str, c
     emb.set_image(url=foto.url)
     await invia_log_globale("canale_log_arresti", emb)
     await interaction.followup.send("✅ Verbale di arresto registrato globalmente.")
+@bot.tree.command(name="pattuglia", description="[POLIZIA] Registra l'uscita di una pattuglia nel canale corrente")
+@app_commands.describe(
+    nominativo="Seleziona il nominativo radio dell'unità",
+    capo_pattuglia="Ufficiale a capo dell'unità",
+    nome_cp="Nome IC Capo Pattuglia",
+    cognome_cp="Cognome IC Capo Pattuglia",
+    guidatore="Agente alla guida",
+    nome_g="Nome IC Guidatore",
+    cognome_g="Cognome IC Guidatore",
+    operatore_3="Eventuale terzo operatore",
+    operatore_4="Eventuale quarto operatore",
+    note="Annotazioni (es. Veicolo utilizzato)"
+)
+@app_commands.choices(nominativo=[
+    app_commands.Choice(name="7-Eagle (Unità Aerea)", value="7-Eagle (E)"),
+    app_commands.Choice(name="7-K9 (Unità Cinofila)", value="7-K9"),
+    app_commands.Choice(name="7-Mary (Unità Motociclistica)", value="7-Mary (M)"),
+    app_commands.Choice(name="7-Frank (Supervisori)", value="7-Frank (F)"),
+    app_commands.Choice(name="7-Tango (Traffic Division)", value="7-Tango (T)"),
+    app_commands.Choice(name="7-Ocean (Pattugliamento Marittimo)", value="7-Ocean (O)")
+])
+async def pattuglia(
+    interaction: Interaction, 
+    nominativo: str, 
+    capo_pattuglia: discord.Member, nome_cp: str, cognome_cp: str,
+    guidatore: discord.Member, nome_g: str, cognome_g: str,
+    operatore_3: discord.Member = None, 
+    operatore_4: discord.Member = None,
+    note: str = "N/A"
+):
+    if not is_polizia(interaction): 
+        return await interaction.response.send_message("❌ Permessi insufficienti.", ephemeral=True)
+    
+    # Risposta immediata silenziosa per evitare il "Il bot sta pensando"
+    await interaction.response.send_message("✅ Registrazione in corso...", ephemeral=True)
+    
+    ora_uscita = datetime.datetime.now().strftime("%H:%M")
+    
+    # Gestione menzioni operatori extra
+    op_3_str = operatore_3.mention if operatore_3 else "N/A"
+    op_4_str = operatore_4.mention if operatore_4 else "N/A"
+
+    # Creazione Embed Grafico
+    emb = discord.Embed(title="# 𝐑𝐄𝐆𝐈𝐒𝐓𝐑𝐎 𝐒𝐄𝐑𝐕𝐈𝐙𝐈𝐎 𝐏𝐀𝐓𝐓𝐔𝐆𝐋𝐈𝐀", color=discord.Color.blue())
+    emb.description = f"""> • ɴᴏᴍɪɴᴀᴛɪᴠᴏ ᴜɴɪᴛᴀ̀: **{nominativo}**
+> 
+> • ᴄᴀᴘᴏ ᴘᴀᴛᴛᴜɢʟɪᴀ: {capo_pattuglia.mention} (**{nome_cp} {cognome_cp}**)
+> 
+> • ɢᴜɪᴅᴀᴛᴏʀᴇ: {guidatore.mention} (**{nome_g} {cognome_g}**)
+> 
+> • ᴛᴇʀᴢᴏ ᴏᴘᴇʀᴀᴛᴏʀᴇ: {op_3_str}
+> 
+> • ǫᴜᴀʀᴛᴏ ᴏᴘᴇʀᴀᴛᴏʀᴇ: {op_4_str}
+> 
+> • ᴏʀᴀʀɪᴏ ᴅɪ ᴜsᴄɪᴛᴀ: **{ora_uscita}**
+> 
+> • ɴᴏᴛᴇ: **{note}**"""
+
+    # 1. INVIO NEL CANALE CORRENTE (Dove è stato usato il comando)
+    await interaction.channel.send(embed=emb)
+    
+    # 2. INVIO LOG GLOBALE (Per i database di entrambi i server)
+    # Ho impostato "canale_log_arresti" come backup, ma puoi cambiarlo
+    await invia_log_globale("canale_log_arresti", emb)
 
 @bot.tree.command(name="multa", description="[POLIZIA] Emetti una sanzione amministrativa")
 @app_commands.describe(
