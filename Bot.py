@@ -257,6 +257,119 @@ async def elimina_tesserino(interaction: discord.Interaction, utente: discord.Me
     conn.commit(); cur.close(); conn.close()
     
     await interaction.response.send_message(f"🗑️ Tesserino di {utente.mention} eliminato.", ephemeral=True)
+@bot.tree.command(name="ricerca_cittadino", description="Ricerca avanzata: usa il TAG o NOME e COGNOME")
+@app_commands.describe(
+    cittadino="Tagga l'utente (opzionale)",
+    nome="Nome nel documento (opzionale)",
+    cognome="Cognome nel documento (opzionale)"
+)
+async def ricerca(interaction: discord.Interaction, cittadino: discord.Member = None, nome: str = None, cognome: str = None):
+    if not is_polizia(interaction):
+        return await interaction.response.send_message("❌ Accesso negato.", ephemeral=True)
+    
+    await interaction.response.defer()
+
+    target_id = None
+    target_member = None
+
+    try:
+        conn = get_db_connection()
+        from psycopg2.extras import RealDictCursor
+        cur = conn.cursor(cursor_factory=RealDictCursor)
+
+        # --- LOGICA DI RICERCA INTELLIGENTE ---
+        if cittadino:
+            # Caso 1: Ricerca per TAG
+            target_id = str(cittadino.id)
+            target_member = cittadino
+        elif nome and cognome:
+            # Caso 2: Ricerca per Nome e Cognome
+            cur.execute("""
+                SELECT user_id FROM documenti 
+                WHERE LOWER(nome) = LOWER(%s) AND LOWER(cognome) = LOWER(%s)
+            """, (nome, cognome))
+            res_doc = cur.fetchone()
+            if res_doc:
+                target_id = res_doc['user_id']
+                # Proviamo a recuperare il membro dal server per l'avatar, se c'è
+                target_member = interaction.guild.get_member(int(target_id))
+            else:
+                cur.close()
+                conn.close()
+                return await interaction.followup.send(f"❌ Nessun cittadino trovato con il nome: **{nome} {cognome}**.")
+        else:
+            cur.close()
+            conn.close()
+            return await interaction.followup.send("⚠️ Devi taggare qualcuno o inserire sia Nome che Cognome!")
+
+        # --- RECUPERO DATI DAL FASCICOLO ---
+        # 1. Dati Documento
+        cur.execute("SELECT * FROM documenti WHERE user_id = %s", (target_id,))
+        doc = cur.fetchone()
+        
+        # 2. Veicoli (Recupera TUTTI i veicoli)
+        cur.execute("SELECT targa, modello FROM veicoli WHERE owner_id = %s", (target_id,))
+        veicoli = cur.fetchall()
+        
+        # 3. Multe Pendenti
+        cur.execute("SELECT * FROM multe WHERE user_id = %s", (target_id,))
+        multe = cur.fetchall()
+        
+        # 4. Storico Arresti (ultimi 5)
+        cur.execute("SELECT * FROM arresti WHERE user_id = %s ORDER BY id_arresto DESC LIMIT 5", (target_id,))
+        arresti = cur.fetchall()
+        
+        cur.close()
+        conn.close()
+
+        # --- COSTRUZIONE EMBED ---
+        embed = discord.Embed(
+            title=f"📁 FASCICOLO FEDERALE",
+            color=discord.Color.dark_blue(),
+            timestamp=datetime.datetime.now()
+        )
+        
+        # Gestione Avatar e Titolo
+        nome_display = f"{doc['nome']} {doc['cognome']}" if doc else (target_member.display_name if target_member else "Sconosciuto")
+        embed.description = f"**Soggetto:** {nome_display}\n**ID Discord:** `{target_id}`"
+        
+        if target_member:
+            embed.set_thumbnail(url=target_member.display_avatar.url)
+
+        # Sezione Anagrafica
+        if doc:
+            embed.add_field(name="🪪 Dati Anagrafici", 
+                value=f"**Nascita:** {doc['data_nascita']} ({doc['luogo_nascita']})\n**Sesso:** {doc['genere']} | **H:** {doc['altezza']}cm", 
+                inline=False)
+        else:
+            embed.add_field(name="🪪 Dati Anagrafici", value="⚠️ Documento non registrato.", inline=False)
+
+        # Sezione Veicoli
+        if veicoli:
+            lista_v = "\n".join([f"• `{v['targa']}` - {v['modello']}" for v in veicoli])
+            embed.add_field(name="🚘 Veicoli Intestati", value=lista_v, inline=False)
+        else:
+            embed.add_field(name="🚘 Veicoli Intestati", value="Nessun veicolo registrato.", inline=False)
+
+        # Sezione Multe
+        if multe:
+            lista_m = "\n".join([f"• **{m['ammontare']}$** - {m['motivo']} ({m['data']})" for m in multe])
+            embed.add_field(name="⚠️ Multe Pendenti", value=lista_m, inline=False)
+        else:
+            embed.add_field(name="⚠️ Multe Pendenti", value="Nessuna multa.", inline=False)
+
+        # Sezione Arresti
+        if arresti:
+            lista_a = "\n".join([f"• {a['data']}: {a['motivo']} ({a['tempo']} min)" for a in arresti])
+            embed.add_field(name="🚔 Cronologia Arresti", value=lista_a, inline=False)
+        else:
+            embed.add_field(name="🚔 Cronologia Arresti", value="Incensurato.", inline=False)
+
+        await interaction.followup.send(embed=embed)
+
+    except Exception as e:
+        print(f"Errore ricerca intelligente: {e}")
+        await interaction.followup.send("❌ Errore durante l'interrogazione del database.")
 
 @bot.tree.command(name="pattuglia", description="[POLIZIA] Registra l'uscita di una pattuglia nel canale corrente")
 @app_commands.describe(
