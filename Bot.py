@@ -181,7 +181,7 @@ async def mostra_tesserino(interaction: discord.Interaction):
         nome, grado, badge, unita, id_pers, nascita, emissione, scadenza, foto_url, firma = row
 
         # 2. Carica il template principale
-        tesserino = Image.open("55D2C6C6-77BA-40F8-9AB4-CB25B720DC19.png").convert("RGBA")
+        tesserino = Image.open("IMG_0417.png").convert("RGBA")
         draw = ImageDraw.Draw(tesserino)
 
               # 3. CARICAMENTO E INSERIMENTO FOTO AGENTE
