@@ -327,172 +327,6 @@ async def pattuglia(
 
     # Invio SOLO nel canale dove è stato usato il comando
     await interaction.channel.send(embed=emb)
-# --- FUNZIONE LOG MULTI-SERVER ---
-async def invia_log_multi(tipo, embed):
-    mappa_canali = {
-        "Multa": "canale_log_multe",
-        "Arresto": "canale_log_arresti",
-        "Sequestro": "canale_log_sequestri",
-        "Denuncia": "canale_log_denunce"
-    }
-    chiave = mappa_canali.get(tipo)
-    if not chiave: return
-
-    for guild_id, config in SERVER_CONFIG.items():
-        guild = bot.get_guild(guild_id)
-        if guild:
-            channel_id = config.get(chiave)
-            channel = guild.get_channel(channel_id)
-            if channel:
-                await channel.send(embed=embed)
-
-# --- VIEW TABLET (HOME) ---
-class TabletView(ui.View):
-    def __init__(self, agente):
-        super().__init__(timeout=None)
-        self.agente = agente
-
-    def embed_base(self, titolo, desc):
-        embed = discord.Embed(title=f"📟 GN-OS | {titolo}", description=desc, color=0x2b2d31)
-        embed.set_author(name=f"Operatore: {self.agente['nome_completo']} ({self.agente['grado']})")
-        embed.set_footer(text=f"📡 Connessione Sicura | {datetime.datetime.now().strftime('%H:%M')}")
-        return embed
-
-    @ui.button(label="DATABASE CIVILE", style=discord.ButtonStyle.primary, emoji="👤", row=0)
-    async def db_civile(self, interaction: discord.Interaction, button: ui.Button):
-        # Query dinamica sui cittadini (Tabella documenti)
-        cittadini = await db.fetch("SELECT user_id, nome, cognome FROM documenti ORDER BY nome LIMIT 25")
-        if not cittadini:
-            return await interaction.response.send_message("❌ Database anagrafico vuoto.", ephemeral=True)
-        
-        view = ViewSelezioneCittadino(self, cittadini)
-        await interaction.response.edit_message(embed=self.embed_base("Database", "Seleziona un profilo per il fascicolo completo:"), view=view)
-
-    @ui.button(label="RICERCA TARGA", style=discord.ButtonStyle.primary, emoji="🚘", row=0)
-    async def search_plate(self, interaction: discord.Interaction, button: ui.Button):
-        await interaction.response.send_modal(ModalRicercaTarga(self))
-
-    @ui.button(label="AREA VERBALI", style=discord.ButtonStyle.secondary, emoji="⚖️", row=1)
-    async def verbali(self, interaction: discord.Interaction, button: ui.Button):
-        view = ViewVerbali(self)
-        await interaction.response.edit_message(embed=self.embed_base("Gestione Atti", "Seleziona il tipo di verbale da redigere:"), view=view)
-
-    @ui.button(label="SPEGNI DISPOSITIVO", style=discord.ButtonStyle.danger, emoji="📴", row=2)
-    async def off(self, interaction: discord.Interaction, button: ui.Button):
-        await interaction.response.edit_message(content="**GN-OS:** Sessione terminata correttamente. Arrivederci.", embed=None, view=None)
-
-# --- RICERCA CITTADINI DINAMICA ---
-class ViewSelezioneCittadino(ui.View):
-    def __init__(self, tablet_view, cittadini):
-        super().__init__()
-        self.tablet = tablet_view
-        options = [discord.SelectOption(label=f"{c['nome']} {c['cognome']}", value=c['user_id'], description=f"ID: {c['user_id']}") for c in cittadini]
-        self.add_item(SelectCittadino(options, tablet_view))
-
-    @ui.button(label="TORNA ALLA HOME", style=discord.ButtonStyle.gray, emoji="🏠")
-    async def back(self, interaction: discord.Interaction, button: ui.Button):
-        await interaction.response.edit_message(embed=self.tablet.embed_base("Home", "Sistema Operativo Pronto."), view=self.tablet)
-
-class SelectCittadino(ui.Select):
-    def __init__(self, options, tablet_view):
-        self.tablet = tablet_view
-        super().__init__(placeholder="Scegli un cittadino...", options=options)
-
-    async def callback(self, interaction: discord.Interaction):
-        user_id = self.values[0]
-        # Query incrociate su tabelle: documenti, patenti_registrate, licenze_armi
-        doc = await db.fetchrow("SELECT * FROM documenti WHERE user_id = $1", user_id)
-        patenti = await db.fetch("SELECT tipo FROM patenti_registrate WHERE user_id = $1", user_id)
-        licenze = await db.fetch("SELECT tipo FROM licenze_armi WHERE user_id = $1", user_id)
-        
-        embed = discord.Embed(title=f"👤 Fascicolo: {doc['nome']} {doc['cognome']}", color=discord.Color.blue())
-        embed.set_thumbnail(url=interaction.user.guild.icon.url if interaction.user.guild.icon else None)
-        embed.add_field(name="Generalità", value=f"Nascita: {doc['data_nascita']}\nGenere: {doc['genere']}\nAltezza: {doc['altezza']}cm", inline=True)
-        embed.add_field(name="Stato Patenti", value=", ".join([p['tipo'] for p in patenti]) if patenti else "Nessuna", inline=False)
-        embed.add_field(name="Licenze Armi", value=", ".join([l['tipo'] for l in licenze]) if licenze else "Nessuna", inline=False)
-        embed.set_footer(text=f"Consultazione di {self.tablet.agente['nome_completo']}")
-        
-        await interaction.response.send_message(embed=embed) # Pubblico, No Log
-
-# --- GESTIONE VERBALI (CON LOG MULTI-SERVER) ---
-class ViewVerbali(ui.View):
-    def __init__(self, tablet_view):
-        super().__init__()
-        self.tablet = tablet_view
-
-    @ui.button(label="Multa", style=discord.ButtonStyle.secondary, emoji="💰")
-    async def m1(self, it: discord.Interaction, b: ui.Button): await it.response.send_modal(ModalLog("Multa", self.tablet))
-    
-    @ui.button(label="Arresto", style=discord.ButtonStyle.danger, emoji="⛓️")
-    async def m2(self, it: discord.Interaction, b: ui.Button): await it.response.send_modal(ModalLog("Arresto", self.tablet))
-
-    @ui.button(label="Sequestro", style=discord.ButtonStyle.secondary, emoji="🚜")
-    async def m3(self, it: discord.Interaction, b: ui.Button): await it.response.send_modal(ModalLog("Sequestro", self.tablet))
-
-    @ui.button(label="Denuncia", style=discord.ButtonStyle.secondary, emoji="📂")
-    async def m4(self, it: discord.Interaction, b: ui.Button): await it.response.send_modal(ModalLog("Denuncia", self.tablet))
-
-    @ui.button(label="INDIETRO", style=discord.ButtonStyle.gray, emoji="⬅️")
-    async def back(self, it: discord.Interaction, b: ui.Button):
-        await it.response.edit_message(embed=self.tablet.embed_base("Home", "Sistema Pronto."), view=self.tablet)
-
-class ModalLog(ui.Modal):
-    def __init__(self, tipo, tablet_view):
-        self.tipo, self.tablet = tipo, tablet_view
-        super().__init__(title=f"Compilazione {tipo}")
-
-    sog = ui.TextInput(label="Cittadino / Oggetto", placeholder="Nome Cognome o Targa")
-    mot = ui.TextInput(label="Motivazione", style=discord.TextStyle.paragraph)
-    det = ui.TextInput(label="Dati Tecnici", placeholder="Importo, Minuti, o Merce sequestrata")
-
-    async def on_submit(self, interaction: discord.Interaction):
-        log_embed = discord.Embed(title=f"🚨 REGISTRAZIONE {self.tipo.upper()}", color=discord.Color.red())
-        log_embed.add_field(name="Agente Responsabile", value=f"{self.tablet.agente['nome_completo']} ({self.tablet.agente['grado']})")
-        log_embed.add_field(name="Server di Attività", value=interaction.guild.name)
-        log_embed.add_field(name="Bersaglio/Soggetto", value=self.sog.value)
-        log_embed.add_field(name="Motivazione", value=self.mot.value, inline=False)
-        log_embed.add_field(name="Parametri Atto", value=self.det.value)
-        log_embed.timestamp = datetime.datetime.now()
-
-        await invia_log_multi(self.tipo, log_embed)
-        await interaction.response.send_message(f"✅ Documento archiviato correttamente in centrale e inviato ai log multi-server.")
-
-# --- RICERCA VEICOLI DINAMICA ---
-class ModalRicercaTarga(ui.Modal, title="MCTC - Controllo Veicolo"):
-    t = ui.TextInput(label="Inserisci Targa", placeholder="Es: AB123CD")
-    def __init__(self, tablet):
-        super().__init__()
-        self.tablet = tablet
-
-    async def on_submit(self, interaction: discord.Interaction):
-        v = await db.fetchrow("SELECT v.*, d.nome, d.cognome FROM veicoli v LEFT JOIN documenti d ON v.owner_id = d.user_id WHERE v.targa = $1", self.t.value.upper())
-        if not v: 
-            return await interaction.response.send_message(f"❌ La targa `{self.t.value.upper()}` non risulta registrata.")
-        
-        emb = discord.Embed(title=f"🚘 Veicolo Targa: {v['targa']}", color=discord.Color.gold())
-        emb.add_field(name="Modello", value=v['modello'] or "Non specificato")
-        emb.add_field(name="Proprietario Anagrafico", value=f"{v['nome']} {v['cognome']}" if v['nome'] else "Sconosciuto")
-        emb.add_field(name="Stato Amministrativo", value="⛔ SEQUESTRATO" if v['sequestrato'] else "✅ REGOLARE")
-        emb.set_footer(text=f"Interrogazione di: {self.tablet.agente['nome_completo']}")
-        
-        await interaction.response.send_message(embed=emb) # Pubblico, No Log
-
-# --- COMANDO SLASH /TABLET ---
-@bot.tree.command(name="tablet", description="Sincronizza il Tablet Tattico GN-OS")
-async def tablet(interaction: discord.Interaction):
-    conf = SERVER_CONFIG.get(interaction.guild_id)
-    
-    # 1. Check Ruolo Polizia Configurato
-    if not conf or interaction.guild.get_role(conf['ruolo_polizia']) not in interaction.user.roles:
-        return await interaction.response.send_message("❌ Errore Critico: Modulo criptato non accessibile ai civili.", ephemeral=True)
-
-    # 2. Check Database Tesserini
-    agente = await db.fetchrow("SELECT nome_completo, grado FROM tesserini_polizia WHERE user_id = $1", str(interaction.user.id))
-    if not agente: 
-        return await interaction.response.send_message("⚠️ Identità non trovata nel database della Guardia Nacional.", ephemeral=True)
-
-    view = TabletView(agente)
-    await interaction.response.send_message(embed=view.embed_base("Home", "Benvenuto Agente. Sistema GN-OS online e pronto all'uso."), view=view, ephemeral=True)
 
 @bot.tree.command(name="multa", description="[POLIZIA] Emetti una sanzione amministrativa")
 @app_commands.describe(
@@ -568,6 +402,159 @@ async def sequestra_veicolo(interaction: Interaction, nome: str, cognome: str, t
     emb.set_image(url=foto.url)
     await invia_log_globale("canale_log_sequestri", emb)
     await interaction.followup.send(f"✅ Veicolo {targa.upper()} rimosso dalla circolazione.")
+# --- LOGICA TABLET GN-OS (RICERCA INTELLIGENTE + TESSERINI) ---
+
+class TabletView(ui.View):
+    def __init__(self, agente_data):
+        super().__init__(timeout=None)
+        self.agente = agente_data
+
+    def embed_base(self, titolo, desc):
+        embed = discord.Embed(title=f"📟 GN-OS | {titolo}", description=desc, color=0x2b2d31)
+        embed.set_author(name=f"Operatore: {self.agente['nome_completo']} ({self.agente['grado']})")
+        embed.set_footer(text=f"📡 Connessione Sicura | {datetime.datetime.now().strftime('%H:%M')}")
+        return embed
+
+    @ui.button(label="RICERCA INTELLIGENTE", style=discord.ButtonStyle.primary, emoji="🔍", row=0)
+    async def smart_search(self, interaction: discord.Interaction, button: ui.Button):
+        await interaction.response.send_modal(ModalRicercaIntelligente(self))
+
+    @ui.button(label="AREA VERBALI", style=discord.ButtonStyle.secondary, emoji="⚖️", row=0)
+    async def verbali(self, interaction: discord.Interaction, button: ui.Button):
+        view = ViewVerbali(self)
+        await interaction.response.edit_message(embed=self.embed_base("Gestione Atti", "Seleziona il tipo di verbale:"), view=view)
+
+    @ui.button(label="SPEGNI", style=discord.ButtonStyle.danger, emoji="📴", row=1)
+    async def off(self, interaction: discord.Interaction, button: ui.Button):
+        await interaction.response.edit_message(content="**GN-OS:** Sessione terminata.", embed=None, view=None)
+
+# --- MODAL RICERCA INTELLIGENTE (CITTADINI E TARGHE) ---
+class ModalRicercaIntelligente(ui.Modal, title="GN-OS | Ricerca Globale"):
+    query = ui.TextInput(label="Cosa cerchi?", placeholder="Inserisci Nome, Cognome o Targa (anche parziale)...")
+
+    def __init__(self, tablet):
+        super().__init__()
+        self.tablet = tablet
+
+    async def on_submit(self, interaction: discord.Interaction):
+        await interaction.response.defer(ephemeral=True)
+        q = f"%{self.query.value}%"
+        conn = get_db_connection()
+        cur = conn.cursor(cursor_factory=RealDictCursor)
+        
+        # 1. CERCA TRA I CITTADINI (Documenti)
+        cur.execute("SELECT * FROM documenti WHERE nome ILIKE %s OR cognome ILIKE %s LIMIT 3", (q, q))
+        cittadini = cur.fetchall()
+        
+        # 2. CERCA TRA LE TARGHE (Veicoli)
+        cur.execute("SELECT * FROM veicoli WHERE targa ILIKE %s LIMIT 3", (q,))
+        veicoli_trovati = cur.fetchall()
+
+        if not cittadini and not veicoli_trovati:
+            cur.close(); conn.close()
+            return await interaction.followup.send("❌ Nessun risultato trovato nel Database Nazionale.", ephemeral=True)
+
+        emb = discord.Embed(title=f"🔎 RISULTATI PER: {self.query.value.upper()}", color=0x2b2d31)
+
+        # Sezione Cittadini
+        if cittadini:
+            for c in cittadini:
+                # Per ogni cittadino cerchiamo i dati correlati
+                cur.execute("SELECT COUNT(*) as tot FROM arresti WHERE user_id = %s", (c['user_id'],))
+                prec = cur.fetchone()['tot']
+                cur.execute("SELECT COUNT(*) as tot FROM veicoli WHERE owner_id = %s", (c['user_id'],))
+                veic = cur.fetchone()['tot']
+                
+                info = f"🆔 ID: `{c['user_id']}`\n🎂 Nascita: `{c['data_nascita']}`\n⚖️ Precedenti: `{prec}` | 🚗 Veicoli: `{veic}`"
+                emb.add_field(name=f"👤 {c['nome']} {c['cognome']}", value=info, inline=False)
+
+        # Sezione Veicoli
+        if veicoli_trovati:
+            for v in veicoli_trovati:
+                cur.execute("SELECT nome, cognome FROM documenti WHERE user_id = %s", (v['owner_id'],))
+                prop = cur.fetchone()
+                owner_name = f"{prop['nome']} {prop['cognome']}" if prop else "Sconosciuto"
+                
+                stato = "🛑 SEQUESTRATO" if v['sequestrato'] else "✅ REGOLARE"
+                info_v = f"🚘 Modello: `{v['modello']}`\n👤 Prop: `{owner_name}`\n🛡️ Stato: {stato}"
+                emb.add_field(name=f"🎫 TARGA: {v['targa']}", value=info_v, inline=False)
+
+        cur.close(); conn.close()
+        await interaction.followup.send(embed=emb)
+
+# --- AREA VERBALI ---
+class ViewVerbali(ui.View):
+    def __init__(self, tablet_view):
+        super().__init__(); self.tablet = tablet_view
+
+    @ui.button(label="Arresto", style=discord.ButtonStyle.danger, emoji="⛓️")
+    async def arresto(self, it: discord.Interaction, b: ui.Button): await it.response.send_modal(ModalTabletLog("Arresto", self.tablet))
+
+    @ui.button(label="Multa", style=discord.ButtonStyle.secondary, emoji="💰")
+    async def multa(self, it: discord.Interaction, b: ui.Button): await it.response.send_modal(ModalTabletLog("Multa", self.tablet))
+
+    @ui.button(label="Sequestro", style=discord.ButtonStyle.secondary, emoji="🚜")
+    async def sequestro(self, it: discord.Interaction, b: ui.Button): await it.response.send_modal(ModalTabletLog("Sequestro", self.tablet))
+
+    @ui.button(label="INDIETRO", style=discord.ButtonStyle.gray)
+    async def back(self, it: discord.Interaction, b: ui.Button):
+        await it.response.edit_message(embed=self.tablet.embed_base("Home", "Sistema Pronto."), view=self.tablet)
+
+class ModalTabletLog(ui.Modal):
+    def __init__(self, tipo, tablet_view):
+        self.tipo, self.tablet = tipo, tablet_view
+        super().__init__(title=f"Redazione {tipo}")
+
+    user_id = ui.TextInput(label="ID Discord Soggetto")
+    nome_cognome = ui.TextInput(label="Nome Cognome IC")
+    motivo = ui.TextInput(label="Motivazione", style=discord.TextStyle.paragraph)
+    dato = ui.TextInput(label="Sanzione/Pena/Targa")
+
+    async def on_submit(self, interaction: discord.Interaction):
+        await interaction.response.defer(ephemeral=True)
+        data_ora = (datetime.datetime.now() + datetime.timedelta(hours=2)).strftime("%d/%m/%Y %H:%M")
+        conn = get_db_connection(); cur = conn.cursor()
+
+        if self.tipo == "Arresto":
+            cur.execute("INSERT INTO arresti (user_id, agente_id, motivo, tempo, data) VALUES (%s, %s, %s, %s, %s)",
+                        (self.user_id.value, str(interaction.user.id), self.motivo.value, 0, data_ora))
+            emb = discord.Embed(title="# 𝐑𝐄𝐆𝐈𝐒𝐓𝐑𝐎 𝐀𝐑𝐑𝐄𝐒𝐓𝐎", color=discord.Color.dark_blue())
+            emb.description = f"> • ɴᴏᴍᴇ: **{self.nome_cognome.value}**\n> • ᴍᴏᴛɪᴠᴏ: **{self.motivo.value}**\n> • ᴘᴇɴᴀ: **{self.dato.value}**\n> • ᴏᴘᴇʀᴀᴛᴏʀᴇ: {interaction.user.mention}"
+            await invia_log_globale_tablet("canale_log_arresti", emb)
+
+        elif self.tipo == "Multa":
+            id_m = ''.join(random.choices(string.ascii_letters + string.digits, k=8))
+            cur.execute("INSERT INTO multe (id_multa, user_id, ammontare, motivo, data) VALUES (%s, %s, %s, %s, %s)",
+                        (id_m, self.user_id.value, int(self.dato.value), self.motivo.value, data_ora.split()[0]))
+            emb = discord.Embed(title="# 𝐑𝐄𝐆𝐈𝐒𝐓𝐑𝐎 𝐒𝐀𝐍𝐙𝐈𝐎𝐍𝐄", color=discord.Color.red())
+            emb.description = f"> • ɴᴏᴍᴇ: **{self.nome_cognome.value}**\n> • ᴍᴏᴛɪᴠᴏ: **{self.motivo.value}**\n> • sᴀɴᴢɪᴏɴᴇ: **{self.dato.value}$**\n> • ᴏᴘᴇʀᴀᴛᴏʀᴇ: {interaction.user.mention}"
+            await invia_log_globale_tablet("canale_log_multe", emb)
+
+        elif self.tipo == "Sequestro":
+            cur.execute("UPDATE veicoli SET sequestrato = TRUE WHERE UPPER(targa) = UPPER(%s)", (self.dato.value,))
+            emb = discord.Embed(title="# 𝐑𝐄𝐆𝐈𝐒𝐓𝐑𝐎 𝐒𝐄𝐐𝐔𝐄𝐒𝐓𝐑𝐎 𝐕𝐄𝐈𝐂𝐎𝐋𝐎", color=discord.Color.dark_red())
+            emb.description = f"> • ɴᴏᴍᴇ: **{self.nome_cognome.value}**\n> • ᴛᴀʀɢᴀ: **{self.dato.value.upper()}**\n> • sᴛᴀᴛᴏ: **🛑 SEQUESTRATO**\n> • ᴏᴘᴇʀᴀᴛᴏʀᴇ: {interaction.user.mention}"
+            await invia_log_globale_tablet("canale_log_sequestri", emb)
+
+        conn.commit(); cur.close(); conn.close()
+        await interaction.followup.send(f"✅ Inviato ai log di sistema.", ephemeral=True)
+
+# --- COMANDO /TABLET ---
+@bot.tree.command(name="tablet", description="Accendi il Tablet Tattico GN-OS")
+async def tablet(interaction: discord.Interaction):
+    if not is_polizia(interaction):
+        return await interaction.response.send_message("❌ Accesso negato.", ephemeral=True)
+
+    conn = get_db_connection()
+    cur = conn.cursor(cursor_factory=RealDictCursor)
+    cur.execute("SELECT nome_completo, grado FROM tesserini WHERE user_id = %s", (str(interaction.user.id),))
+    agente = cur.fetchone()
+    cur.close(); conn.close()
+
+    if not agente:
+        return await interaction.response.send_message("⚠️ Tesserino non trovato. Crealo con /crea_tesserino", ephemeral=True)
+
+    await interaction.response.send_message(embed=TabletView(agente).embed_base("Home", "Sistema Pronto."), view=TabletView(agente), ephemeral=True)
 
 @bot.tree.command(name="visualizza_sequestri", description="[POLIZIA] Consulta il magazzino sequestri centrale")
 async def visualizza_sequestri(interaction: Interaction):
@@ -628,30 +615,6 @@ async def denuncia(interaction: Interaction, nome_denunciante: str, cognome_denu
     await invia_log_globale("canale_log_denunce", emb)
     await interaction.response.send_message("✅ Querela registrata globalmente.")
 
-@bot.tree.command(name="cerca_cittadino", description="[POLIZIA] Visualizza il profilo penale e civile completo")
-@app_commands.describe(utente="Seleziona il cittadino da controllare")
-async def cerca_cittadino(interaction: Interaction, utente: discord.Member):
-    if not is_polizia(interaction): return await interaction.response.send_message("❌ Permessi insufficienti.", ephemeral=True)
-    await interaction.response.defer()
-    
-    conn = get_db_connection(); cur = conn.cursor(cursor_factory=RealDictCursor)
-    cur.execute("SELECT modello, targa, sequestrato FROM veicoli WHERE user_id = %s", (str(utente.id),))
-    veicoli = cur.fetchall()
-    cur.execute("SELECT ammontare, motivo, data FROM multe WHERE user_id = %s", (str(utente.id),))
-    multe = cur.fetchall()
-    cur.execute("SELECT motivo, data FROM arresti WHERE user_id = %s", (str(utente.id),))
-    precedenti = cur.fetchall()
-    cur.close(); conn.close()
-    
-    emb = discord.Embed(title=f"👤 DATABASE GLOBALE: {utente.display_name}", color=discord.Color.blue())
-    v = "\n".join([f"> • {x['modello']} ({x['targa']}) {'🛑' if x['sequestrato'] else '✅'}" for x in veicoli]) or "Nessuno"
-    m = "\n".join([f"> • {x['ammontare']}$ - {x['motivo']}" for x in multe]) or "Nessuna"
-    p = "\n".join([f"> • {x['data']} - {x['motivo']}" for x in precedenti]) or "Incensurato"
-    
-    emb.add_field(name="🚗 𝐕𝐄𝐈𝐂𝐎𝐋𝐈 𝐑𝐄𝐆𝐈𝐒𝐓𝐑𝐀𝐓𝐈", value=v, inline=False)
-    emb.add_field(name="📜 𝐒𝐀𝐍𝐙𝐈𝐎𝐍𝐈 𝐏𝐄𝐍𝐃𝐄𝐍𝐓𝐈", value=m, inline=False)
-    emb.add_field(name="⚖️ 𝐅𝐄𝐃𝐈𝐍𝐀 𝐏𝐄𝐍𝐀𝐋𝐄", value=p, inline=False)
-    await interaction.followup.send(embed=emb)
 
 @bot.tree.command(name="pagamulta", description="Saldare una sanzione pendente")
 async def pagamulta(interaction: Interaction):
