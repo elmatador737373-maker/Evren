@@ -259,6 +259,7 @@ async def elimina_tesserino(interaction: discord.Interaction, utente: discord.Me
 @bot.tree.command(name="pattuglia", description="[POLIZIA] Registra l'uscita di una pattuglia nel canale corrente")
 @app_commands.describe(
     nominativo="Seleziona il nominativo radio dell'unità",
+    numero="Inserisci il numero identificativo della pattuglia",
     capo_pattuglia="Ufficiale a capo dell'unità",
     nome_cp="Nome IC Capo Pattuglia",
     cognome_cp="Cognome IC Capo Pattuglia",
@@ -270,16 +271,22 @@ async def elimina_tesserino(interaction: discord.Interaction, utente: discord.Me
     note="Annotazioni (es. Veicolo utilizzato)"
 )
 @app_commands.choices(nominativo=[
-    app_commands.Choice(name="7-Eagle (Unità Aerea)", value="7-Eagle (E)"),
-    app_commands.Choice(name="7-K9 (Unità Cinofila)", value="7-K9"),
-    app_commands.Choice(name="7-Mary (Unità Motociclistica)", value="7-Mary (M)"),
-    app_commands.Choice(name="7-Frank (Supervisori)", value="7-Frank (F)"),
-    app_commands.Choice(name="7-Tango (Traffic Division)", value="7-Tango (T)"),
-    app_commands.Choice(name="7-Ocean (Pattugliamento Marittimo)", value="7-Ocean (O)")
+    app_commands.Choice(name="Alfa (Pattuglia Standard)", value="Alfa"),
+    app_commands.Choice(name="India (Monopattuglia)", value="India"),
+    app_commands.Choice(name="Bravo (Pattuglia Rinforzata)", value="Bravo"),
+    app_commands.Choice(name="Delta (Unità Tattica GIS)", value="Delta"),
+    app_commands.Choice(name="Charlie (Polizia Giudiziaria)", value="Charlie"),
+    app_commands.Choice(name="Eagle (Unità Aerea)", value="Eagle"),
+    app_commands.Choice(name="K9 (Unità Cinofila)", value="K9"),
+    app_commands.Choice(name="Mike (Unità Motociclistica)", value="Mike"),
+    app_commands.Choice(name="Frank (Supervisori)", value="Frank"),
+    app_commands.Choice(name="Romeo (Nucleo Radiomobile)", value="Romeo"),
+    app_commands.Choice(name="Sierra (Unità Navale)", value="Sierra")
 ])
 async def pattuglia(
     interaction: Interaction, 
-    nominativo: str, 
+    nominativo: str,
+    numero: str,
     capo_pattuglia: discord.Member, nome_cp: str, cognome_cp: str,
     guidatore: discord.Member, nome_g: str, cognome_g: str,
     operatore_3: discord.Member = None, 
@@ -300,9 +307,9 @@ async def pattuglia(
     op_3_str = operatore_3.mention if operatore_3 else "N/A"
     op_4_str = operatore_4.mention if operatore_4 else "N/A"
 
-    # Creazione Embed Grafico
+    # Creazione Embed Grafico (Struttura Originale)
     emb = discord.Embed(title="# 𝐑𝐄𝐆𝐈𝐒𝐓𝐑𝐎 𝐒𝐄𝐑𝐕𝐈𝐙𝐈𝐎 𝐏𝐀𝐓𝐓𝐔𝐆𝐋𝐈𝐀", color=discord.Color.blue())
-    emb.description = f"""> • ɴᴏᴍɪɴᴀᴛɪᴠᴏ ᴜɴɪᴛᴀ̀: **{nominativo}**
+    emb.description = f"""> • ɴᴏᴍɪɴᴀᴛɪᴠᴏ ᴜɴɪᴛᴀ̀: **{nominativo} {numero}**
 > 
 > • ᴄᴀᴘᴏ ᴘᴀᴛᴛᴜɢʟɪᴀ: {capo_pattuglia.mention} (**{nome_cp} {cognome_cp}**)
 > 
