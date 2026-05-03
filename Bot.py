@@ -154,6 +154,46 @@ async def crea_tesserino(
     
     await interaction.followup.send(f"✅ Tesserino per {utente.mention} registrato con successo.")
 
+@bot.tree.command(name="ricerca_targa", description="Interroga il database motorizzazione tramite targa")
+async def ricerca_targa(interaction: discord.Interaction, targa: str):
+    if not is_polizia(interaction): # Usa la tua funzione di controllo polizia
+        return await interaction.response.send_message("❌ Accesso negato.", ephemeral=True)
+    
+    await interaction.response.defer()
+    targa_clean = targa.upper().replace(" ", "")
+
+    try:
+        conn = get_db_connection()
+        from psycopg2.extras import RealDictCursor
+        cur = conn.cursor(cursor_factory=RealDictCursor)
+        
+        # Uniamo i dati di veicoli e documenti in una sola query
+        cur.execute("""
+            SELECT v.targa, v.modello, v.owner_id, d.nome, d.cognome 
+            FROM veicoli v
+            LEFT JOIN documenti d ON v.owner_id = d.user_id
+            WHERE v.targa = %s
+        """, (targa_clean,))
+        
+        res = cur.fetchone()
+        cur.close()
+        conn.close()
+
+        if not res:
+            return await interaction.followup.send(f"⚠️ La targa `{targa_clean}` non risulta nel database.")
+
+        embed = discord.Embed(title="🔍 Risultato Ricerca Targa", color=discord.Color.blue())
+        embed.add_field(name="🚘 Veicolo", value=f"**Modello:** {res['modello']}\n**Targa:** `{res['targa']}`", inline=False)
+        
+        proprietario = f"{res['nome']} {res['cognome']}" if res['nome'] else "Documento non registrato"
+        embed.add_field(name="👤 Proprietario", value=f"**Nome:** {proprietario}\n**Menzione:** <@{res['owner_id']}>", inline=False)
+        
+        await interaction.followup.send(embed=embed)
+
+    except Exception as e:
+        print(f"Errore: {e}")
+        await interaction.followup.send("❌ Errore nella ricerca.")
+
 
 @bot.tree.command(name="mostra_tesserino", description="Visualizza il tuo tesserino LAPD ufficiale")
 async def mostra_tesserino(interaction: discord.Interaction):
