@@ -196,14 +196,14 @@ async def mostra_tesserino(interaction: discord.Interaction):
             
             # Incolliamo la foto al punto P15 (46, 95)
             # Usiamo foto_agente come maschera per gestire eventuali trasparenze
-            tesserino.paste(foto_agente, (46, 95), foto_agente)
+            tesserino.paste(foto_agente, (59, 142), foto_agente)
             
         except Exception as e:
             print(f"Errore caricamento foto: {e}")
 
         # 4. SCRITTURA DEI TESTI SUL TESSERINO
         try:
-            font_testo = ImageFont.truetype("arial.ttf", 18)
+            font_testo = ImageFont.truetype("arial.ttf", 25)
             font_firma = ImageFont.truetype("Serenity PersonalUseOnly.ttf", 20) # Puoi usare un font corsivo se disponibile
         except:
             font_testo = ImageFont.load_default()
@@ -212,15 +212,15 @@ async def mostra_tesserino(interaction: discord.Interaction):
         # Coordinate basate sui tuoi screenshot precedenti (P7, P10, P18, ecc.)
         # Ho aggiunto un piccolo offset per allinearli alle righe del tuo template
         campi = [
-            (nome.upper(),      (398, 86)),   # NAME
-            (grado.upper(),     (385, 123)),  # RANK
-            (str(badge),        (421, 152)),  # BADGE #
-            (unita.upper(),     (380, 183)),  # UNIT
-            (str(id_pers),      (371, 219)),  # ID #
-            (nascita,           (398, 249)),  # D.O.B.
-            (emissione,         (410, 285)),  # ISSUED
-            (scadenza,          (415, 314)),  # EXPIRES
-            (firma,             (275, 417))   # OFFICER SIGNATURE (sotto la foto)
+            (nome.upper(),      (605, 137)),   # NAME
+            (grado.upper(),     (607, 187)),  # RANK
+            (str(badge),        (650, 237)),  # BADGE #
+            (unita.upper(),     (582, 288)),  # UNIT
+            (str(id_pers),      (585, 337)),  # ID #
+            (nascita,           (616, 395)),  # D.O.B.
+            (emissione,         (640, 438)),  # ISSUED
+            (scadenza,          (642, 484)),  # EXPIRES
+            (firma,             (433, 632))   # OFFICER SIGNATURE (sotto la foto)
         ]
 
         for testo, pos in campi:
