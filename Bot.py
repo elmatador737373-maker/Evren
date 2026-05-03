@@ -192,7 +192,7 @@ async def mostra_tesserino(interaction: discord.Interaction):
             
             # Ridimensioniamo la foto per coprire perfettamente l'area blu
             # Larghezza: 240px, Altezza: 286px
-            foto_agente = foto_agente.resize((240, 286), Image.Resampling.LANCZOS) 
+            foto_agente = foto_agente.resize((374, 460), Image.Resampling.LANCZOS)
             
             # Incolliamo la foto al punto P15 (46, 95)
             # Usiamo foto_agente come maschera per gestire eventuali trasparenze
