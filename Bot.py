@@ -154,73 +154,6 @@ async def crea_tesserino(
     
     await interaction.followup.send(f"✅ Tesserino per {utente.mention} registrato con successo.")
 
-@bot.tree.command(name="ricerca_targa", description="Interroga il database motorizzazione tramite targa")
-@app_commands.describe(targa="Inserisci la targa del veicolo da controllare")
-async def ricerca_targa(interaction: discord.Interaction, targa: str):
-    # Controllo autorizzazione con la tua funzione polizia
-    if not is_polizia(interaction):
-        return await interaction.response.send_message("❌ Accesso negato: Solo personale autorizzato.", ephemeral=False)
-    
-    # Defer pubblico (visibile a tutti nel canale)
-    await interaction.response.defer(ephemeral=False)
-    
-    # Pulizia input: tutto maiuscolo e senza spazi
-    targa_clean = targa.upper().replace(" ", "")
-
-    try:
-        conn = get_db_connection()
-        from psycopg2.extras import RealDictCursor
-        cur = conn.cursor(cursor_factory=RealDictCursor)
-        
-        # Query avanzata: uniamo veicoli, documenti del proprietario e stato sequestro
-        cur.execute("""
-            SELECT v.targa, v.modello, v.owner_id, v.sequestrato, d.nome, d.cognome 
-            FROM veicoli v
-            LEFT JOIN documenti d ON v.owner_id = d.user_id
-            WHERE UPPER(v.targa) = %s
-        """, (targa_clean,))
-        
-        res = cur.fetchone()
-        cur.close()
-        conn.close()
-
-        if not res:
-            return await interaction.followup.send(f"⚠️ La targa `{targa_clean}` non risulta registrata nel database motorizzazione.")
-
-        # Definizione colore in base allo stato del veicolo
-        colore = discord.Color.red() if res['sequestrato'] else discord.Color.blue()
-        stato_veicolo = "🛑 SEQUESTRATO / FERMO AMMINISTRATIVO" if res['sequestrato'] else "✅ REGOLARE"
-
-        embed = discord.Embed(
-            title="🔍 INTERROGAZIONE MOTORIZZAZIONE", 
-            color=colore,
-            timestamp=datetime.datetime.now()
-        )
-        
-        # Sezione Veicolo
-        embed.add_field(
-            name="🚘 Informazioni Veicolo", 
-            value=f"**Modello:** {res['modello']}\n**Targa:** `{res['targa']}`\n**Stato:** `{stato_veicolo}`", 
-            inline=False
-        )
-        
-        # Sezione Proprietario
-        proprietario_nome = f"{res['nome']} {res['cognome']}" if res['nome'] else "Dati Anagrafici Non Disponibili"
-        embed.add_field(
-            name="👤 Intestatario Legale", 
-            value=f"**Nome:** {proprietario_nome}\n**Menzione:** <@{res['owner_id']}>\n**ID Discord:** `{res['owner_id']}`", 
-            inline=False
-        )
-        
-        embed.set_footer(text=f"Richiesta inoltrata da: {interaction.user.display_name}")
-        
-        # Invio risposta pubblica
-        await interaction.followup.send(embed=embed)
-
-    except Exception as e:
-        print(f"Errore ricerca targa: {e}")
-        await interaction.followup.send("❌ Errore durante l'interrogazione del database veicoli.")
-
 
 @bot.tree.command(name="mostra_tesserino", description="Visualizza il tuo tesserino LAPD ufficiale")
 async def mostra_tesserino(interaction: discord.Interaction):
@@ -324,121 +257,147 @@ async def elimina_tesserino(interaction: discord.Interaction, utente: discord.Me
     conn.commit(); cur.close(); conn.close()
     
     await interaction.response.send_message(f"🗑️ Tesserino di {utente.mention} eliminato.", ephemeral=True)
-@bot.tree.command(name="ricerca_cittadino", description="Ricerca avanzata: usa il TAG o NOME e COGNOME")
-@app_commands.describe(
-    cittadino="Tagga l'utente (opzionale)",
-    nome="Nome nel documento (opzionale)",
-    cognome="Cognome nel documento (opzionale)"
-)
-async def ricerca(interaction: discord.Interaction, cittadino: discord.Member = None, nome: str = None, cognome: str = None):
-    # Controllo autorizzazione con la tua funzione polizia
-    if not is_polizia(interaction):
-        return await interaction.response.send_message("❌ Accesso negato: Solo personale autorizzato.", ephemeral=False)
-    
-    # Defer pubblico (visibile a tutti)
-    await interaction.response.defer(ephemeral=False)
+import discord
+from discord import app_commands
+import datetime
 
-    target_id = None
-    target_member = None
+# --- COMANDO RICERCA CITTADINO ---
+@bot.tree.command(name="ricerca_cittadino", description="Interroga l'archivio anagrafico tramite nome e cognome")
+@app_commands.describe(nome="Nome del cittadino", cognome="Cognome del cittadino")
+async def ricerca_cittadino(interaction: discord.Interaction, nome: str, cognome: str):
+    # Controllo autorizzazione (ID Ruolo fornito: 1363487988570521670)
+    if not any(role.id == 1363487988570521670 for role in interaction.user.roles):
+        return await interaction.response.send_message("❌ Accesso negato: Solo personale autorizzato.", ephemeral=True)
+    
+    await interaction.response.defer(ephemeral=False)
 
     try:
         conn = get_db_connection()
         from psycopg2.extras import RealDictCursor
         cur = conn.cursor(cursor_factory=RealDictCursor)
+        
+        # Query complessa per aggregare tutte le tue tabelle
+        cur.execute("""
+            SELECT d.*, 
+                   (SELECT STRING_AGG(modello || ' [' || targa || ']', chr(10)) FROM veicoli WHERE owner_id = d.user_id) as lista_veicoli,
+                   (SELECT STRING_AGG(tipo, ', ') FROM patenti_registrate WHERE user_id = d.user_id) as lista_patenti,
+                   (SELECT STRING_AGG(tipo, ', ') FROM licenze_armi WHERE user_id = d.user_id) as porto_armi,
+                   (SELECT STRING_AGG(modello || ' (Matr: ' || matricola || ')', chr(10)) FROM registro_armi WHERE user_id = d.user_id) as registro_armi,
+                   (SELECT esito FROM certificati_medici WHERE user_id = d.user_id ORDER BY data_registrazione DESC LIMIT 1) as esito_medico
+            FROM documenti d
+            WHERE d.nome ILIKE %s AND d.cognome ILIKE %s
+        """, (nome, cognome))
+        
+        res = cur.fetchone()
+        cur.close()
+        conn.close()
 
-        # --- LOGICA DI RICERCA INTELLIGENTE ---
-        if cittadino:
-            target_id = str(cittadino.id)
-            target_member = cittadino
-        elif nome and cognome:
-            cur.execute("""
-                SELECT user_id FROM documenti 
-                WHERE LOWER(nome) = LOWER(%s) AND LOWER(cognome) = LOWER(%s)
-            """, (nome, cognome))
-            res_doc = cur.fetchone()
-            if res_doc:
-                target_id = res_doc['user_id']
-                target_member = interaction.guild.get_member(int(target_id))
-            else:
-                cur.close(); conn.close()
-                return await interaction.followup.send(f"❌ Nessun cittadino trovato con il nome: **{nome} {cognome}**.")
-        else:
-            cur.close(); conn.close()
-            return await interaction.followup.send("⚠️ Devi taggare qualcuno o inserire sia Nome che Cognome!")
+        if not res:
+            return await interaction.followup.send(f"⚠️ Nessun cittadino trovato con il nome: **{nome} {cognome}**")
 
-        # --- RECUPERO DATI DAL FASCICOLO (ESTESO) ---
-        # 1. Dati Documento
-        cur.execute("SELECT * FROM documenti WHERE user_id = %s", (target_id,))
-        doc = cur.fetchone()
-        
-        # 2. Veicoli e Patenti
-        cur.execute("SELECT targa, modello FROM veicoli WHERE owner_id = %s", (target_id,))
-        veicoli = cur.fetchall()
-        
-        # Supponendo una tabella licenze per le patenti
-        cur.execute("SELECT tipo FROM licenze WHERE user_id = %s", (target_id,))
-        patenti = cur.fetchall()
-        
-        # 3. Multe e Arresti
-        cur.execute("SELECT * FROM multe WHERE user_id = %s", (target_id,))
-        multe = cur.fetchall()
-        cur.execute("SELECT * FROM arresti WHERE user_id = %s ORDER BY data DESC LIMIT 5", (target_id,))
-        arresti = cur.fetchall()
-
-        # 4. Porto d'Armi e Armi Registrate
-        cur.execute("SELECT tipo, data_registrazione FROM licenze_armi WHERE user_id = %s", (target_id,))
-        portodarma = cur.fetchall()
-        
-        cur.execute("SELECT modello, matricola FROM registro_armi WHERE user_id = %s", (target_id,))
-        armi_reg = cur.fetchall()
-        
-        cur.close(); conn.close()
-
-        # --- COSTRUZIONE EMBED ---
         embed = discord.Embed(
-            title=f"📁 FASCICOLO FEDERALE INTEGRATO",
-            color=0x2b2d31,
+            title=f"📂 FASCICOLO ANAGRAFICO: {res['nome']} {res['cognome']}", 
+            color=discord.Color.dark_blue(),
             timestamp=datetime.datetime.now()
         )
         
-        nome_display = f"{doc['nome']} {doc['cognome']}" if doc else (target_member.display_name if target_member else "Sconosciuto")
-        embed.description = f"**Soggetto:** {nome_display}\n**ID Discord:** `{target_id}`"
+        if res['foto_url']: embed.set_thumbnail(url=res['foto_url'])
+
+        # Info Generali
+        embed.add_field(
+            name="📌 Informazioni Civili", 
+            value=f"**ID:** `{res['user_id']}`\n**Nascita:** {res['data_nascita']} ({res['luogo_nascita']})\n**Sesso:** {res['sesso']} | **Nazionalità:** {res['nazionalita']}", 
+            inline=False
+        )
+
+        # Documentazione Legale
+        patenti = res['lista_patenti'] if res['lista_patenti'] else "Nessuna patente registrata"
+        porto_armi = res['porto_armi'] if res['porto_armi'] else "Nessun porto d'armi"
+        embed.add_field(name="🪪 Patenti Possedute", value=f"```{patenti}```", inline=True)
+        embed.add_field(name="🔫 Licenze Armi", value=f"```{porto_armi}```", inline=True)
+
+        # Salute
+        salute = res['esito_medico'] if res['esito_medico'] else "Nessun esito presente"
+        embed.add_field(name="🏥 Ultimo Esito Medico", value=f"`{salute}`", inline=False)
+
+        # Armi Registrate (Matricole)
+        armi = res['registro_armi'] if res['registro_armi'] else "Nessuna arma registrata"
+        embed.add_field(name="📦 Armi in Possesso (Matricole)", value=f"```{armi}```", inline=False)
+
+        # Veicoli
+        veicoli = res['lista_veicoli'] if res['lista_veicoli'] else "Nessun veicolo intestato"
+        embed.add_field(name="🚘 Veicoli Intestati", value=f"```{veicoli}```", inline=False)
         
-        if target_member:
-            embed.set_thumbnail(url=target_member.display_avatar.url)
-
-        # Sezione Anagrafica e Patenti
-        if doc:
-            p_txt = ", ".join([p['tipo'] for p in patenti]) or "Nessuna"
-            embed.add_field(name="🪪 Anagrafica & Abilitazioni", 
-                value=f"**Nascita:** {doc['data_nascita']} ({doc['luogo_nascita']})\n**Sesso:** {doc['genere']} | **H:** {doc['altezza']}cm\n**Patenti:** `{p_txt}`", 
-                inline=False)
-        else:
-            embed.add_field(name="🪪 Dati Anagrafici", value="⚠️ Documento non registrato.", inline=False)
-
-        # Sezione Veicoli
-        lista_v = "\n".join([f"• `{v['targa']}` - {v['modello']}" for v in veicoli]) or "Nessun veicolo."
-        embed.add_field(name="🚘 Veicoli Intestati", value=lista_v, inline=True)
-
-        # Sezione Armi
-        pa_txt = "\n".join([f"• {pa['tipo']}" for pa in portodarma]) or "Nessun Porto d'Armi."
-        reg_txt = "\n".join([f"• {ar['modello']} (`{ar['matricola']}`)" for ar in armi_reg]) or "Nessuna arma registrata."
-        embed.add_field(name="🔫 Porto d'Armi & Registro", value=f"{pa_txt}\n{reg_txt}", inline=True)
-
-        # Sezione Giuridica (Multe e Arresti)
-        lista_m = "\n".join([f"• **{m['ammontare']}$** - {m['motivo']}" for m in multe]) or "Nessuna multa."
-        embed.add_field(name="⚠️ Multe Pendenti", value=lista_m, inline=False)
-
-        lista_a = "\n".join([f"• {a['data']}: {a['motivo']}" for a in arresti]) or "Incensurato."
-        embed.add_field(name="🚔 Cronologia Arresti (Ultimi 5)", value=lista_a, inline=False)
-
-        embed.set_footer(text=f"Consultazione effettuata da {interaction.user.display_name}")
-
+        embed.set_footer(text=f"Operatore: {interaction.user.display_name}")
         await interaction.followup.send(embed=embed)
 
     except Exception as e:
-        print(f"Errore ricerca avanzata: {e}")
-        await interaction.followup.send("❌ Errore critico durante l'interrogazione del database.")
+        print(f"Errore ricerca cittadino: {e}")
+        await interaction.followup.send("❌ Errore critico durante l'interrogazione dell'archivio.")
+
+# --- COMANDO RICERCA TARGA ---
+@bot.tree.command(name="ricerca_targa", description="Interroga il database motorizzazione tramite targa")
+@app_commands.describe(targa="Inserisci la targa del veicolo da controllare")
+async def ricerca_targa(interaction: discord.Interaction, targa: str):
+    # Controllo autorizzazione
+    if not any(role.id == 1363487988570521670 for role in interaction.user.roles):
+        return await interaction.response.send_message("❌ Accesso negato: Solo personale autorizzato.", ephemeral=True)
+    
+    await interaction.response.defer(ephemeral=False)
+    targa_clean = targa.upper().replace(" ", "")
+
+    try:
+        conn = get_db_connection()
+        from psycopg2.extras import RealDictCursor
+        cur = conn.cursor(cursor_factory=RealDictCursor)
+        
+        cur.execute("""
+            SELECT v.*, d.nome, d.cognome 
+            FROM veicoli v
+            LEFT JOIN documenti d ON v.owner_id = d.user_id
+            WHERE UPPER(v.targa) = %s
+        """, (targa_clean,))
+        
+        res = cur.fetchone()
+        cur.close()
+        conn.close()
+
+        if not res:
+            return await interaction.followup.send(f"⚠️ La targa `{targa_clean}` non risulta registrata nel database motorizzazione.")
+
+        # Colore dinamico: Rosso se sequestrato, Verde se regolare
+        colore = discord.Color.red() if res['sequestrato'] else discord.Color.green()
+        stato_veicolo = "🛑 SEQUESTRATO / FERMO AMMINISTRATIVO" if res['sequestrato'] else "✅ REGOLARE (In Circolazione)"
+
+        embed = discord.Embed(
+            title="🔍 INTERROGAZIONE MOTORIZZAZIONE", 
+            color=colore,
+            timestamp=datetime.datetime.now()
+        )
+        
+        embed.add_field(
+            name="🚘 Informazioni Veicolo", 
+            value=f"**Modello:** {res['modello']}\n**Targa:** `{res['targa']}`\n**Stato Legale:** `{stato_veicolo}`", 
+            inline=False
+        )
+        
+        proprietario_nome = f"{res['nome']} {res['cognome']}" if res['nome'] else "Sconosciuto / Aziendale"
+        embed.add_field(
+            name="👤 Intestatario Legale", 
+            value=f"**Nome:** {proprietario_nome}\n**ID Utente:** `{res['owner_id']}`", 
+            inline=False
+        )
+        
+        if res['data_vendita']:
+            embed.add_field(name="📅 Data Registrazione", value=res['data_vendita'], inline=True)
+        
+        embed.set_footer(text=f"Richiesta di: {interaction.user.display_name}")
+        await interaction.followup.send(embed=embed)
+
+    except Exception as e:
+        print(f"Errore ricerca targa: {e}")
+        await interaction.followup.send("❌ Errore durante l'interrogazione del database veicoli.")
+
 
 @bot.tree.command(name="pattuglia", description="[POLIZIA] Registra l'uscita di una pattuglia nel canale corrente")
 @app_commands.describe(
