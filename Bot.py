@@ -319,10 +319,14 @@ async def ricerca_cittadino(interaction: discord.Interaction, nome: str, cognome
         embed.add_field(name="📌 Informazioni Civili", value=info_civili, inline=False)
 
         # Documentazione Legale
-        patenti = res['lista_patenti'] if res['lista_patenti'] else "Nessuna"
+                patenti = res['lista_patenti'] if res['lista_patenti'] else "Nessuna"
         licenze = res['porto_armi'] if res['porto_armi'] else "Nessuna"
-        embed.add_field(name="🪪 Patenti", value=f"```{patenti}") # Missing closing backticks and quote
-        embed.add_field(name="🔫 Licenze Armi", value=f"```{licenze}```", inline=True)
+        
+        # Correzione Patenti: aggiunti ``` e chiusura stringa
+        embed.add_field(name="🪪 Patenti", value=f"
+```{patenti}```", inline=True) 
+        embed.add_field(name="🔫 Licenze Armi", value=f"```{licenze}
+```", inline=True)
 
         # Salute
         salute = res['esito_medico'] if res['esito_medico'] else "Nessun dato"
@@ -332,9 +336,10 @@ async def ricerca_cittadino(interaction: discord.Interaction, nome: str, cognome
         armi = res['registro_armi'] if res['registro_armi'] else "Nessuna arma registrata"
         veicoli = res['lista_veicoli'] if res['lista_veicoli'] else "Nessun veicolo intestato"
         
-        embed.add_field(name="📦 Registro Armi (Matricole)", value=f"```{armi}
+        # Correzione Registro Armi: riga raggruppata per evitare errori di f-string multi-riga
+        embed.add_field(name="📦 Registro Armi (Matricole)", value=f"```{armi}```", inline=False)
+        embed.add_field(name="🚘 Veicoli Intestati", value=f"```{veicoli}
 ```", inline=False)
-        embed.add_field(name="🚘 Veicoli Intestati", value=f"```{veicoli}```", inline=False)
         
         embed.set_footer(text=f"Richiesto da: {interaction.user.display_name} | Database Centrale")
         await interaction.followup.send(embed=embed)
