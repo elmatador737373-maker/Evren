@@ -321,8 +321,7 @@ async def ricerca_cittadino(interaction: discord.Interaction, nome: str, cognome
         # Documentazione Legale
         patenti = res['lista_patenti'] if res['lista_patenti'] else "Nessuna"
         licenze = res['porto_armi'] if res['porto_armi'] else "Nessuna"
-        embed.add_field(name="🪪 Patenti", value=f"```{patenti}
-```", inline=True)
+        embed.add_field(name="🪪 Patenti", value=f"```{patenti}") # Missing closing backticks and quote
         embed.add_field(name="🔫 Licenze Armi", value=f"```{licenze}```", inline=True)
 
         # Salute
