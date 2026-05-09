@@ -29,12 +29,12 @@ TOKEN = os.getenv("DISCORD_TOKEN")
 DATABASE_URL = os.getenv("DATABASE_URL")
 
 SERVER_CONFIG = {
-    1233353915559313478: {
-        "ruolo_polizia": 1363487988570521670,
-        "canale_log_arresti": 1496978741442773063,
-        "canale_log_multe": 1482757565145288754,
-        "canale_log_denunce": 1459560041563816129,
-        "canale_log_sequestri": 1482753448951681214
+    1493606036949700608: {
+        "ruolo_polizia": 1502710682561282148,
+        "canale_log_arresti": 1493606413224775862,
+        "canale_log_multe": 1493606409881911366,
+        "canale_log_denunce": 1493606408640397473,
+        "canale_log_sequestri": 1493606411882598410
     },
     1499394373270507701: {
         "ruolo_polizia": 1499394715634761789,
