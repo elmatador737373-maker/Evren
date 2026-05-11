@@ -41,12 +41,12 @@ SERVER_CONFIG = {
         "canale_log_denunce": 1493606408640397473,
         "canale_log_sequestri": 1493606411882598410
     },
-    1499394373270507701: {
-        "ruolo_polizia": 1499394715634761789,
-        "canale_log_arresti": 1499398686067658897,
-        "canale_log_multe": 1499398731504685207,
-        "canale_log_denunce": 1499398857979727872,
-        "canale_log_sequestri": 1499398820851744799
+    1233353915559313478: {
+        "ruolo_polizia": 1363487988570521670,
+        "canale_log_arresti": 1496978741442773063,
+        "canale_log_multe": 1482757565145288754,
+        "canale_log_denunce": 1459560041563816129,
+        "canale_log_sequestri": 1482753448951681214
     }
 }
 
