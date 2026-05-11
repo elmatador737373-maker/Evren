@@ -200,18 +200,8 @@ async def arresto(interaction: Interaction, utente: discord.Member, nome: str, c
     emb.set_image(url=foto.url)
     await invia_log_globale("canale_log_arresti", emb)
     await interaction.followup.send("✅ Verbale di arresto registrato globalmente.")
-from PIL import Image, ImageDraw, ImageFont
-import io
-import requests
-import datetime
 
-# --- COMANDI TESSERINI ---
-
-def is_admin(interaction: discord.Interaction):
-    return interaction.user.guild_permissions.administrator
-
-# --- COMANDI TESSERINI (VERSIONE CON FOTO E ALLINEAMENTO SX) ---
-
+ID_CANALE_ARCHIVIO= 1503535784613904404
 @bot.tree.command(name="crea_tesserino", description="[ADMIN] Crea/Aggiorna il tesserino ufficiale di un agente")
 @app_commands.describe(
     utente="L'agente a cui assegnare il tesserino",
@@ -236,105 +226,110 @@ async def crea_tesserino(
     
     await interaction.response.defer(ephemeral=True)
     
+    # --- LOGICA ARCHIVIO FOTO ---
+    message_id_salvato = None
+    foto_url_archivio = foto.url
+
+    try:
+        canale_archivio = bot.get_channel(ID_CANALE_ARCHIVIO) or await bot.fetch_channel(ID_CANALE_ARCHIVIO)
+        file_da_inviare = await foto.to_file()
+        msg = await canale_archivio.send(
+            content=f"📑 **Tesserino LAPD**: {nome} (Agente: {utente.id})", 
+            file=file_da_inviare
+        )
+        foto_url_archivio = msg.attachments[0].url
+        message_id_salvato = str(msg.id)
+    except Exception as e:
+        print(f"[LOG ERROR] Fallimento archivio tesserino: {e}")
+
     data_emissione = (datetime.datetime.now() + datetime.timedelta(hours=2)).strftime("%d/%m/%Y")
     
     conn = get_db_connection(); cur = conn.cursor()
     cur.execute("""
-        INSERT INTO tesserini (user_id, nome_completo, grado, badge_num, unita, id_num, data_nascita, data_emissione, data_scadenza, foto_url, firma_ufficiale)
-        VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+        INSERT INTO tesserini (user_id, nome_completo, grado, badge_num, unita, id_num, data_nascita, data_emissione, data_scadenza, foto_url, firma_ufficiale, message_id)
+        VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
         ON CONFLICT (user_id) DO UPDATE SET 
         nome_completo=EXCLUDED.nome_completo, grado=EXCLUDED.grado, badge_num=EXCLUDED.badge_num, 
         unita=EXCLUDED.unita, id_num=EXCLUDED.id_num, data_nascita=EXCLUDED.data_nascita, 
         data_emissione=EXCLUDED.data_emissione, data_scadenza=EXCLUDED.data_scadenza, 
-        foto_url=EXCLUDED.foto_url, firma_ufficiale=EXCLUDED.firma_ufficiale
-    """, (str(utente.id), nome, grado, badge, unita, id_personale, nascita, data_emissione, scadenza, foto.url, firma))
+        foto_url=EXCLUDED.foto_url, firma_ufficiale=EXCLUDED.firma_ufficiale,
+        message_id=EXCLUDED.message_id
+    """, (str(utente.id), nome, grado, badge, unita, id_personale, nascita, data_emissione, scadenza, foto_url_archivio, firma, message_id_salvato))
     conn.commit(); cur.close(); conn.close()
     
-    await interaction.followup.send(f"✅ Tesserino per {utente.mention} registrato con successo.")
-
+    await interaction.followup.send(f"✅ Tesserino per {utente.mention} registrato e archiviato con successo.")
 
 @bot.tree.command(name="mostra_tesserino", description="Visualizza il tuo tesserino LAPD ufficiale")
 async def mostra_tesserino(interaction: discord.Interaction):
-    try:
-        await interaction.response.defer()
-    except:
-        return
-
+    await interaction.response.defer()
     user_id = str(interaction.user.id)
     
     try:
-        # 1. Recupero dati completi dal database
         conn = get_db_connection()
-        cur = conn.cursor()
-        cur.execute("""
-            SELECT nome_completo, grado, badge_num, unita, id_num, data_nascita, 
-                   data_emissione, data_scadenza, foto_url, firma_ufficiale 
-            FROM tesserini WHERE user_id = %s
-        """, (user_id,))
+        from psycopg2.extras import RealDictCursor
+        cur = conn.cursor(cursor_factory=RealDictCursor)
+        cur.execute("SELECT * FROM tesserini WHERE user_id = %s", (user_id,))
         row = cur.fetchone()
         cur.close(); conn.close()
 
         if not row:
             return await interaction.followup.send("⚠️ Tesserino non trovato. Chiedi a un Admin di crearlo.")
 
-        # Assegnazione variabili
-        nome, grado, badge, unita, id_pers, nascita, emissione, scadenza, foto_url, firma = row
-
-        # 2. Carica il template principale
+        # Carica il template
         tesserino = Image.open("IMG_0418.png").convert("RGBA")
         draw = ImageDraw.Draw(tesserino)
 
-              # 3. CARICAMENTO E INSERIMENTO FOTO AGENTE
-        # Calibrato sui punti: P15(46,95), P18(48,381), P20(281,384), P21(286,90)
-        try:
-            response = requests.get(foto_url)
-            foto_agente = Image.open(io.BytesIO(response.content)).convert("RGBA")
-            
-            # Ridimensioniamo la foto per coprire perfettamente l'area blu
-            # Larghezza: 240px, Altezza: 286px
-            foto_agente = foto_agente.resize((374, 460), Image.Resampling.LANCZOS)
-            
-            # Incolliamo la foto al punto P15 (46, 95)
-            # Usiamo foto_agente come maschera per gestire eventuali trasparenze
-            tesserino.paste(foto_agente, (59, 142), foto_agente)
-            
-        except Exception as e:
-            print(f"Errore caricamento foto: {e}")
+        # --- GESTIONE FOTO CON RECOVERY ---
+        foto_url = row['foto_url']
+        headers = {'User-Agent': 'Mozilla/5.0'}
+        foto_res = requests.get(foto_url, headers=headers)
 
-        # 4. SCRITTURA DEI TESTI SUL TESSERINO
+        if foto_res.status_code != 200 and row.get('message_id'):
+            try:
+                print(f"[DEBUG] Foto tesserino scaduta, rinfresco...")
+                canale_archivio = bot.get_channel(ID_CANALE_ARCHIVIO) or await bot.fetch_channel(ID_CANALE_ARCHIVIO)
+                msg = await canale_archivio.fetch_message(int(row['message_id']))
+                foto_url = msg.attachments[0].url
+                foto_res = requests.get(foto_url, headers=headers)
+            except Exception as e:
+                print(f"Errore rinfresco foto tesserino: {e}")
+
+        if foto_res.status_code == 200:
+            foto_agente = Image.open(io.BytesIO(foto_res.content)).convert("RGBA")
+            foto_agente = foto_agente.resize((374, 460), Image.Resampling.LANCZOS)
+            tesserino.paste(foto_agente, (59, 142), foto_agente)
+
+        # --- SCRITTURA TESTI ---
         try:
             font_testo = ImageFont.truetype("arial.ttf", 25)
-            font_firma = ImageFont.truetype("Serenity PersonalUseOnly.ttf", 20) # Puoi usare un font corsivo se disponibile
+            font_firma = ImageFont.truetype("Serenity PersonalUseOnly.ttf", 35) 
         except:
             font_testo = ImageFont.load_default()
             font_firma = ImageFont.load_default()
 
-        # Coordinate basate sui tuoi screenshot precedenti (P7, P10, P18, ecc.)
-        # Ho aggiunto un piccolo offset per allinearli alle righe del tuo template
         campi = [
-            (nome.upper(),      (605, 137)),   # NAME
-            (grado.upper(),     (607, 187)),  # RANK
-            (str(badge),        (650, 237)),  # BADGE #
-            (unita.upper(),     (582, 288)),  # UNIT
-            (str(id_pers),      (585, 337)),  # ID #
-            (nascita,           (616, 395)),  # D.O.B.
-            (emissione,         (640, 438)),  # ISSUED
-            (scadenza,          (642, 484)),  # EXPIRES
-            (firma,             (433, 632))   # OFFICER SIGNATURE (sotto la foto)
+            (row['nome_completo'].upper(), (605, 137)),
+            (row['grado'].upper(),          (607, 187)),
+            (str(row['badge_num']),        (650, 237)),
+            (row['unita'].upper(),          (582, 288)),
+            (str(row['id_num']),            (585, 337)),
+            (row['data_nascita'],          (616, 395)),
+            (row['data_emissione'],        (640, 438)),
+            (row['data_scadenza'],         (642, 484)),
+            (row['firma_ufficiale'],       (433, 632))
         ]
 
         for testo, pos in campi:
-            if testo == firma:
-                draw.text(pos, str(testo), font=font_firma, fill=(0, 0, 0))
-            else:
-                draw.text(pos, str(testo), font=font_testo, fill=(0, 0, 0))
+            fill_color = (0, 0, 0)
+            f = font_firma if pos == (433, 632) else font_testo
+            draw.text(pos, str(testo), font=f, fill=fill_color)
 
-        # 5. INVIO DEL RISULTATO
+        # Invio
         with io.BytesIO() as img_bin:
             tesserino.save(img_bin, 'PNG')
             img_bin.seek(0)
             await interaction.followup.send(
-                content=f"Tesserino identificativo: **{nome}**",
+                content=f"***{interaction.user.display_name}** mostra il proprio tesserino LAPD.*",
                 file=discord.File(img_bin, filename=f"tesserino_{user_id}.png")
             )
 
@@ -342,19 +337,34 @@ async def mostra_tesserino(interaction: discord.Interaction):
         print(f"Errore: {e}")
         await interaction.followup.send(f"❌ Errore durante la generazione: {e}")
 
-
-# --- FINE COMANDO MOSTRA_TESSERINO ---
-
 @bot.tree.command(name="elimina_tesserino", description="[ADMIN] Elimina un tesserino dal database")
+@app_commands.describe(utente="L'agente a cui revocare il tesserino")
 async def elimina_tesserino(interaction: discord.Interaction, utente: discord.Member):
     if not is_admin(interaction):
         return await interaction.response.send_message("❌ Solo gli Admin possono farlo.", ephemeral=True)
     
-    conn = get_db_connection(); cur = conn.cursor()
-    cur.execute("DELETE FROM tesserini WHERE user_id = %s", (str(utente.id),))
-    conn.commit(); cur.close(); conn.close()
-    
-    await interaction.response.send_message(f"🗑️ Tesserino di {utente.mention} eliminato.", ephemeral=True)
+    try:
+        conn = get_db_connection()
+        cur = conn.cursor()
+        
+        # Elimina il record
+        cur.execute("DELETE FROM tesserini WHERE user_id = %s", (str(utente.id),))
+        conn.commit()
+        
+        # Verifica se esisteva
+        if cur.rowcount > 0:
+            msg = f"🗑️ Tesserino di **{utente.display_name}** eliminato."
+        else:
+            msg = f"⚠️ Nessun tesserino trovato per {utente.display_name}."
+            
+        cur.close(); conn.close()
+        await interaction.response.send_message(msg, ephemeral=True)
+
+    except Exception as e:
+        await interaction.response.send_message(f"❌ Errore: {e}", ephemeral=True)
+
+
+
 import discord
 from discord import app_commands
 import datetime
