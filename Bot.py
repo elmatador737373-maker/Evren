@@ -319,7 +319,7 @@ async def ricerca_cittadino(interaction: discord.Interaction, nome: str, cognome
         embed.add_field(name="📌 Informazioni Civili", value=info_civili, inline=False)
 
         # Documentazione Legale
-                patenti = res['lista_patenti'] if res['lista_patenti'] else "Nessuna"
+        patenti = res['lista_patenti'] if res['lista_patenti'] else "Nessuna"
         licenze = res['porto_armi'] if res['porto_armi'] else "Nessuna"
         
         # Correzione Patenti: aggiunti ``` e chiusura stringa
