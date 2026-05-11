@@ -323,10 +323,13 @@ async def ricerca_cittadino(interaction: discord.Interaction, nome: str, cognome
         licenze = res['porto_armi'] if res['porto_armi'] else "Nessuna"
         
         # Correzione Patenti: aggiunti ``` e chiusura stringa
-        embed.add_field(name="🪪 Patenti", value=f"
-```{patenti}```", inline=True) 
-        embed.add_field(name="🔫 Licenze Armi", value=f"```{licenze}
-```", inline=True)
+        # Patenti e Licenze
+        embed.add_field(name="🪪 Patenti", value=f"```\n{patenti}```", inline=True) 
+        
+        # Corretto l'invio a capo: f""" permette di andare su più righe senza errori
+        embed.add_field(name="🔫 Licenze Armi", value=f"""```
+{licenze}
+```""", inline=True)
 
         # Salute
         salute = res['esito_medico'] if res['esito_medico'] else "Nessun dato"
@@ -336,17 +339,22 @@ async def ricerca_cittadino(interaction: discord.Interaction, nome: str, cognome
         armi = res['registro_armi'] if res['registro_armi'] else "Nessuna arma registrata"
         veicoli = res['lista_veicoli'] if res['lista_veicoli'] else "Nessun veicolo intestato"
         
-        # Correzione Registro Armi: riga raggruppata per evitare errori di f-string multi-riga
-        embed.add_field(name="📦 Registro Armi (Matricole)", value=f"```{armi}```", inline=False)
-        embed.add_field(name="🚘 Veicoli Intestati", value=f"```{veicoli}
-```", inline=False)
+        # Registro Armi
+        embed.add_field(name="📦 Registro Armi (Matricole)", value=f"```\n{armi}```", inline=False)
+        
+        # Veicoli: Uso dei tripli apici per gestire il blocco di codice in sicurezza
+        embed.add_field(name="🚘 Veicoli Intestati", value=f"""```
+{veicoli}
+```""", inline=False)
         
         embed.set_footer(text=f"Richiesto da: {interaction.user.display_name} | Database Centrale")
         await interaction.followup.send(embed=embed)
 
     except Exception as e:
         print(f"Errore ricerca cittadino: {e}")
-        await interaction.followup.send("❌ Errore durante l'interrogazione del database.")
+        if not interaction.responses.is_done():
+             await interaction.followup.send("❌ Errore durante l'interrogazione del database.")
+
 @bot.tree.command(name="ricerca_targa", description="Controlla i dati di un veicolo tramite targa")
 @app_commands.describe(targa="Inserisci la targa (es. AA123BB)")
 async def ricerca_targa(interaction: discord.Interaction, targa: str):
