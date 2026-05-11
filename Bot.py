@@ -144,7 +144,7 @@ class TicketMainView(discord.ui.View):
 class TicketSystem(commands.Cog):
     def __init__(self, bot): self.bot = bot
 
-    @app_commands.command(name="setup_ticket")
+    @bot.tree.command(name="setup_ticket")
     @app_commands.checks.has_permissions(administrator=True)
     async def setup(self, interaction: discord.Interaction, categoria: discord.CategoryChannel, ruolo_staff: discord.Role, titolo: str, descrizione: str):
         db_query("""INSERT INTO ticket_settings (guild_id, category_id, staff_role_id, embed_title, embed_description) 
@@ -157,7 +157,7 @@ class TicketSystem(commands.Cog):
         await interaction.channel.send(embed=embed, view=TicketMainView(interaction.guild.id))
         await interaction.response.send_message("✅ Setup completato!", ephemeral=True)
 
-    @app_commands.command(name="add_ticket_type")
+    @bot.tree.command(name="add_ticket_type")
     @app_commands.checks.has_permissions(administrator=True)
     async def add_type(self, interaction: discord.Interaction, label: str, id_univoco: str, emoji: str, descrizione: str, ruolo_notifica: discord.Role = None):
         role_id = ruolo_notifica.id if ruolo_notifica else None
