@@ -10,6 +10,11 @@ import psycopg2
 from psycopg2.extras import RealDictCursor
 from flask import Flask
 from threading import Thread
+import discord
+from discord.ext import commands
+from discord import app_commands # Utile se usi gli Slash Commands
+import psycopg2
+from psycopg2.extras import RealDictCursor
 
 # --- CONFIGURAZIONE FLASK ---
 app = Flask('')
