@@ -421,74 +421,100 @@ async def ricerca_targa(interaction: discord.Interaction, targa: str):
         await interaction.followup.send("❌ Errore tecnico nel database veicoli.")
 
 
-@bot.tree.command(name="pattuglia", description="[POLIZIA] Registra l'uscita di una pattuglia nel canale corrente")
+import discord
+from discord import app_commands
+from discord import Interaction
+import datetime
+
+# Tabella di riferimento interna per i codici 7M
+# Inserisci qui gli ID dei ruoli corrispondenti ai gradi
+TABELLA_GRADI = {
+    1502711637331677335: "7M-10",
+    1502711751878119676: "7M-15",
+    1502721934553518130: "7M-20",
+    1502722124916199464: "7M-25",
+    1502722222618316800: "7M-30",
+    1502722310900027472: "7M-35",
+    1502722374343200988: "7M-40",
+    1502722456954212474: "7M-45",
+    1502723337996992632: "7M-50",
+    1502723425087520919: "7M-55",
+    1502723585666584576: "7M-60",
+    1502723688259391581: "7M-65"
+}
+
+def check_radio_code(member: discord.Member):
+    """Cerca il codice radio più alto tra i ruoli posseduti dall'utente"""
+    for role in member.roles:
+        if role.id in TABELLA_GRADI:
+            return TABELLA_GRADI[role.id]
+    return "7M-XX"
+
+@bot.tree.command(name="pattuglia", description="[POLIZIA] Registra l'uscita di una pattuglia")
 @app_commands.describe(
-    nominativo="Seleziona il nominativo radio dell'unità",
-    numero="Inserisci il numero identificativo della pattuglia",
-    capo_pattuglia="Ufficiale a capo dell'unità",
+    unita="Tipo di unità",
+    numero="ID numerico (es. 01, 05)",
+    capo_pattuglia="Ufficiale responsabile",
     nome_cp="Nome IC Capo Pattuglia",
     cognome_cp="Cognome IC Capo Pattuglia",
-    guidatore="Agente alla guida",
-    nome_g="Nome IC Guidatore",
-    cognome_g="Cognome IC Guidatore",
-    operatore_3="Eventuale terzo operatore",
-    operatore_4="Eventuale quarto operatore",
-    note="Annotazioni (es. Veicolo utilizzato)"
+    operatore_2="Secondo operatore (obbligatorio per UP/UM)",
+    operatore_3="Terzo operatore (obbligatorio per UM)",
+    note="Veicolo o note aggiuntive"
 )
-@app_commands.choices(nominativo=[
-    app_commands.Choice(name="Alfa (Pattuglia Standard)", value="Alfa"),
-    app_commands.Choice(name="India (Monopattuglia)", value="India"),
-    app_commands.Choice(name="Bravo (Pattuglia Rinforzata)", value="Bravo"),
-    app_commands.Choice(name="Delta (Unità Tattica GIS)", value="Delta"),
-    app_commands.Choice(name="Charlie (Polizia Giudiziaria)", value="Charlie"),
-    app_commands.Choice(name="Eagle (Unità Aerea)", value="Eagle"),
-    app_commands.Choice(name="K9 (Unità Cinofila)", value="K9"),
-    app_commands.Choice(name="Mike (Unità Motociclistica)", value="Mike"),
-    app_commands.Choice(name="Frank (Supervisori)", value="Frank"),
-    app_commands.Choice(name="Romeo (Nucleo Radiomobile)", value="Romeo"),
-    app_commands.Choice(name="Sierra (Unità Navale)", value="Sierra")
+@app_commands.choices(unita=[
+    app_commands.Choice(name="UP (Unità Patrulla - 2 Op.)", value="UP"),
+    app_commands.Choice(name="UM (Unità Motorizzata - 3 Op.)", value="UM"),
+    app_commands.Choice(name="UT (Unità Tattica - 1 Op.)", value="UT")
 ])
 async def pattuglia(
     interaction: Interaction, 
-    nominativo: str,
+    unita: str,
     numero: str,
     capo_pattuglia: discord.Member, nome_cp: str, cognome_cp: str,
-    guidatore: discord.Member, nome_g: str, cognome_g: str,
-    operatore_3: discord.Member = None, 
-    operatore_4: discord.Member = None,
+    operatore_2: discord.Member = None, 
+    operatore_3: discord.Member = None,
     note: str = "N/A"
 ):
     if not is_polizia(interaction): 
         return await interaction.response.send_message("❌ Permessi insufficienti.", ephemeral=True)
     
-    # Conferma immediata invisibile agli altri
-    await interaction.response.send_message("✅ Pattuglia registrata.", ephemeral=True)
-    
-    # Correzione Orario (+2 ore per fuso orario italiano)
-    ora_corretta = datetime.datetime.now() + datetime.timedelta(hours=2)
-    ora_uscita = ora_corretta.strftime("%H:%M")
-    
-    # Gestione menzioni operatori extra
-    op_3_str = operatore_3.mention if operatore_3 else "N/A"
-    op_4_str = operatore_4.mention if operatore_4 else "N/A"
+    # Validazione rapida dei requisiti minimi
+    if unita == "UP" and not operatore_2:
+        return await interaction.response.send_message("❌ L'unità UP richiede 2 operatori.", ephemeral=True)
+    if unita == "UM" and (not operatore_2 or not operatore_3):
+        return await interaction.response.send_message("❌ L'unità UM richiede 3 operatori.", ephemeral=True)
 
-    # Creazione Embed Grafico (Struttura Originale)
+    await interaction.response.send_message("✅ Registro inviato.", ephemeral=True)
+    
+    ora_uscita = (datetime.datetime.now() + datetime.timedelta(hours=2)).strftime("%H:%M")
+    
+    # Recupero automatico dei prefissi radio
+    prefisso_cp = check_radio_code(capo_pattuglia)
+    prefisso_op2 = check_radio_code(operatore_2) if operatore_2 else ""
+    prefisso_op3 = check_radio_code(operatore_3) if operatore_3 else ""
+
     emb = discord.Embed(title="# 𝐑𝐄𝐆𝐈𝐒𝐓𝐑𝐎 𝐒𝐄𝐑𝐕𝐈𝐙𝐈𝐎 𝐏𝐀𝐓𝐓𝐔𝐆𝐋𝐈𝐀", color=discord.Color.blue())
-    emb.description = f"""> • ɴᴏᴍɪɴᴀᴛɪᴠᴏ ᴜɴɪᴛᴀ̀: **{nominativo} {numero}**
+    
+    # Composizione dinamica dei campi
+    desc = f"""> • ɴᴏᴍɪɴᴀᴛɪᴠᴏ ᴜɴɪᴛᴀ̀: **{unita} {numero}** (Radio: **{prefisso_cp}**)
 > 
-> • ᴄᴀᴘᴏ ᴘᴀᴛᴛᴜɢʟɪᴀ: {capo_pattuglia.mention} (**{nome_cp} {cognome_cp}**)
-> 
-> • ɢᴜɪᴅᴀᴛᴏʀᴇ: {guidatore.mention} (**{nome_g} {cognome_g}**)
-> 
-> • ᴛᴇʀᴢᴏ ᴏᴘᴇʀᴀᴛᴏʀᴇ: {op_3_str}
-> 
-> • ǫᴜᴀʀᴛᴏ ᴏᴘᴇʀᴀᴛᴏʀᴇ: {op_4_str}
+> • ᴄᴀᴘᴏ ᴘᴀᴛᴛᴜɢʟɪᴀ: {capo_pattuglia.mention} (**{nome_cp} {cognome_cp}**)"""
+
+    if operatore_2:
+        desc += f"\n> • sᴇᴄᴏɴᴅᴏ ᴏᴘᴇʀᴀᴛᴏʀᴇ: {operatore_2.mention} [**{prefisso_op2}**]"
+    
+    if operatore_3:
+        desc += f"\n> • ᴛᴇʀᴢᴏ ᴏᴘᴇʀᴀᴛᴏʀᴇ: {operatore_3.mention} [**{prefisso_op3}**]"
+
+    desc += f"""
 > 
 > • ᴏʀᴀʀɪᴏ ᴅɪ ᴜsᴄɪᴛᴀ: **{ora_uscita}**
 > 
 > • ɴᴏᴛᴇ: **{note}**"""
 
-    # Invio SOLO nel canale dove è stato usato il comando
+    emb.description = desc
+    emb.set_footer(text=f"Servizio registrato da {interaction.user.display_name}")
+
     await interaction.channel.send(embed=emb)
 
 @bot.tree.command(name="multa", description="[POLIZIA] Emetti una sanzione amministrativa")
