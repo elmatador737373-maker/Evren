@@ -72,7 +72,100 @@ async def invia_log_globale(tipo_log_key, embed):
                 try: await channel.send(content=f"<@&{ruolo_id}>", embed=embed)
                 except: pass
 
-# --- COMANDI OPERATIVI ---
+
+# --- VIEW CONTROLLO (CHIUSURA) ---
+class TicketControlView(discord.ui.View):
+    def __init__(self):
+        super().__init__(timeout=None)
+
+    @discord.ui.button(label="Chiudi Ticket", style=discord.ButtonStyle.danger, custom_id="persistent_close_btn")
+    async def close(self, interaction: discord.Interaction, button: discord.ui.Button):
+        await interaction.response.send_message("Chiusura del ticket in corso...")
+        await interaction.channel.delete()
+
+# --- SELECT MENU DINAMICO ---
+class DynamicTicketSelect(discord.ui.Select):
+    def __init__(self, guild_id):
+        self.guild_id = guild_id
+        options = self.load_options(guild_id)
+        super().__init__(
+            placeholder="Cliccami e Scegli Una Opzione",
+            min_values=1,
+            max_values=1,
+            options=options,
+            custom_id=f"ticket_select:{guild_id}"
+        )
+
+    def load_options(self, guild_id):
+        rows = db_query("SELECT label, emoji, description, value_id FROM ticket_options WHERE guild_id = %s", (guild_id,), fetch=True)
+        if not rows:
+            return [discord.SelectOption(label="Nessuna opzione", value="none")]
+        return [discord.SelectOption(label=r['label'], emoji=r['emoji'], description=r['description'], value=r['value_id']) for r in rows]
+
+    async def callback(self, interaction: discord.Interaction):
+        if self.values[0] == "none": return
+        await interaction.response.defer(ephemeral=True)
+
+        config = db_query("SELECT * FROM ticket_settings WHERE guild_id = %s", (interaction.guild.id,), fetch=True)[0]
+        opt_info = db_query("SELECT label, mention_role_id FROM ticket_options WHERE guild_id = %s AND value_id = %s", 
+                             (interaction.guild.id, self.values[0]), fetch=True)[0]
+
+        category = interaction.guild.get_channel(config['category_id'])
+        staff_role = interaction.guild.get_role(config['staff_role_id'])
+        
+        overwrites = {
+            interaction.guild.default_role: discord.PermissionOverwrite(view_channel=False),
+            interaction.user: discord.PermissionOverwrite(view_channel=True, send_messages=True, attach_files=True),
+            staff_role: discord.PermissionOverwrite(view_channel=True, send_messages=True)
+        }
+
+        channel = await interaction.guild.create_text_channel(
+            name=f"{self.values[0]}-{interaction.user.name}",
+            category=category,
+            overwrites=overwrites
+        )
+
+        mention = ""
+        if opt_info['mention_role_id']:
+            m_role = interaction.guild.get_role(opt_info['mention_role_id'])
+            if m_role: mention = m_role.mention
+
+        embed = discord.Embed(title=f"Ticket: {opt_info['label']}", description=f"Benvenuto {interaction.user.mention}\nLo staff ti assisterà a breve.", color=discord.Color.blue())
+        await channel.send(content=f"{mention} {interaction.user.mention}", embed=embed, view=TicketControlView())
+        await interaction.followup.send(f"✅ Ticket aperto: {channel.mention}", ephemeral=True)
+
+# --- VIEW PRINCIPALE ---
+class TicketMainView(discord.ui.View):
+    def __init__(self, guild_id):
+        super().__init__(timeout=None)
+        self.add_item(DynamicTicketSelect(guild_id))
+
+# --- COG COMANDI ---
+class TicketSystem(commands.Cog):
+    def __init__(self, bot): self.bot = bot
+
+    @app_commands.command(name="setup_ticket")
+    @app_commands.checks.has_permissions(administrator=True)
+    async def setup(self, interaction: discord.Interaction, categoria: discord.CategoryChannel, ruolo_staff: discord.Role, titolo: str, descrizione: str):
+        db_query("""INSERT INTO ticket_settings (guild_id, category_id, staff_role_id, embed_title, embed_description) 
+                   VALUES (%s, %s, %s, %s, %s) ON CONFLICT (guild_id) DO UPDATE SET 
+                   category_id=EXCLUDED.category_id, staff_role_id=EXCLUDED.staff_role_id, 
+                   embed_title=EXCLUDED.embed_title, embed_description=EXCLUDED.embed_description""", 
+                   (interaction.guild.id, categoria.id, ruolo_staff.id, titolo, descrizione))
+        
+        embed = discord.Embed(title=titolo, description=descrizione, color=discord.Color.blue())
+        await interaction.channel.send(embed=embed, view=TicketMainView(interaction.guild.id))
+        await interaction.response.send_message("✅ Setup completato!", ephemeral=True)
+
+    @app_commands.command(name="add_ticket_type")
+    @app_commands.checks.has_permissions(administrator=True)
+    async def add_type(self, interaction: discord.Interaction, label: str, id_univoco: str, emoji: str, descrizione: str, ruolo_notifica: discord.Role = None):
+        role_id = ruolo_notifica.id if ruolo_notifica else None
+        db_query("INSERT INTO ticket_options (guild_id, label, value_id, emoji, description, mention_role_id) VALUES (%s, %s, %s, %s, %s, %s)",
+                 (interaction.guild.id, label, id_univoco, emoji, descrizione, role_id))
+        await interaction.response.send_message(f"✅ Opzione `{label}` aggiunta! (Riesegui setup per aggiornare l'embed)", ephemeral=True)
+
+# --- NEL MAIN DEL BOT (PER PERSISTENZA) ---
 
 @bot.tree.command(name="arresto", description="[POLIZIA] Registra un arresto nel database globale")
 @app_commands.describe(
@@ -821,6 +914,14 @@ async def pagamulta(interaction: Interaction):
     cur.execute("DELETE FROM multe WHERE id_multa = %s", (m['id_multa'],))
     conn.commit(); cur.close(); conn.close()
     await interaction.followup.send(f"✅ Multa di {m['ammontare']}$ pagata con successo.")
+
+@bot.event
+async def on_ready():
+    bot.add_view(TicketControlView())
+    configs = db_query("SELECT guild_id FROM ticket_settings", fetch=True)
+    for conf in configs:
+        bot.add_view(TicketMainView(conf['guild_id']))
+    print("Ticket System Online")
 
 if __name__ == "__main__":
     keep_alive()
