@@ -412,7 +412,7 @@ async def ricerca_cittadino(interaction: discord.Interaction, nome: str, cognome
         embed = discord.Embed(
             title=f"📂 FASCICOLO ANAGRAFICO: {res['nome']} {res['cognome']}", 
             color=discord.Color.blue(),
-            timestamp=datetime.datetime.now()
+            timestamp=datetime.now()
         )
         
         # Foto profilo (usa foto_url dalla tabella documenti)
@@ -432,8 +432,8 @@ async def ricerca_cittadino(interaction: discord.Interaction, nome: str, cognome
         patenti = res['lista_patenti'] if res['lista_patenti'] else "Nessuna"
         licenze = res['porto_armi'] if res['porto_armi'] else "Nessuna"
         
-        # Patenti e Licenze
-        embed.add_field(name="🪪 Patenti", value=f"```\n{patenti}
+        # Patenti e Licenze (Risolti gli a capo interrotti che causavano il SyntaxError)
+        embed.add_field(name="🪪 Patenti", value=f"```\n{patenti}\n
 ```", inline=True) 
         embed.add_field(name="🔫 Licenze Armi", value=f"```\n{licenze}\n```", inline=True)
 
@@ -445,8 +445,8 @@ async def ricerca_cittadino(interaction: discord.Interaction, nome: str, cognome
         armi = res['registro_armi'] if res['registro_armi'] else "Nessuna arma registrata"
         veicoli = res['lista_veicoli'] if res['lista_veicoli'] else "Nessun veicolo intestato"
         
-        # Registro Armi
-        embed.add_field(name="📦 Registro Armi (Matricole)", value=f"```\n{armi}
+        # Registro Armi (Risolto l'a capo interrotto che causavano il SyntaxError)
+        embed.add_field(name="📦 Registro Armi (Matricole)", value=f"```\n{armi}\n
 ```", inline=False)
         
         # Veicoli
@@ -517,7 +517,7 @@ async def ricerca_targa(interaction: discord.Interaction, targa: str):
         embed = discord.Embed(
             title="🔍 RISULTATO MOTORIZZAZIONE", 
             color=colore,
-            timestamp=datetime.datetime.now()
+            timestamp=datetime.now()
         )
         
         # Mostra tutti i dati, inclusi i due nuovi stati richiesti
@@ -549,7 +549,6 @@ async def ricerca_targa(interaction: discord.Interaction, targa: str):
             await interaction.followup.send("❌ Errore tecnico nel database veicoli.")
         except Exception:
             pass
-
 
 import discord
 from discord import app_commands
