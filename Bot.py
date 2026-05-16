@@ -372,7 +372,9 @@ import datetime
 import discord
 from discord import app_commands
 import datetime
-
+# ==========================================
+# COMMAND TREE: RICERCA CITTADINO
+# ==========================================
 @bot.tree.command(name="ricerca_cittadino", description="Interroga l'archivio anagrafico completo")
 @app_commands.describe(nome="Nome del cittadino", cognome="Cognome del cittadino")
 async def ricerca_cittadino(interaction: discord.Interaction, nome: str, cognome: str):
@@ -430,14 +432,10 @@ async def ricerca_cittadino(interaction: discord.Interaction, nome: str, cognome
         patenti = res['lista_patenti'] if res['lista_patenti'] else "Nessuna"
         licenze = res['porto_armi'] if res['porto_armi'] else "Nessuna"
         
-        # Correzione Patenti: aggiunti ``` e chiusura stringa
         # Patenti e Licenze
-        embed.add_field(name="🪪 Patenti", value=f"```\n{patenti}```", inline=True) 
-        
-        # Corretto l'invio a capo: f""" permette di andare su più righe senza errori
-        embed.add_field(name="🔫 Licenze Armi", value=f"""```
-{licenze}
-```""", inline=True)
+        embed.add_field(name="🪪 Patenti", value=f"```\n{patenti}
+```", inline=True) 
+        embed.add_field(name="🔫 Licenze Armi", value=f"```\n{licenze}\n```", inline=True)
 
         # Salute
         salute = res['esito_medico'] if res['esito_medico'] else "Nessun dato"
@@ -448,21 +446,26 @@ async def ricerca_cittadino(interaction: discord.Interaction, nome: str, cognome
         veicoli = res['lista_veicoli'] if res['lista_veicoli'] else "Nessun veicolo intestato"
         
         # Registro Armi
-        embed.add_field(name="📦 Registro Armi (Matricole)", value=f"```\n{armi}```", inline=False)
+        embed.add_field(name="📦 Registro Armi (Matricole)", value=f"```\n{armi}
+```", inline=False)
         
-        # Veicoli: Uso dei tripli apici per gestire il blocco di codice in sicurezza
-        embed.add_field(name="🚘 Veicoli Intestati", value=f"""```
-{veicoli}
-```""", inline=False)
+        # Veicoli
+        embed.add_field(name="🚘 Veicoli Intestati", value=f"```\n{veicoli}\n```", inline=False)
         
         embed.set_footer(text=f"Richiesto da: {interaction.user.display_name} | Database Centrale")
         await interaction.followup.send(embed=embed)
 
     except Exception as e:
         print(f"Errore ricerca cittadino: {e}")
-        if not interaction.responses.is_done():
-             await interaction.followup.send("❌ Errore durante l'interrogazione del database.")
+        try:
+            await interaction.followup.send("❌ Errore durante l'interrogazione del database.")
+        except Exception:
+            pass
 
+
+# ==========================================
+# COMMAND TREE: RICERCA TARGA
+# ==========================================
 @bot.tree.command(name="ricerca_targa", description="Controlla i dati di un veicolo tramite targa")
 @app_commands.describe(targa="Inserisci la targa (es. AA123BB)")
 async def ricerca_targa(interaction: discord.Interaction, targa: str):
@@ -479,7 +482,7 @@ async def ricerca_targa(interaction: discord.Interaction, targa: str):
         from psycopg2.extras import RealDictCursor
         cur = conn.cursor(cursor_factory=RealDictCursor)
         
-        # Query che unisce veicoli e documenti del proprietario
+        # Query che unisce veicoli (inclusi i nuovi campi) e documenti del proprietario
         cur.execute("""
             SELECT v.*, d.nome, d.cognome 
             FROM public.veicoli v
@@ -494,10 +497,22 @@ async def ricerca_targa(interaction: discord.Interaction, targa: str):
         if not res:
             return await interaction.followup.send(f"⚠️ La targa `{targa_clean}` non è presente nei registri.")
 
-        # Logica colore e stato
-        is_sequestrato = res['sequestrato'] # Questo è un boolean nello schema
+        # Logica colore e stato sequestro
+        is_sequestrato = res['sequestrato']
         colore = discord.Color.red() if is_sequestrato else discord.Color.green()
         stato = "🛑 SEQUESTRATO / FERMO" if is_sequestrato else "✅ REGOLARE"
+
+        # --- INTEGRAZIONE NUOVI STATI VEICOLO ---
+        if res.get('assicurato'):
+            stato_assicurazione = f"🟢 ATTIVA (Scadenza: {res['data_scadenza_assicurazione']})"
+        else:
+            stato_assicurazione = "🔴 NON ASSICURATO"
+
+        if res.get('revisionato'):
+            stato_revisione = f"🟢 VALIDA (Scadenza: {res['data_scadenza_revisione']})"
+        else:
+            stato_revisione = "🔴 SCADUTA / NON REVISIONATO"
+        # ----------------------------------------
 
         embed = discord.Embed(
             title="🔍 RISULTATO MOTORIZZAZIONE", 
@@ -505,11 +520,15 @@ async def ricerca_targa(interaction: discord.Interaction, targa: str):
             timestamp=datetime.datetime.now()
         )
         
-        embed.add_field(
-            name="🚘 Dati Veicolo", 
-            value=f"**Modello:** {res['modello']}\n**Targa:** `{res['targa']}`\n**Stato:** `{stato}`", 
-            inline=False
+        # Mostra tutti i dati, inclusi i due nuovi stati richiesti
+        info_veicolo = (
+            f"**Modello:** {res['modello'] or 'N/D'}\n"
+            f"**Targa:** `{res['targa']}`\n"
+            f"**Stato Sequestro:** `{stato}`\n"
+            f"**Assicurazione:** {stato_assicurazione}\n"
+            f"**Revisione Statale:** {stato_revisione}"
         )
+        embed.add_field(name="🚘 Dati Veicolo", value=info_veicolo, inline=False)
         
         owner_info = f"{res['nome']} {res['cognome']}" if res['nome'] else "Proprietario non identificato"
         embed.add_field(
@@ -526,7 +545,10 @@ async def ricerca_targa(interaction: discord.Interaction, targa: str):
 
     except Exception as e:
         print(f"Errore ricerca targa: {e}")
-        await interaction.followup.send("❌ Errore tecnico nel database veicoli.")
+        try:
+            await interaction.followup.send("❌ Errore tecnico nel database veicoli.")
+        except Exception:
+            pass
 
 
 import discord
