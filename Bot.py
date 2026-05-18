@@ -433,8 +433,7 @@ async def ricerca_cittadino(interaction: discord.Interaction, nome: str, cognome
         licenze = res['porto_armi'] if res['porto_armi'] else "Nessuna"
         
         # Patenti e Licenze (Risolti gli a capo interrotti che causavano il SyntaxError)
-        embed.add_field(name="🪪 Patenti", value=f"```\n{patenti}\n
-```", inline=True) 
+        embed.add_field(name="🪪 Patenti", value=f"```\n{patenti}\n```", inline=True) 
         embed.add_field(name="🔫 Licenze Armi", value=f"```\n{licenze}\n```", inline=True)
 
         # Salute
@@ -446,8 +445,7 @@ async def ricerca_cittadino(interaction: discord.Interaction, nome: str, cognome
         veicoli = res['lista_veicoli'] if res['lista_veicoli'] else "Nessun veicolo intestato"
         
         # Registro Armi (Risolto l'a capo interrotto che causavano il SyntaxError)
-        embed.add_field(name="📦 Registro Armi (Matricole)", value=f"```\n{armi}\n
-```", inline=False)
+        embed.add_field(name="📦 Registro Armi (Matricole)", value=f"```\n{armi}\n```", inline=False)
         
         # Veicoli
         embed.add_field(name="🚘 Veicoli Intestati", value=f"```\n{veicoli}\n```", inline=False)
@@ -461,7 +459,6 @@ async def ricerca_cittadino(interaction: discord.Interaction, nome: str, cognome
             await interaction.followup.send("❌ Errore durante l'interrogazione del database.")
         except Exception:
             pass
-
 
 # ==========================================
 # COMMAND TREE: RICERCA TARGA
