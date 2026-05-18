@@ -365,187 +365,6 @@ async def elimina_tesserino(interaction: discord.Interaction, utente: discord.Me
 
 
 
-import discord
-from discord import app_commands
-import datetime
-
-import discord
-from discord import app_commands
-import datetime
-# ==========================================
-# COMMAND TREE: RICERCA CITTADINO
-# ==========================================
-@bot.tree.command(name="ricerca_cittadino", description="Interroga l'archivio anagrafico completo")
-@app_commands.describe(nome="Nome del cittadino", cognome="Cognome del cittadino")
-async def ricerca_cittadino(interaction: discord.Interaction, nome: str, cognome: str):
-    # Controllo autorizzazione
-    ALLOWED_ROLE_ID = 1363487988570521670
-    if not any(role.id == ALLOWED_ROLE_ID for role in interaction.user.roles):
-        return await interaction.response.send_message("❌ Accesso negato: Solo personale autorizzato.", ephemeral=True)
-    
-    await interaction.response.defer(ephemeral=False)
-
-    try:
-        conn = get_db_connection()
-        from psycopg2.extras import RealDictCursor
-        cur = conn.cursor(cursor_factory=RealDictCursor)
-        
-        # Query corretta basata sul tuo schema
-        query = """
-            SELECT d.*, 
-                   (SELECT STRING_AGG(modello || ' [' || targa || ']', chr(10)) FROM public.veicoli WHERE owner_id = d.user_id) as lista_veicoli,
-                   (SELECT STRING_AGG(tipo, ', ') FROM public.patenti_registrate WHERE user_id = d.user_id) as lista_patenti,
-                   (SELECT STRING_AGG(tipo, ', ') FROM public.licenze_armi WHERE user_id = d.user_id) as porto_armi,
-                   (SELECT STRING_AGG(modello || ' (Matr: ' || matricola || ')', chr(10)) FROM public.registro_armi WHERE user_id = d.user_id) as registro_armi,
-                   (SELECT esito FROM public.certificati_medici WHERE user_id = d.user_id ORDER BY data_registrazione DESC LIMIT 1) as esito_medico
-            FROM public.documenti d
-            WHERE d.nome ILIKE %s AND d.cognome ILIKE %s
-        """
-        cur.execute(query, (nome, cognome))
-        res = cur.fetchone()
-        cur.close()
-        conn.close()
-
-        if not res:
-            return await interaction.followup.send(f"⚠️ Nessun cittadino trovato con il nome: **{nome} {cognome}**")
-
-        embed = discord.Embed(
-            title=f"📂 FASCICOLO ANAGRAFICO: {res['nome']} {res['cognome']}", 
-            color=discord.Color.blue(),
-            timestamp=datetime.now()
-        )
-        
-        # Foto profilo (usa foto_url dalla tabella documenti)
-        if res.get('foto_url'): 
-            embed.set_thumbnail(url=res['foto_url'])
-
-        # Info Generali
-        info_civili = (
-            f"**ID:** `{res['user_id']}`\n"
-            f"**Nascita:** {res['data_nascita']} ({res['luogo_nascita']})\n"
-            f"**Dati Fisici:** {res['altezza']}cm | {res['sesso']}\n"
-            f"**Nazionalità:** {res['nazionalita']}"
-        )
-        embed.add_field(name="📌 Informazioni Civili", value=info_civili, inline=False)
-
-        # Documentazione Legale
-        patenti = res['lista_patenti'] if res['lista_patenti'] else "Nessuna"
-        licenze = res['porto_armi'] if res['porto_armi'] else "Nessuna"
-        
-        # Patenti e Licenze (Risolti gli a capo interrotti che causavano il SyntaxError)
-        embed.add_field(name="🪪 Patenti", value=f"```\n{patenti}\n```", inline=True) 
-        embed.add_field(name="🔫 Licenze Armi", value=f"```\n{licenze}\n```", inline=True)
-
-        # Salute
-        salute = res['esito_medico'] if res['esito_medico'] else "Nessun dato"
-        embed.add_field(name="🏥 Ultimo Esito Medico", value=f"`{salute}`", inline=False)
-
-        # Armi e Veicoli
-        armi = res['registro_armi'] if res['registro_armi'] else "Nessuna arma registrata"
-        veicoli = res['lista_veicoli'] if res['lista_veicoli'] else "Nessun veicolo intestato"
-        
-        # Registro Armi (Risolto l'a capo interrotto che causavano il SyntaxError)
-        embed.add_field(name="📦 Registro Armi (Matricole)", value=f"```\n{armi}\n```", inline=False)
-        
-        # Veicoli
-        embed.add_field(name="🚘 Veicoli Intestati", value=f"```\n{veicoli}\n```", inline=False)
-        
-        embed.set_footer(text=f"Richiesto da: {interaction.user.display_name} | Database Centrale")
-        await interaction.followup.send(embed=embed)
-
-    except Exception as e:
-        print(f"Errore ricerca cittadino: {e}")
-        try:
-            await interaction.followup.send("❌ Errore durante l'interrogazione del database.")
-        except Exception:
-            pass
-
-# ==========================================
-# COMMAND TREE: RICERCA TARGA
-# ==========================================
-@bot.tree.command(name="ricerca_targa", description="Controlla i dati di un veicolo tramite targa")
-@app_commands.describe(targa="Inserisci la targa (es. AA123BB)")
-async def ricerca_targa(interaction: discord.Interaction, targa: str):
-    # Controllo autorizzazione
-    ALLOWED_ROLE_ID = 1363487988570521670
-    if not any(role.id == ALLOWED_ROLE_ID for role in interaction.user.roles):
-        return await interaction.response.send_message("❌ Accesso negato.", ephemeral=True)
-    
-    await interaction.response.defer()
-    targa_clean = targa.upper().strip()
-
-    try:
-        conn = get_db_connection()
-        from psycopg2.extras import RealDictCursor
-        cur = conn.cursor(cursor_factory=RealDictCursor)
-        
-        # Query che unisce veicoli (inclusi i nuovi campi) e documenti del proprietario
-        cur.execute("""
-            SELECT v.*, d.nome, d.cognome 
-            FROM public.veicoli v
-            LEFT JOIN public.documenti d ON v.owner_id = d.user_id
-            WHERE UPPER(v.targa) = %s
-        """, (targa_clean,))
-        
-        res = cur.fetchone()
-        cur.close()
-        conn.close()
-
-        if not res:
-            return await interaction.followup.send(f"⚠️ La targa `{targa_clean}` non è presente nei registri.")
-
-        # Logica colore e stato sequestro
-        is_sequestrato = res['sequestrato']
-        colore = discord.Color.red() if is_sequestrato else discord.Color.green()
-        stato = "🛑 SEQUESTRATO / FERMO" if is_sequestrato else "✅ REGOLARE"
-
-        # --- INTEGRAZIONE NUOVI STATI VEICOLO ---
-        if res.get('assicurato'):
-            stato_assicurazione = f"🟢 ATTIVA (Scadenza: {res['data_scadenza_assicurazione']})"
-        else:
-            stato_assicurazione = "🔴 NON ASSICURATO"
-
-        if res.get('revisionato'):
-            stato_revisione = f"🟢 VALIDA (Scadenza: {res['data_scadenza_revisione']})"
-        else:
-            stato_revisione = "🔴 SCADUTA / NON REVISIONATO"
-        # ----------------------------------------
-
-        embed = discord.Embed(
-            title="🔍 RISULTATO MOTORIZZAZIONE", 
-            color=colore,
-            timestamp=datetime.now()
-        )
-        
-        # Mostra tutti i dati, inclusi i due nuovi stati richiesti
-        info_veicolo = (
-            f"**Modello:** {res['modello'] or 'N/D'}\n"
-            f"**Targa:** `{res['targa']}`\n"
-            f"**Stato Sequestro:** `{stato}`\n"
-            f"**Assicurazione:** {stato_assicurazione}\n"
-            f"**Revisione Statale:** {stato_revisione}"
-        )
-        embed.add_field(name="🚘 Dati Veicolo", value=info_veicolo, inline=False)
-        
-        owner_info = f"{res['nome']} {res['cognome']}" if res['nome'] else "Proprietario non identificato"
-        embed.add_field(
-            name="👤 Proprietario", 
-            value=f"**Nominativo:** {owner_info}\n**ID:** `{res['owner_id']}`", 
-            inline=False
-        )
-        
-        if res.get('data_vendita'):
-            embed.add_field(name="📅 Immatricolazione", value=f"`{res['data_vendita']}`", inline=True)
-        
-        embed.set_footer(text=f"Agente: {interaction.user.display_name}")
-        await interaction.followup.send(embed=embed)
-
-    except Exception as e:
-        print(f"Errore ricerca targa: {e}")
-        try:
-            await interaction.followup.send("❌ Errore tecnico nel database veicoli.")
-        except Exception:
-            pass
 
 import discord
 from discord import app_commands
@@ -853,6 +672,184 @@ class ModalTabletLog(ui.Modal):
 
         conn.commit(); cur.close(); conn.close()
         await interaction.followup.send(f"✅ Inviato ai log di sistema.", ephemeral=True)
+
+import discord
+from discord import app_commands
+import datetime
+# ==========================================
+# COMMAND TREE: RICERCA CITTADINO
+# ==========================================
+@bot.tree.command(name="ricerca_cittadino", description="Interroga l'archivio anagrafico completo")
+@app_commands.describe(nome="Nome del cittadino", cognome="Cognome del cittadino")
+async def ricerca_cittadino(interaction: discord.Interaction, nome: str, cognome: str):
+    # Controllo autorizzazione
+    ALLOWED_ROLE_ID = 1363487988570521670
+    if not any(role.id == ALLOWED_ROLE_ID for role in interaction.user.roles):
+        return await interaction.response.send_message("❌ Accesso negato: Solo personale autorizzato.", ephemeral=True)
+    
+    await interaction.response.defer(ephemeral=False)
+
+    try:
+        conn = get_db_connection()
+        from psycopg2.extras import RealDictCursor
+        cur = conn.cursor(cursor_factory=RealDictCursor)
+        
+        # Query corretta basata sul tuo schema
+        query = """
+            SELECT d.*, 
+                   (SELECT STRING_AGG(modello || ' [' || targa || ']', chr(10)) FROM public.veicoli WHERE owner_id = d.user_id) as lista_veicoli,
+                   (SELECT STRING_AGG(tipo, ', ') FROM public.patenti_registrate WHERE user_id = d.user_id) as lista_patenti,
+                   (SELECT STRING_AGG(tipo, ', ') FROM public.licenze_armi WHERE user_id = d.user_id) as porto_armi,
+                   (SELECT STRING_AGG(modello || ' (Matr: ' || matricola || ')', chr(10)) FROM public.registro_armi WHERE user_id = d.user_id) as registro_armi,
+                   (SELECT esito FROM public.certificati_medici WHERE user_id = d.user_id ORDER BY data_registrazione DESC LIMIT 1) as esito_medico
+            FROM public.documenti d
+            WHERE d.nome ILIKE %s AND d.cognome ILIKE %s
+        """
+        cur.execute(query, (nome, cognome))
+        res = cur.fetchone()
+        cur.close()
+        conn.close()
+
+        if not res:
+            return await interaction.followup.send(f"⚠️ Nessun cittadino trovato con il nome: **{nome} {cognome}**")
+
+        embed = discord.Embed(
+            title=f"📂 FASCICOLO ANAGRAFICO: {res['nome']} {res['cognome']}", 
+            color=discord.Color.blue(),
+            timestamp=datetime.now()
+        )
+        
+        # Foto profilo (usa foto_url dalla tabella documenti)
+        if res.get('foto_url'): 
+            embed.set_thumbnail(url=res['foto_url'])
+
+        # Info Generali
+        info_civili = (
+            f"**ID:** `{res['user_id']}`\n"
+            f"**Nascita:** {res['data_nascita']} ({res['luogo_nascita']})\n"
+            f"**Dati Fisici:** {res['altezza']}cm | {res['sesso']}\n"
+            f"**Nazionalità:** {res['nazionalita']}"
+        )
+        embed.add_field(name="📌 Informazioni Civili", value=info_civili, inline=False)
+
+        # Documentazione Legale
+        patenti = res['lista_patenti'] if res['lista_patenti'] else "Nessuna"
+        licenze = res['porto_armi'] if res['porto_armi'] else "Nessuna"
+        
+        # Patenti e Licenze (Risolti gli a capo interrotti che causavano il SyntaxError)
+        embed.add_field(name="🪪 Patenti", value=f"```\n{patenti}\n```", inline=True) 
+        embed.add_field(name="🔫 Licenze Armi", value=f"```\n{licenze}\n```", inline=True)
+
+        # Salute
+        salute = res['esito_medico'] if res['esito_medico'] else "Nessun dato"
+        embed.add_field(name="🏥 Ultimo Esito Medico", value=f"`{salute}`", inline=False)
+
+        # Armi e Veicoli
+        armi = res['registro_armi'] if res['registro_armi'] else "Nessuna arma registrata"
+        veicoli = res['lista_veicoli'] if res['lista_veicoli'] else "Nessun veicolo intestato"
+        
+        # Registro Armi (Risolto l'a capo interrotto che causavano il SyntaxError)
+        embed.add_field(name="📦 Registro Armi (Matricole)", value=f"```\n{armi}\n```", inline=False)
+        
+        # Veicoli
+        embed.add_field(name="🚘 Veicoli Intestati", value=f"```\n{veicoli}\n```", inline=False)
+        
+        embed.set_footer(text=f"Richiesto da: {interaction.user.display_name} | Database Centrale")
+        await interaction.followup.send(embed=embed)
+
+    except Exception as e:
+        print(f"Errore ricerca cittadino: {e}")
+        try:
+            await interaction.followup.send("❌ Errore durante l'interrogazione del database.")
+        except Exception:
+            pass
+
+# ==========================================
+# COMMAND TREE: RICERCA TARGA
+# ==========================================
+@bot.tree.command(name="ricerca_targa", description="Controlla i dati di un veicolo tramite targa")
+@app_commands.describe(targa="Inserisci la targa (es. AA123BB)")
+async def ricerca_targa(interaction: discord.Interaction, targa: str):
+    # Controllo autorizzazione
+    ALLOWED_ROLE_ID = 1363487988570521670
+    if not any(role.id == ALLOWED_ROLE_ID for role in interaction.user.roles):
+        return await interaction.response.send_message("❌ Accesso negato.", ephemeral=True)
+    
+    await interaction.response.defer()
+    targa_clean = targa.upper().strip()
+
+    try:
+        conn = get_db_connection()
+        from psycopg2.extras import RealDictCursor
+        cur = conn.cursor(cursor_factory=RealDictCursor)
+        
+        # Query che unisce veicoli (inclusi i nuovi campi) e documenti del proprietario
+        cur.execute("""
+            SELECT v.*, d.nome, d.cognome 
+            FROM public.veicoli v
+            LEFT JOIN public.documenti d ON v.owner_id = d.user_id
+            WHERE UPPER(v.targa) = %s
+        """, (targa_clean,))
+        
+        res = cur.fetchone()
+        cur.close()
+        conn.close()
+
+        if not res:
+            return await interaction.followup.send(f"⚠️ La targa `{targa_clean}` non è presente nei registri.")
+
+        # Logica colore e stato sequestro
+        is_sequestrato = res['sequestrato']
+        colore = discord.Color.red() if is_sequestrato else discord.Color.green()
+        stato = "🛑 SEQUESTRATO / FERMO" if is_sequestrato else "✅ REGOLARE"
+
+        # --- INTEGRAZIONE NUOVI STATI VEICOLO ---
+        if res.get('assicurato'):
+            stato_assicurazione = f"🟢 ATTIVA (Scadenza: {res['data_scadenza_assicurazione']})"
+        else:
+            stato_assicurazione = "🔴 NON ASSICURATO"
+
+        if res.get('revisionato'):
+            stato_revisione = f"🟢 VALIDA (Scadenza: {res['data_scadenza_revisione']})"
+        else:
+            stato_revisione = "🔴 SCADUTA / NON REVISIONATO"
+        # ----------------------------------------
+
+        embed = discord.Embed(
+            title="🔍 RISULTATO MOTORIZZAZIONE", 
+            color=colore,
+            timestamp=datetime.now()
+        )
+        
+        # Mostra tutti i dati, inclusi i due nuovi stati richiesti
+        info_veicolo = (
+            f"**Modello:** {res['modello'] or 'N/D'}\n"
+            f"**Targa:** `{res['targa']}`\n"
+            f"**Stato Sequestro:** `{stato}`\n"
+            f"**Assicurazione:** {stato_assicurazione}\n"
+            f"**Revisione Statale:** {stato_revisione}"
+        )
+        embed.add_field(name="🚘 Dati Veicolo", value=info_veicolo, inline=False)
+        
+        owner_info = f"{res['nome']} {res['cognome']}" if res['nome'] else "Proprietario non identificato"
+        embed.add_field(
+            name="👤 Proprietario", 
+            value=f"**Nominativo:** {owner_info}\n**ID:** `{res['owner_id']}`", 
+            inline=False
+        )
+        
+        if res.get('data_vendita'):
+            embed.add_field(name="📅 Immatricolazione", value=f"`{res['data_vendita']}`", inline=True)
+        
+        embed.set_footer(text=f"Agente: {interaction.user.display_name}")
+        await interaction.followup.send(embed=embed)
+
+    except Exception as e:
+        print(f"Errore ricerca targa: {e}")
+        try:
+            await interaction.followup.send("❌ Errore tecnico nel database veicoli.")
+        except Exception:
+            pass
 
 # --- COMANDO /TABLET ---
 @bot.tree.command(name="tablet", description="Accendi il Tablet Tattico GN-OS")
