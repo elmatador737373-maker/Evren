@@ -504,7 +504,7 @@ async def bonifico(interaction: discord.Interaction, destinatario: discord.Membe
 
 
 # --- CONFIGURAZIONE ---
-ID_CANALE_ARCHIVIO = 1501928095865896990 
+ID_CANALE_ARCHIVIO = 1510190622638739567 
 
 # --- FUNZIONE CALCOLO DATE (Indispensabile per far funzionare il comando) ---
 def calcola_date_id(data_nascita):
@@ -604,7 +604,8 @@ async def crea_documento(
         print(f"[LOG ERROR] Errore generale: {e}")
         # Usiamo sempre followup dopo il defer
         await interaction.followup.send(f"❌ Errore durante l'operazione: {e}", ephemeral=True)
-@bot.tree.command(name="mostra_documento", description="Mostra graficamente il tuo documento")
+
+@bot.tree.command(name="mostra_documento", description="Mostra il tuo documento in formato testo")
 async def mostra_documento(interaction: discord.Interaction, cittadino: discord.Member = None):
     # Defer immediato (non ephemeral così gli altri vedono il documento)
     await interaction.response.defer()
@@ -622,68 +623,60 @@ async def mostra_documento(interaction: discord.Interaction, cittadino: discord.
         if not doc:
             return await interaction.followup.send(f"❌ {target.display_name} non ha un documento registrato.")
 
-        # Caricamento Template
-        img = Image.open("IMG_0453.png").convert("RGBA")
-        draw = ImageDraw.Draw(img)
+        # Creazione dell'Embed di Discord
+        embed = discord.Embed(
+            title=f"🪪 DOCUMENTO DI IDENTITÀ ({doc['tipo_documento'].upper()})",
+            color=discord.Color.blue()
+        )
         
-        # Gestione Font
-        try:
-            font_arial = ImageFont.truetype("arial.ttf", 30)
-            font_id_type = ImageFont.truetype("arial.ttf", 27)
-        except:
-            font_arial = ImageFont.load_default()
-            font_id_type = ImageFont.load_default()
+        # Organizzazione dei dati in colonne/campi puliti
+        embed.add_field(name="👤 Cognome", value=doc['cognome'].upper(), inline=True)
+        embed.add_field(name="✍️ Nome", value=doc['nome'].upper(), inline=True)
+        embed.add_field(name="🧬 Sesso", value=str(doc['sesso']).upper(), inline=True)
+        
+        embed.add_field(name="📅 Data di Nascita", value=str(doc['data_nascita']), inline=True)
+        embed.add_field(name="📍 Luogo di Nascita", value=str(doc['luogo_nascita']).upper(), inline=True)
+        embed.add_field(name="🌍 Nazionalità", value=str(doc['nazionalita']).upper(), inline=True)
+        
+        embed.add_field(name="📆 Data Emissione", value=str(doc['data_emissione']), inline=True)
+        embed.add_field(name="⏳ Data Scadenza", value=str(doc['data_scadenza']), inline=True)
+        embed.add_field(name="🏢 Stato", value="MESSICO", inline=True)
 
-        # Testi sull'immagine
-        draw.text((496, 284), doc['tipo_documento'].upper(), fill=(60, 60, 60), font=font_id_type)
-        draw.text((494, 361), doc['cognome'].upper(), fill="black", font=font_arial)
-        draw.text((493, 436), doc['nome'].upper(), fill="black", font=font_arial)
-        draw.text((504, 512), str(doc['data_nascita']), fill="black", font=font_arial)
-        draw.text((501, 580), str(doc['sesso']), fill="black", font=font_arial)
-        draw.text((483, 657), str(doc['nazionalita']).upper(), fill="black", font=font_arial)
-        draw.text((992, 390), str(doc['luogo_nascita']).upper(), fill="black", font=font_arial)
-        draw.text((976, 490), str(doc['data_emissione']), fill="black", font=font_arial)
-        draw.text((984, 580), str(doc['data_scadenza']), fill="black", font=font_arial)
-        draw.text((983, 693), "MESSICO", fill="black", font=font_arial)
-
-        # GESTIONE FOTO
+        # GESTIONE FOTO (Viene impostata come Thumbnail laterale dell'embed)
         foto_url = doc['foto_url']
         headers = {'User-Agent': 'Mozilla/5.0'}
         
         try:
+            # Controllo validità URL (mantenendo la tua logica di fallback sul canale archivio)
             foto_res = requests.get(foto_url, headers=headers, timeout=5)
-            # Refresh se necessario
+            
             if foto_res.status_code != 200 and doc.get('message_id'):
                 canale_archivio = bot.get_channel(ID_CANALE_ARCHIVIO) or await bot.fetch_channel(ID_CANALE_ARCHIVIO)
                 msg = await canale_archivio.fetch_message(int(doc['message_id']))
                 foto_url = msg.attachments[0].url
-                foto_res = requests.get(foto_url, headers=headers, timeout=5)
-
-            if foto_res.status_code == 200:
-                user_img = Image.open(io.BytesIO(foto_res.content)).convert("RGBA")
-                user_img = user_img.resize((306, 387)) 
-                img.paste(user_img, (149, 311), user_img) 
+            
+            # Imposta la foto del cittadino nell'embed
+            embed.set_thumbnail(url=foto_url)
+            
         except Exception as e:
-            print(f"[DEBUG] Errore caricamento foto utente: {e}")
+            print(f"[DEBUG] Errore recupero foto utente per Embed: {e}")
+            # Fallback: se la foto del database fallisce, usa l'avatar di Discord dell'utente
+            embed.set_thumbnail(url=target.display_avatar.url)
 
-        # Invio Finale
-        buffer = io.BytesIO()
-        img.save(buffer, format="PNG")
-        buffer.seek(0)
-        
+        # Footer e dettagli estetici
+        embed.set_footer(text=f"ID Utente: {target.id}")
+
+        # Invio Finale dell'Embed
         await interaction.followup.send(
             content=f"***{interaction.user.display_name}** mostra il documento di {target.mention}*", 
-            file=discord.File(buffer, filename=f"documento_{target.id}.png")
+            embed=embed
         )
 
     except Exception as e:
         print(f"[LOG ERROR] Errore generale mostra_documento: {e}")
-        # Se qualcosa fallisce, usiamo followup perché abbiamo fatto il defer
         try:
-            await interaction.followup.send(f"❌ Errore imprevisto: {e}")
+            await interaction.followup.send(f"❌ Errore imprevisto nella generazione dell'embed: {e}")
         except: pass
-
-
 
 @bot.event
 async def on_voice_state_update(member, before, after):
