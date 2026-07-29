@@ -150,6 +150,133 @@ class WelcomeButtonsView(ui.View):
 
 # --- EVENTO INVIO MESSAGGIO PRIVATO (DM) ALL'INGRESSO ---
 
+import discord
+from discord import app_commands
+from discord.ui import View, Button, Select
+
+# --- 1. SELETTORE DELLE CATEGORIE NELLO SHOP ---
+class ShopCategorySelect(Select):
+    def __init__(self):
+        # Definisci qui le categorie disponibili nel tuo shop
+        options = [
+            discord.SelectOption(label="Armi", description="Acquista armi e munizioni", emoji="🔫", value="armi"),
+            discord.SelectOption(label="Mediche", description="Kit medici e bende", emoji="💊", value="mediche"),
+            discord.SelectOption(label="Generale", description="Oggetti vari e utility", emoji="🎒", value="generale"),
+        ]
+        super().__init__(placeholder="📂 Seleziona una categoria...", min_values=1, max_values=1, options=options)
+
+    async def callback(self, interaction: discord.Interaction):
+        categoria = self.values[0]
+        
+        # Interroga Supabase per prendere gli item della categoria scelta
+        res = supabase.table("shop_items").select("*").eq("category", categoria).execute()
+        items = res.data if res.data else []
+
+        embed = discord.Embed(
+            title=f"🛒 Evren Shop - Categoria: {categoria.capitalize()}",
+            description="Ecco gli articoli disponibili in questa categoria. Usa il comando `/compra [nome_item]` per acquistarli.",
+            color=discord.Color.blue()
+        )
+
+        if not items:
+            embed.add_field(name="Vuoto", value="Non ci sono oggetti in questa categoria al momento.", inline=False)
+        else:
+            for item in items:
+                nome = item.get("name", "Oggetto")
+                prezzo = item.get("price", 0)
+                ruolo_req = item.get("required_role_name", "Nessuno")
+                embed.add_field(
+                    name=f"🔹 {nome}",
+                    value=f"💰 Prezzo: **€ {prezzo:,.2f}**\n🔒 Ruolo richiesto: `{ruolo_req}`",
+                    inline=False
+                )
+
+        embed.set_footer(text="Evren City OS • Economia")
+        await interaction.response.edit_message(embed=embed, view=self.view)
+
+
+class ShopView(View):
+    def __init__(self):
+        super().__init__(timeout=300)
+        self.add_item(ShopCategorySelect())
+
+
+# --- 2. COMANDO /SHOP ---
+@bot.tree.command(name="shop", description="Visualizza lo store di Evren City OS e naviga tra le categorie.")
+async def shop(interaction: discord.Interaction):
+    embed = discord.Embed(
+        title="🛒 Evren City OS - Negozio Generale",
+        description="Benvenuto nello shop ufficiale. Seleziona una categoria dal menu sottostante per visualizzare gli articoli in vendita.",
+        color=discord.Color.blue()
+    )
+    embed.set_footer(text="Evren City OS • Economia")
+    
+    view = ShopView()
+    await interaction.response.send_message(embed=embed, view=view, ephemeral=True)
+
+
+# --- 3. FUNZIONE DI AUTOCOMPLETE PER IL COMANDO /COMPRA ---
+async def shop_item_autocomplete(interaction: discord.Interaction, current: str) -> list[app_commands.Choice[str]]:
+    res = supabase.table("shop_items").select("name").ilike("name", f"%{current}%").limit(25).execute()
+    items = res.data if res.data else []
+    return [app_commands.Choice(name=i["name"], value=i["name"]) for i in items]
+
+
+# --- 4. COMANDO /COMPRA ---
+@bot.tree.command(name="compra", description="Acquista un oggetto dallo shop verificando fondi e requisiti.")
+@app_commands.describe(item="Nome dell'oggetto da acquistare")
+@app_commands.autocomplete(item=shop_item_autocomplete)
+async def compra(interaction: discord.Interaction, item: str):
+    user = interaction.user
+    user_id = str(user.id)
+
+    # 1. Cerca l'oggetto nel database dello shop
+    res_item = supabase.table("shop_items").select("*").ilike("name", item).execute()
+    if not res_item.data:
+        await interaction.response.send_message("❌ L'oggetto selezionato non esiste nello shop.", ephemeral=True)
+        return
+
+    item_data = res_item.data[0]
+    prezzo = item_data.get("price", 0)
+    required_role_id = item_data.get("required_role_id") # ID del ruolo Discord (opzionale)
+    item_name = item_data.get("name")
+
+    # 2. Verifica se è richiesto un ruolo specifico
+    if required_role_id:
+        if not any(r.id == int(required_role_id) for r in user.roles): # type: ignore
+            await interaction.response.send_message(f"❌ Non possiedi il ruolo richiesto per poter acquistare **{item_name}**.", ephemeral=True)
+            return
+
+    # 3. Verifica i contanti dell'utente nel database
+    res_user = supabase.table("users").select("cash").eq("discord_id", user_id).execute()
+    contanti_attuali = res_user.data[0].get("cash", 0) if res_user.data else 0
+
+    if contanti_attuali < prezzo:
+        await interaction.response.send_message(
+            f"❌ Fondi insufficienti! Hai **€ {contanti_attuali:,.2f}**, ma l'oggetto costa **€ {prezzo:,.2f}**.",
+            ephemeral=True
+        )
+        return
+
+    # 4. Scala i soldi e aggiunge l'oggetto all'inventario dell'utente
+    nuovo_saldo = contanti_attuali - prezzo
+    supabase.table("users").update({"cash": nuovo_saldo}).eq("discord_id", user_id).execute()
+
+    # Esempio di aggiunta all'inventario personale (tabella "user_inventory")
+    # Puoi adattarla in base alla struttura delle tue tabelle
+    supabase.table("user_inventory").insert({
+        "discord_id": user_id,
+        "item_name": item_name,
+        "quantity": 1
+    }).execute()
+
+    await interaction.response.send_message(
+        f"✅ Acquisto effettuato con successo!\n"
+        f"Hai comprato: **{item_name}** per **€ {prezzo:,.2f}**.\n"
+        f"Nuovo saldo contanti: **€ {nuovo_saldo:,.2f}**",
+        ephemeral=True
+    )
+
 @bot.event
 async def on_member_join(member: discord.Member):
     welcome_text = (
