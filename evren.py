@@ -1020,30 +1020,213 @@ async def paga_multa(interaction: discord.Interaction):
     view = FinePaySelectView(interaction.user.id, res.data)
     await interaction.response.send_message(embed=embed, view=view, ephemeral=True)
 
+import io
+import random
+import string
 import aiohttp
+import discord
+from discord import app_commands
+from playwright.async_api import async_playwright
 
-# --- CONFIGURAZIONE IMGBB ---
-IMGBB_API_KEY = "0b807b0916a013c77cc31305bfe3f2d1"
+# Inserisci qui la tua API Key di ImgBB
+IMGBB_API_KEY = "IL_TUO_TOKEN_API_DI_IMGBB"
 
-async def upload_to_imgbb(attachment: discord.Attachment) -> str:
-    """Carica l'immagine su ImgBB tramite API key e restituisce il link diretto."""
-    image_bytes = await attachment.read()
+# --- 1. FUNZIONE DI UPLOAD SU IMGBB ---
+async def upload_to_imgbb(foto: discord.Attachment) -> str:
+    url = "https://api.imgbb.com/1/upload"
     
-    data = aiohttp.FormData()
-    data.add_field('key', IMGBB_API_KEY)
-    data.add_field('image', image_bytes, filename=attachment.filename)
-
+    # Leggi i byte del file allegato su Discord
+    foto_bytes = await foto.read()
+    
+    payload = {
+        "key": IMGBB_API_KEY
+    }
+    
+    files = {
+        "image": foto_bytes
+    }
+    
     async with aiohttp.ClientSession() as session:
-        async with session.post("https://api.imgbb.com/1/upload", data=data) as response:
+        async with session.post(url, data=payload, data=files) as response:
             if response.status == 200:
-                result = await response.json()
-                return result["data"]["url"]
+                data = await response.json()
+                return data["data"]["url"]
             else:
-                raise Exception(f"Errore ImgBB HTTP {response.status}")
+                raise Exception(f"Errore ImgBB status code: {response.status}")
 
 
-# --- COMANDO REGISTRAZIONE DOCUMENTI E FOTO CON IMGBB ---
+# --- 2. FUNZIONI DI SUPPORTO (Codice Fiscale e Numero Documento) ---
+def genera_codice_fiscale(nome: str, cognome: str) -> str:
+    letters = string.ascii_uppercase
+    cf_parte1 = "".join(random.choices(letters, k=6))
+    cf_parte2 = "".join(random.choices(string.digits, k=2))
+    cf_parte3 = "".join(random.choices(letters, k=1))
+    cf_parte4 = "".join(random.choices(string.digits, k=3))
+    cf_parte5 = "".join(random.choices(letters, k=1))
+    return f"{cf_parte1}{cf_parte2}{cf_parte3}{cf_parte4}{cf_parte5}"
 
+def genera_num_documento() -> str:
+    prefisso = "".join(random.choices(string.ascii_uppercase, k=2))
+    numero = "".join(random.choices(string.digits, k=7))
+    return f"{prefisso}{numero}"
+
+
+# --- 3. FUNZIONE CHE CREA L'IMMAGINE REALISTICA (HTML/PLAYWRIGHT) ---
+async def genera_carta_identita(nome, cognome, birth_date, birth_place, cf, doc_number, photo_url, colore_occhi, colore_capelli, segni_particolari):
+    html_content = f"""
+    <!DOCTYPE html>
+    <html lang="it">
+    <head>
+        <meta charset="UTF-8">
+        <style>
+            body {{
+                margin: 0;
+                padding: 0;
+                width: 780px;
+                height: 500px;
+                background: linear-gradient(135deg, #f8f9fa 0%, #e9ecef 100%);
+                font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+                border: 4px solid #1a252f;
+                box-sizing: border-box;
+                position: relative;
+            }}
+            .header {{
+                background-color: #1a252f;
+                color: white;
+                padding: 12px 20px;
+                display: flex;
+                justify-content: space-between;
+                align-items: center;
+            }}
+            .header h1 {{
+                margin: 0;
+                font-size: 18px;
+                letter-spacing: 1px;
+            }}
+            .header span {{
+                font-size: 13px;
+                color: #bdc3c7;
+            }}
+            .body-content {{
+                padding: 20px;
+                display: flex;
+                gap: 20px;
+            }}
+            .foto-container {{
+                width: 140px;
+                height: 180px;
+                border: 2px solid #1a252f;
+                background: #fff;
+                box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+                flex-shrink: 0;
+            }}
+            .foto-container img {{
+                width: 100%;
+                height: 100%;
+                object-fit: cover;
+            }}
+            .info-grid {{
+                flex-grow: 1;
+                display: grid;
+                grid-template-columns: 1fr 1fr;
+                gap: 10px;
+            }}
+            .field {{
+                display: flex;
+                flex-direction: column;
+                border-bottom: 1px solid #dcdde1;
+                padding-bottom: 3px;
+            }}
+            .field.full {{
+                grid-column: span 2;
+            }}
+            .label {{
+                font-size: 10px;
+                text-transform: uppercase;
+                color: #7f8c8d;
+                font-weight: bold;
+            }}
+            .value {{
+                font-size: 14px;
+                font-weight: bold;
+                color: #2c3e50;
+            }}
+            .footer {{
+                position: absolute;
+                bottom: 12px;
+                left: 20px;
+                right: 20px;
+                display: flex;
+                justify-content: space-between;
+                align-items: center;
+                font-size: 12px;
+                color: #7f8c8d;
+                border-top: 1px solid #dcdde1;
+                padding-top: 8px;
+            }}
+        </style>
+    </head>
+    <body>
+        <div class="header">
+            <h1>REPUBBLICA DI VINEWOOD</h1>
+            <span>CARTA D'IDENTITÀ ELETTRONICA</span>
+        </div>
+        
+        <div class="body-content">
+            <div class="foto-container">
+                <img src="{photo_url}" />
+            </div>
+            
+            <div class="info-grid">
+                <div class="field">
+                    <span class="label">Cognome / Surname</span>
+                    <span class="value">{cognome.upper()}</span>
+                </div>
+                <div class="field">
+                    <span class="label">Nome / Name</span>
+                    <span class="value">{nome.capitalize()}</span>
+                </div>
+                <div class="field full">
+                    <span class="label">Data e Luogo di Nascita / Date & Place</span>
+                    <span class="value">{birth_date} - {birth_place}</span>
+                </div>
+                <div class="field">
+                    <span class="label">Occhi / Eyes</span>
+                    <span class="value">{colore_occhi}</span>
+                </div>
+                <div class="field">
+                    <span class="label">Capelli / Hair</span>
+                    <span class="value">{colore_capelli}</span>
+                </div>
+                <div class="field full">
+                    <span class="label">Segni Particolari / Distinct Marks</span>
+                    <span class="value">{segni_particolari}</span>
+                </div>
+            </div>
+        </div>
+
+        <div class="footer">
+            <span>Codice Fiscale: <b>{cf}</b></span>
+            <span>N. Doc: <b>{doc_number}</b></span>
+        </div>
+    </body>
+    </html>
+    """
+
+    async with async_playwright() as p:
+        browser = await p.chromium.launch(headless=True)
+        page = await browser.new_page(viewport={"width": 780, "height": 500})
+        await page.set_content(html_content)
+        await page.wait_for_load_state("networkidle")
+        screenshot_bytes = await page.screenshot(type="png")
+        await browser.close()
+
+    buffer = io.BytesIO(screenshot_bytes)
+    buffer.seek(0)
+    return discord.File(buffer, filename="carta_identita.png")
+
+
+# --- 4. COMANDO CREA DOCUMENTI ---
 @bot.tree.command(name="crea_documenti", description="Genera i tuoi documenti identificativi completi di caratteristiche fisiche e foto.")
 async def crea_documenti(
     interaction: discord.Interaction, 
@@ -1071,7 +1254,7 @@ async def crea_documenti(
     await interaction.response.defer(ephemeral=True)
 
     try:
-        # Carica automaticamente l'immagine su ImgBB
+        # Carica automaticamente l'immagine su ImgBB usando la funzione dedicata
         photo_url = await upload_to_imgbb(foto)
     except Exception as e:
         await interaction.followup.send(f"❌ Errore durante il caricamento della foto su ImgBB: {e}", ephemeral=True)
@@ -1094,23 +1277,56 @@ async def crea_documenti(
         "doc_number": doc_num
     }).execute()
 
-    embed = discord.Embed(
-        title="🪪 Carta d'Identità Rilasciata",
-        description=(
-            f"• **Intestatario:** {nome.capitalize()} {cognome.capitalize()}\n"
-            f"• **Data di Nascita:** `{data_nascita}` a `{luogo_nascita.capitalize()}`\n"
-            f"• **Codice Fiscale:** `{cf}`\n"
-            f"• **N° Documento:** `{doc_num}`\n\n"
-            f"### 🧬 Caratteristiche Fisiche:\n"
-            f"• **Occhi:** `{colore_occhi.capitalize()}`\n"
-            f"• **Capelli:** `{colore_capelli.capitalize()}`\n"
-            f"• **Segni Particolari:** `{segni_particolari}`"
-        ),
-        color=discord.Color.green()
+    # Genera l'immagine grafica realistica del documento
+    file_documento = await genera_carta_identita(
+        nome=nome,
+        cognome=cognome,
+        birth_date=data_nascita,
+        birth_place=luogo_nascita,
+        cf=cf,
+        doc_number=doc_num,
+        photo_url=photo_url,
+        colore_occhi=colore_occhi,
+        colore_capelli=colore_capelli,
+        segni_particolari=segni_particolari
     )
-    embed.set_image(url=photo_url)
     
-    await interaction.followup.send(embed=embed, ephemeral=True)
+    await interaction.followup.send(
+        content="✅ **Documenti creati con successo!** Ecco la tua carta d'identità ufficiale:", 
+        file=file_documento, 
+        ephemeral=True
+    )
+
+
+# --- 5. COMANDO MOSTRA DOCUMENTO ---
+@bot.tree.command(name="mostra_documento", description="Mostra la tua carta d'identità ufficiale in chat.")
+async def mostra_documento(interaction: discord.Interaction):
+    await interaction.response.defer()
+    
+    user_id = str(interaction.user.id)
+    response = supabase.table("documents").select("*").eq("discord_id", user_id).execute()
+    
+    if not response.data:
+        await interaction.followup.send("❌ Non possiedi ancora un documento registrato! Usa `/crea_documenti` per crearlo.", ephemeral=True)
+        return
+        
+    doc = response.data[0]
+    
+    # Genera l'immagine grafica riprendendo i dati salvati nel database
+    file_documento = await genera_carta_identita(
+        nome=doc["name"],
+        cognome=doc["surname"],
+        birth_date=doc["birth_date"],
+        birth_place=doc["birth_place"],
+        cf=doc["cf"],
+        doc_number=doc["doc_number"],
+        photo_url=doc["photo_url"],
+        colore_occhi=doc["eye_color"],
+        colore_capelli=doc["hair_color"],
+        segni_particolari=doc["distinct_marks"]
+    )
+    
+    await interaction.followup.send(file=file_documento)
 
 @bot.tree.command(name="registra_veicolo", description="[MOTORIZZAZIONE] Registra un veicolo con targa.")
 async def registra_veicolo(interaction: discord.Interaction, proprietario: discord.Member, modello: str, targa: str):
