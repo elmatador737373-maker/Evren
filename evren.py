@@ -283,6 +283,301 @@ import discord
 from discord import app_commands
 from playwright.async_api import async_playwright
 
+import asyncio
+import os
+import discord
+from discord import app_commands
+from discord.ui import View, Button, Select
+import imageio_ffmpeg
+
+# Ottiene il percorso sicuro di FFmpeg compatibile con Render e GitHub
+FFMPEG_PATH = imageio_ffmpeg.get_ffmpeg_exe()
+
+# --- CONFIGURAZIONE RUOLO ---
+# Sostituisci con l'ID numerico del ruolo richiesto per usare il telefono (lascia None se è aperto a tutti)
+RUOLO_RICHIESTO_ID = None  # Esempio: 123456789012345678
+
+
+# --- TASK AUDIO PER RIPRODURRE I SUONI NELLE VOCALI ---
+async def riproduci_audio_canale(channel: discord.VoiceChannel, audio_file: str, loop: bool = False):
+    vc = None
+    try:
+        vc = await channel.connect()
+        while True:
+            if not os.path.exists(audio_file):
+                break
+            
+            source = discord.FFmpegPCMAudio(audio_file, executable=FFMPEG_PATH)
+            
+            # Evento di fine traccia
+            fatto = asyncio.Event()
+            def after_play(e):
+                fatto.set()
+
+            if not vc.is_playing():
+                vc.play(source, after=after_play)
+                await fatto.wait()
+
+            if not loop:
+                break
+            await asyncio.sleep(0.5)
+    except Exception as e:
+        print(f"Errore audio: {e}")
+    finally:
+        if vc and vc.is_connected():
+            await vc.disconnect()
+
+
+# --- 1. MODAL PER AGGIUNGERE UN CONTATTO IN RUBRICA ---
+class AggiungiContattoModal(discord.ui.Modal, title="Nuovo Contatto - Evren City OS"):
+    nome_contatto = discord.ui.TextInput(
+        label="Nome del Contatto",
+        placeholder="Es. Mario Rossi",
+        required=True,
+        max_length=50
+    )
+    numero_contatto = discord.ui.TextInput(
+        label="Numero di Telefono",
+        placeholder="Es. 3331234567",
+        required=True,
+        max_length=15
+    )
+
+    async def on_submit(self, interaction: discord.Interaction):
+        user_id = str(interaction.user.id)
+        
+        supabase.table("contacts").insert({
+            "owner_id": user_id,
+            "name": self.nome_contatto.value.strip(),
+            "phone_number": self.numero_contatto.value.strip()
+        }).execute()
+
+        await interaction.response.send_message(
+            f"✅ Contatto **{self.nome_contatto.value}** (`{self.numero_contatto.value}`) salvato con successo nella rubrica!",
+            ephemeral=True
+        )
+
+
+# --- 2. MENU INTERATTIVO WHATSAPP ---
+class WhatsAppChatView(View):
+    def __init__(self, destinatario: str):
+        super().__init__(timeout=180)
+        self.destinatario = destinatario
+
+    @discord.ui.button(label="Invia Messaggio", style=discord.ButtonStyle.green, emoji="💬")
+    async def invia_messaggio(self, interaction: discord.Interaction, button: Button):
+        await interaction.response.send_modal(WhatsAppMessageModal(self.destinatario))
+
+
+class WhatsAppMessageModal(discord.ui.Modal, title="WhatsApp - Invia Messaggio"):
+    testo_messaggio = discord.ui.TextInput(
+        label="Messaggio",
+        placeholder="Scrivi qui il messaggio...",
+        style=discord.TextStyle.paragraph,
+        required=True
+    )
+
+    def __init__(self, destinatario: str):
+        super().__init__()
+        self.destinatario = destinatario
+
+    async def on_submit(self, interaction: discord.Interaction):
+        await interaction.response.send_message(
+            f"✅ Messaggio inviato a **{self.destinatario}**:\n> {self.testo_messaggio.value}",
+            ephemeral=True
+        )
+
+
+# --- 3. VIEW PER RISPONDERE O RIFIUTARE LA CHIAMATA IN DM ---
+class RispondiChiamataView(View):
+    def __init__(self, chiamante: discord.Member, destinatario: discord.Member, channel: discord.VoiceChannel, task_squillo: asyncio.Task):
+        super().__init__(timeout=120)  # 2 minuti di tempo massimo
+        self.chiamante = chiamante
+        self.destinatario = destinatario
+        self.channel = channel
+        self.task_squillo = task_squillo
+        self.risposta_data = False
+
+    @discord.ui.button(label="Rispondi", style=discord.ButtonStyle.green, emoji="📞")
+    async def rispondi(self, interaction: discord.Interaction, button: Button):
+        self.risposta_data = True
+        self.stop()
+        
+        # Interrompe lo squillo in corso
+        if not self.task_squillo.done():
+            self.task_squillo.cancel()
+        
+        voice_link = self.channel.jump_url
+        
+        await interaction.response.edit_message(
+            content=f"✅ Hai accettato la chiamata con **{self.chiamante.display_name}**.\n\n🔊 **Entra subito nel canale vocale:** {voice_link}", 
+            view=None
+        )
+        
+        try:
+            await self.chiamante.send(f"📞 **{self.destinatario.display_name}** ha risposto alla chiamata!\n🔊 Entra nel canale vocale: {voice_link}")
+        except Exception:
+            pass
+
+    @discord.ui.button(label="Rifiuta", style=discord.ButtonStyle.red, emoji="❌")
+    async def rifiuta(self, interaction: discord.Interaction, button: Button):
+        self.risposta_data = False
+        self.stop()
+        
+        # Interrompe lo squillo
+        if not self.task_squillo.done():
+            self.task_squillo.cancel()
+        
+        await interaction.response.edit_message(
+            content=f"❌ Hai rifiutato la chiamata da **{self.chiamante.display_name}**.", 
+            view=None
+        )
+        
+        try:
+            await self.chiamante.send(f"❌ **{self.destinatario.display_name}** ha rifiutato la chiamata.")
+        except Exception:
+            pass
+
+        # Riproduce il suono di rifiuto prima di eliminare il canale
+        await riproduci_audio_canale(self.channel, "rifiuto.mp3", loop=False)
+        try:
+            await self.channel.delete()
+        except Exception:
+            pass
+
+    async def on_timeout(self):
+        if not self.risposta_data:
+            if not self.task_squillo.done():
+                self.task_squillo.cancel()
+            try:
+                await riproduci_audio_canale(self.channel, "rifiuto.mp3", loop=False)
+                await self.chiamante.send(f"⌛ La chiamata a **{self.destinatario.display_name}** è scaduta (nessuna risposta).")
+                await self.channel.delete()
+            except Exception:
+                pass
+
+
+# --- 4. INTERFACCIA DEL TELEFONO (OS PRINCIPALE) ---
+class EvrenPhoneView(View):
+    def __init__(self, user_id: str):
+        super().__init__(timeout=300)
+        self.user_id = user_id
+        self.aggiorna_selettori()
+
+    def aggiorna_selettori(self):
+        self.clear_items()
+        
+        res = supabase.table("contacts").select("*").eq("owner_id", self.user_id).execute()
+        contacts = res.data if res.data else []
+
+        btn_aggiungi = Button(label="Nuovo Contatto", style=discord.ButtonStyle.blurple, emoji="➕", row=0)
+        btn_aggiungi.callback = self.apri_modal_contatto
+        self.add_item(btn_aggiungi)
+
+        if contacts:
+            options = [discord.SelectOption(label=c["name"], description=c["phone_number"], value=str(c["phone_number"])) for c in contacts[:25]]
+            
+            select_chiama = Select(placeholder="📞 Seleziona contatto da chiamare", options=options, row=1)
+            select_chiama.callback = self.avvia_chiamata_callback
+            self.add_item(select_chiama)
+
+            select_wa = Select(placeholder="💬 Apri chat WhatsApp", options=options, row=2)
+            select_wa.callback = self.apri_whatsapp_callback
+            self.add_item(select_wa)
+
+    async def apri_modal_contatto(self, interaction: discord.Interaction):
+        await interaction.response.send_modal(AggiungiContattoModal())
+
+    async def avvia_chiamata_callback(self, interaction: discord.Interaction):
+        numero = interaction.data["values"][0] # type: ignore
+        await interaction.response.defer(ephemeral=True)
+        await avvia_chiamata_vocale(interaction, numero)
+
+    async def apri_whatsapp_callback(self, interaction: discord.Interaction):
+        numero = interaction.data["values"][0] # type: ignore
+        res = supabase.table("contacts").select("name").eq("owner_id", self.user_id).eq("phone_number", numero).execute()
+        nome_destinatario = res.data[0]["name"] if res.data else numero
+
+        view = WhatsAppChatView(nome_destinatario)
+        await interaction.response.send_message(
+            f"📱 **WhatsApp - Chat con {nome_destinatario}**",
+            view=view,
+            ephemeral=True
+        )
+
+
+# --- 5. LOGICA DI AVVIO DELLA CHIAMATA VOCALE ---
+async def avvia_chiamata_vocale(interaction: discord.Interaction, numero_destinatario: str):
+    guild = interaction.guild
+    chiamante = interaction.user
+
+    # Cerca il proprietario del numero nella tabella dei numeri univoci degli utenti
+    res = supabase.table("user_phones").select("discord_id").eq("phone_number", numero_destinatario).execute()
+    
+    if not res.data or len(res.data) == 0:
+        await interaction.followup.send("❌ Il numero digitato non è attivo o non appartiene a nessun cittadino registrato.", ephemeral=True)
+        return
+
+    target_discord_id = res.data[0]["discord_id"]
+    destinatario = guild.get_member(int(target_discord_id))
+    
+    if not destinatario:
+        await interaction.followup.send("❌ L'utente chiamato non è reperibile nel server.", ephemeral=True)
+        return
+
+    overwrites = {
+        guild.default_role: discord.PermissionOverwrite(connect=False),
+        chiamante: discord.PermissionOverwrite(connect=True, speak=True),
+        destinatario: discord.PermissionOverwrite(connect=True, speak=True)
+    }
+    
+    nome_canale = f"Chiamata ({chiamante.display_name}) -> ({destinatario.display_name})"
+    categoria = interaction.channel.category if hasattr(interaction.channel, 'category') else None
+    
+    voice_channel = await guild.create_voice_channel(name=nome_canale, category=categoria, overwrites=overwrites)
+
+    # Avvia il task audio dello squillo in loop nel canale vocale
+    task_squillo = asyncio.create_task(riproduci_audio_canale(voice_channel, "squillo.mp3", loop=True))
+
+    view = RispondiChiamataView(chiamante, destinatario, voice_channel, task_squillo)
+    
+    try:
+        await destinatario.send(
+            f"📱 **CHIAMATA IN ARRIVO**\nStai ricevendo una chiamata da **{chiamante.display_name}**.\nHai 2 minuti per rispondere:",
+            view=view
+        )
+    except Exception:
+        if not task_squillo.done():
+            task_squillo.cancel()
+        await voice_channel.delete()
+        await interaction.followup.send("❌ Impossibile inviare il DM al destinatario (potrebbe averli chiusi).", ephemeral=True)
+        return
+
+    await interaction.followup.send(f"📞 Squillo in corso verso **{destinatario.display_name}**...", ephemeral=True)
+
+
+# --- 6. COMANDO /TELEFONO ---
+@bot.tree.command(name="telefono", description="Apre lo schermo del tuo smartphone di Evren City OS.")
+async def telefono(interaction: discord.Interaction):
+    # Controllo del ruolo richiesto (se impostato)
+    if RUOLO_RICHIESTO_ID is not None:
+        ruolo = interaction.guild.get_role(RUOLO_RICHIESTO_ID)
+        if not ruolo or ruolo not in interaction.user.roles:
+            await interaction.response.send_message(
+                "❌ **Accesso Negato:** Non possiedi il ruolo necessario per utilizzare lo smartphone.", 
+                ephemeral=True
+            )
+            return
+
+    user_id = str(interaction.user.id)
+    view = EvrenPhoneView(user_id)
+    
+    await interaction.response.send_message(
+        "📱 **Evren City OS**\nBenvenuto nel tuo smartphone. Gestisci rubrica, chiamate e chat WhatsApp:",
+        view=view,
+        ephemeral=True
+    )
+
 @bot.tree.command(name="cerca_foto", description="[Riservato Polizia] Riconosce un cittadino dalla foto tramite scansione AI remota.")
 @app_commands.describe(foto="Carica la foto o il documento da analizzare")
 async def cerca_foto(interaction: discord.Interaction, foto: discord.Attachment):
