@@ -1030,30 +1030,23 @@ from playwright.async_api import async_playwright
 
 # Inserisci qui la tua API Key di ImgBB
 IMGBB_API_KEY = os.getenv("IMGBB_API_KEY")
-
-# --- 1. FUNZIONE DI UPLOAD SU IMGBB ---
 async def upload_to_imgbb(foto: discord.Attachment) -> str:
     url = "https://api.imgbb.com/1/upload"
     
-    # Leggi i byte del file allegato su Discord
     foto_bytes = await foto.read()
     
-    payload = {
-        "key": IMGBB_API_KEY
-    }
-    
-    files = {
-        "image": foto_bytes
-    }
+    # Usiamo FormData di aiohttp per gestire correttamente testo e file insieme
+    data = aiohttp.FormData()
+    data.add_field("key", IMGBB_API_KEY)
+    data.add_field("image", foto_bytes, filename="foto.png", content_type="image/png")
     
     async with aiohttp.ClientSession() as session:
-        async with session.post(url, data=payload, data=files) as response:
+        async with session.post(url, data=data) as response:
             if response.status == 200:
-                data = await response.json()
-                return data["data"]["url"]
+                res_json = await response.json()
+                return res_json["data"]["url"]
             else:
                 raise Exception(f"Errore ImgBB status code: {response.status}")
-
 
 # --- 2. FUNZIONI DI SUPPORTO (Codice Fiscale e Numero Documento) ---
 def genera_codice_fiscale(nome: str, cognome: str) -> str:
