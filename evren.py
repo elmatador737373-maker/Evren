@@ -1295,7 +1295,7 @@ class PinKeypadView(ui.View):
     def _get_dashboard(self):
         u = get_or_create_user(self.user_id, "User")
         return discord.Embed(
-            title="🏦 Sportello Bancomat",
+            title="🏦 𝗦𝗽𝗼𝗿𝘁𝗲𝗹𝗹𝗼 𝗕𝗮𝗻𝗰𝗼𝗺𝗮𝘁",
             description=f"• **Conto N°:** `ACC-{self.user_id}`\n• **Banca:** `${float(u.get('bank', 0)):,.2f}`\n• **Contanti:** `${float(u.get('wallet', 0)):,.2f}`",
             color=discord.Color.green()
         )
@@ -1323,7 +1323,7 @@ class PinKeypadView(ui.View):
         if i.user.id == self.user_id: self.entered_pin = ""; await self.update_display(i, "PIN azzerato:")
     @ui.button(label="0", style=discord.ButtonStyle.secondary, row=3)
     async def b0(self, i: discord.Interaction, b: ui.Button): await self.handle_digit(i, "0")
-    @ui.button(label="✖", style=discord.ButtonStyle.danger, row=3)
+    @ui.button(label="X", style=discord.ButtonStyle.danger, row=3)
     async def cancel(self, i: discord.Interaction, b: ui.Button):
         if i.user.id == self.user_id: self.stop(); await i.response.edit_message(content="❌ Annullato.", embed=None, view=None)
 
