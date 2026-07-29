@@ -1,9 +1,10 @@
 import os
 import random
+import string
 import threading
 from flask import Flask, jsonify
 import discord
-from discord import app_commands
+from discord import app_commands, ui
 from discord.ext import commands
 from dotenv import load_dotenv
 from supabase import create_client, Client
@@ -13,81 +14,38 @@ load_dotenv()
 DISCORD_TOKEN = os.getenv("DISCORD_TOKEN")
 SUPABASE_URL = os.getenv("SUPABASE_URL")
 SUPABASE_KEY = os.getenv("SUPABASE_KEY")
-PORT = int(os.getenv("PORT", 5000))
 
-RUOLO_BANCOMAT_ID = 123456789012345678  # Sostituisci con l'ID reale del ruolo bancomat
-RUOLO_STAFF_ID = 123456789012345679     # Ruolo autorizzato a creare item e bypassare i requisiti
+# --- CONFIGURAZIONE RUOLI SPECIFICI ---
+RUOLO_STAFF_ID = 123456789012345676           # Permesso per /crea_item
+RUOLO_BANCOMAT_ID = 123456789012345677        # Permesso per accedere al Bancomat (opzionale)
+RUOLO_ARMERIA_ID = 123456789012345678        # Permesso per registrare ed emettere armi
+RUOLO_MOTORIZZAZIONE_ID = 123456789012345679  # Permesso per registrare veicoli e patenti
+RUOLO_POLIZIA_ID = 123456789012345680         # Permesso per CAD Polizia e Porto d'Armi
+RUOLO_IMMOBILIARE_ID = 123456789012345681     # Permesso per registrare le case/immobili
 
 supabase: Client = create_client(SUPABASE_URL, SUPABASE_KEY)
 
 intents = discord.Intents.default()
 intents.message_content = True
-intents.members = True  # Necessario per rilevare l'ingresso degli utenti nel server
+intents.members = True
 
-class EvrenCityBot(commands.Bot):
-    def __init__(self):
-        super().__init__(command_prefix="!", intents=intents)
-
-    async def setup_hook(self):
-        self.add_view(WelcomeView())
-        await self.tree.sync()
-        print("🔄 Comandi Slash e View persistenti sincronizzati con successo.")
-
-bot = EvrenCityBot()
+bot = commands.Bot(command_prefix="!", intents=intents)
 
 
-# --- VIEW PERSISTENTE PER I LINK DI BENVENUTO ---
+# --- SERVER FLASK PER KEEP-ALIVE ---
 
-class WelcomeView(discord.ui.View):
-    def __init__(self):
-        super().__init__(timeout=None)
+app = Flask(__name__)
 
-    @discord.ui.button(label="Bottone Nº 1", style=discord.ButtonStyle.link, url="https://discord.com/channels/1233353915559313478/1500844219424706581", row=0)
-    async def btn_1(self, interaction: discord.Interaction, button: discord.ui.Button): pass
+@app.route("/")
+def home():
+    return jsonify({"status": "online", "server": "Evren City RP Bot"})
 
-    @discord.ui.button(label="Bottone Nº 2", style=discord.ButtonStyle.link, url="https://discord.com/channels/1233353915559313478/1252225171553652787", row=0)
-    async def btn_2(self, interaction: discord.Interaction, button: discord.ui.Button): pass
-
-    @discord.ui.button(label="Bottone Nº 3", style=discord.ButtonStyle.link, url="https://discord.com/channels/1233353915559313478/1374421195163963553", row=0)
-    async def btn_3(self, interaction: discord.Interaction, button: discord.ui.Button): pass
-
-    @discord.ui.button(label="Bottone Nº 4", style=discord.ButtonStyle.link, url="https://discord.com/channels/1233353915559313478/1519623994591019189", row=1)
-    async def btn_4(self, interaction: discord.Interaction, button: discord.ui.Button): pass
-
-    @discord.ui.button(label="Bottone Nº 5", style=discord.ButtonStyle.link, url="https://discord.com/channels/1233353915559313478/1252225106785337355", row=1)
-    async def btn_5(self, interaction: discord.Interaction, button: discord.ui.Button): pass
-
-    @discord.ui.button(label="Bottone Nº 6", style=discord.ButtonStyle.link, url="https://discord.com/channels/1233353915559313478/1503750254028390580", row=1)
-    async def btn_6(self, interaction: discord.Interaction, button: discord.ui.Button): pass
+def run_flask():
+    port = int(os.getenv("PORT", 5000))
+    app.run(host="0.0.0.0", port=port)
 
 
-# --- EVENTO DI BENVENUTO IN DM ---
-
-@bot.event
-async def on_member_join(member: discord.Member):
-    try:
-        welcome_text = (
-            "✦ **BENVENUTO SU EVREN!** ✦\n"
-            "Ecco i passaggi fondamentali per iniziare la tua avventura:\n\n"
-            "> 🔓 **1. Sblocco Canali**\n"
-            "> Se non vedi tutti i canali, segui la guida iniziale sul **Bottone Nº 1** del server per sbloccarli.\n\n"
-            "> 📜 **2. Regolamenti**\n"
-            "> Leggi le linee guida nei canali del **Bottone Nº 2**, **Bottone Nº 3** e **Bottone Nº 4** per conoscere le regole del server.\n\n"
-            "> 📝 **3. Background**\n"
-            "> Scrivi la storia del tuo personaggio seguendo i modelli nella sezione del **Bottone Nº 5**.\n\n"
-            "> 🛡️ **4. Whitelist (WL)**\n"
-            "> Invia la tua richiesta di WL nel canale del **Bottone Nº 6** per completare l'accesso e iniziare a giocare.\n\n"
-            "Hai dubbi o domande? Lo staff è sempre a tua disposizione. Buon divertimento! ✨"
-        )
-        embed = discord.Embed(title="Benvenuto a bordo!", description=welcome_text, color=discord.Color.gold())
-        await member.send(embed=embed, view=WelcomeView())
-    except discord.Forbidden:
-        print(f"❌ Impossibile inviare il messaggio privato di benvenuto a {member.name} (DM chiusi).")
-    except Exception as e:
-        print(f"⚠️ Errore nell'invio del benvenuto a {member.name}: {e}")
-
-
-# --- FUNZIONI DATABASE & GESTIONE PESO ---
+# --- FUNZIONI DI SUPPORTO & UTILITY ---
 
 def get_or_create_user(user_id: int, username: str):
     response = supabase.table("users").select("*").eq("discord_id", str(user_id)).execute()
@@ -100,778 +58,675 @@ def get_or_create_user(user_id: int, username: str):
             "cash": 500.0,
             "bank": 1500.0,
             "pin": None,
-            "max_weight": 20.0
+            "max_weight": 10.0  # Limite peso base
         }
         insert_res = supabase.table("users").insert(new_user).execute()
         return insert_res.data[0]
 
-def get_user_current_weight(user_id: str):
-    inv_res = supabase.table("inventory").select("quantity, items(weight)").eq("discord_id", user_id).execute()
+def log_transaction(user_id: str, trans_type: str, amount: float, details: str):
+    supabase.table("bank_transactions").insert({
+        "discord_id": str(user_id),
+        "type": trans_type,
+        "amount": round(amount, 2),
+        "details": details
+    }).execute()
+
+def genera_codice_fiscale(nome: str, cognome: str) -> str:
+    cons_cog = "".join([c for c in cognome.upper() if c in "BCDFGHJKLMNPQRSTVWXYZ"]) + "XXX"
+    cons_nom = "".join([c for c in nome.upper() if c in "BCDFGHJKLMNPQRSTVWXYZ"]) + "XXX"
+    letters = "".join(random.choices(string.ascii_uppercase, k=3))
+    digits = "".join(random.choices(string.digits, k=5))
+    return f"{cons_cog[:3]}{cons_nom[:3]}{digits}{letters}"
+
+def genera_num_documento() -> str:
+    letters1 = "".join(random.choices(string.ascii_uppercase, k=2))
+    digits = "".join(random.choices(string.digits, k=5))
+    letters2 = "".join(random.choices(string.ascii_uppercase, k=2))
+    return f"{letters1}{digits}{letters2}"
+
+def genera_matricola_arma() -> str:
+    parte1 = "".join(random.choices(string.digits + string.ascii_uppercase, k=4))
+    parte2 = "".join(random.choices(string.digits + string.ascii_uppercase, k=4))
+    return f"{parte1}-{parte2}"
+
+def calculate_user_inventory_weight(user_id: str) -> float:
+    res = supabase.table("inventory").select("quantity, item_id, master_items(weight)").eq("discord_id", str(user_id)).execute()
     total_weight = 0.0
-    if inv_res.data:
-        for row in inv_res.data:
-            item_info = row.get("items")
-            if item_info:
-                weight = float(item_info.get("weight", 0.0))
-                qty = int(row.get("quantity", 1))
-                total_weight += weight * qty
+    if res.data:
+        for row in res.data:
+            q = row.get("quantity", 1)
+            w = row.get("master_items", {}).get("weight", 0.1) if row.get("master_items") else 0.1
+            total_weight += q * w
     return round(total_weight, 2)
 
-def update_balance_safe(user_id: int, cash_change: float = 0.0, bank_change: float = 0.0):
-    user = get_or_create_user(user_id, "Unknown")
-    current_cash = float(user.get("cash", 0.0))
-    current_bank = float(user.get("bank", 0.0))
-    
-    new_cash = current_cash + cash_change
-    new_bank = current_bank + bank_change
-    
-    if new_cash < 0.0 or new_bank < 0.0:
-        return False
+
+# --- SISTEMA OGGETTI (COMANDO STAFF /crea_item & INVENTARIO) ---
+
+@bot.tree.command(name="crea_item", description="[STAFF] Crea un nuovo oggetto con meccaniche specifiche.")
+@app_commands.choices(categoria=[
+    app_commands.Choice(name="⚔️ Arma", value="arma"),
+    app_commands.Choice(name="🍕 Cibo", value="cibo"),
+    app_commands.Choice(name="🥤 Bevanda", value="bevanda"),
+    app_commands.Choice(name="💊 Medicina", value="medicina"),
+    app_commands.Choice(name="🌿 Droga", value="droga"),
+    app_commands.Choice(name="🔑 Chiavi", value="chiavi"),
+    app_commands.Choice(name="🎒 Zaino", value="zaino"),
+    app_commands.Choice(name="🔓 Scassinamento", value="scassinamento")
+])
+async def crea_item(
+    interaction: discord.Interaction,
+    nome: str,
+    categoria: app_commands.Choice[str],
+    peso: float,
+    probabilita_riuscita: int = 100,
+    capienza_zaino: float = 0.0
+):
+    if RUOLO_STAFF_ID:
+        staff_role = interaction.guild.get_role(RUOLO_STAFF_ID)
+        if staff_role and staff_role not in interaction.user.roles:
+            await interaction.response.send_message("❌ Comando riservato allo Staff!", ephemeral=True)
+            return
+
+    if probabilita_riuscita < 1 or probabilita_riuscita > 100:
+        await interaction.response.send_message("❌ La probabilità di riuscita deve essere tra 1% e 100%.", ephemeral=True)
+        return
+
+    if categoria.value == "zaino" and capienza_zaino <= 0:
+        await interaction.response.send_message("❌ Per la categoria **Zaino**, devi specificare una `capienza_zaino` maggiore di 0.", ephemeral=True)
+        return
+
+    item_data = {
+        "name": nome,
+        "category": categoria.value,
+        "weight": max(0.0, round(peso, 2)),
+        "success_rate": probabilita_riuscita,
+        "capacity_boost": round(capienza_zaino, 2) if categoria.value == "zaino" else 0.0
+    }
+
+    try:
+        supabase.table("master_items").insert(item_data).execute()
+    except Exception as e:
+        await interaction.response.send_message(f"❌ Errore durante la creazione! Nome già in uso o errore DB.", ephemeral=True)
+        return
+
+    embed = discord.Embed(
+        title="✨ Nuovo Oggetto Creato",
+        description=f"L'oggetto **{nome}** è stato registrato.",
+        color=discord.Color.purple()
+    )
+    embed.add_field(name="🏷️ Categoria", value=f"`{categoria.name}`", inline=True)
+    embed.add_field(name="⚖️ Peso", value=f"`{peso} kg`", inline=True)
+    embed.add_field(name="🎲 Probabilità Successo", value=f"`{probabilita_riuscita}%`", inline=True)
+    if categoria.value == "zaino":
+        embed.add_field(name="🎒 Capienza Extra", value=f"`+{capienza_zaino} kg`", inline=False)
+
+    await interaction.response.send_message(embed=embed)
+
+
+class InventoryUseView(ui.View):
+    def __init__(self, user_id: int, user_items: list):
+        super().__init__(timeout=120)
+        self.user_id = user_id
         
-    supabase.table("users").update({
-        "cash": round(new_cash, 2),
-        "bank": round(new_bank, 2)
-    }).eq("discord_id", str(user_id)).execute()
-    
-    return True
+        options = []
+        for item in user_items[:25]:
+            m = item.get("master_items", {})
+            name = m.get("name", "Oggetto")
+            cat = m.get("category", "N/D")
+            w = m.get("weight", 0.0)
+            options.append(discord.SelectOption(
+                label=f"{name} (x{item.get('quantity', 1)})",
+                value=str(item.get("id")),
+                description=f"Cat: {cat.capitalize()} | Peso: {w}kg"
+            ))
+            
+        if options:
+            self.select = ui.Select(placeholder="Seleziona un oggetto da usare...", options=options)
+            self.select.callback = self.use_item_callback
+            self.add_item(self.select)
+
+    async def use_item_callback(self, interaction: discord.Interaction):
+        if interaction.user.id != self.user_id: return
+
+        item_inv_id = int(self.select.values[0])
+        res = supabase.table("inventory").select("*, master_items(*)").eq("id", item_inv_id).execute()
+        if not res.data:
+            await interaction.response.send_message("❌ Oggetto non trovato.", ephemeral=True)
+            return
+
+        inv_item = res.data[0]
+        m_item = inv_item.get("master_items", {})
+        category = m_item.get("category")
+        name = m_item.get("name")
+        rate = m_item.get("success_rate", 100)
+        boost = float(m_item.get("capacity_boost", 0.0))
+
+        # Test Probabilità di riuscita
+        roll = random.randint(1, 100)
+        if roll > rate:
+            await interaction.response.send_message(f"❌ **Azione Fallita!** Hai usato **{name}**, ma la prova non è riuscita ({roll}% su {rate}%).", ephemeral=True)
+            return
+
+        action_msg = ""
+        if category == "cibo":
+            action_msg = f"🍕 Hai mangiato **{name}**. Fame ripristinata!"
+        elif category == "bevanda":
+            action_msg = f"🥤 Hai bevuto **{name}**. Sete placata!"
+        elif category == "medicina":
+            action_msg = f"💊 Hai usato **{name}**. Ti senti in piena salute!"
+        elif category == "droga":
+            action_msg = f"🌿 Hai consumato **{name}**. Iniziano i primi effetti..."
+        elif category == "chiavi":
+            action_msg = f"🔑 Hai sbloccato la serratura con **{name}**."
+        elif category == "scassinamento":
+            action_msg = f"🔓 **Scassinamento riuscito!** Hai aperto il blocco con **{name}**."
+        elif category == "arma":
+            action_msg = f"⚔️ Hai impugnato **{name}**."
+        elif category == "zaino":
+            u_data = get_or_create_user(self.user_id, interaction.user.name)
+            curr_max = float(u_data.get("max_weight", 10.0))
+            new_max = curr_max + boost
+            supabase.table("users").update({"max_weight": new_max}).eq("discord_id", str(self.user_id)).execute()
+            action_msg = f"🎒 **Zaino Indossato!** Capienza inventario aumentata di **+{boost} kg** (Totale: `{new_max} kg`)."
+
+        # Rimozione/Scalo quantita
+        qty = inv_item.get("quantity", 1)
+        if qty > 1:
+            supabase.table("inventory").update({"quantity": qty - 1}).eq("id", item_inv_id).execute()
+        else:
+            supabase.table("inventory").delete().eq("id", item_inv_id).execute()
+
+        await interaction.response.send_message(f"✅ {action_msg}", ephemeral=True)
 
 
-# --- TASTIERINO BANCOMAT (VIEW) ---
+@bot.tree.command(name="inventario", description="Visualizza i tuoi oggetti e il limite di peso.")
+async def inventario(interaction: discord.Interaction):
+    u_data = get_or_create_user(interaction.user.id, interaction.user.name)
+    max_weight = float(u_data.get("max_weight", 10.0))
+    current_weight = calculate_user_inventory_weight(interaction.user.id)
 
-class PinKeypadView(discord.ui.View):
+    res = supabase.table("inventory").select("*, master_items(*)").eq("discord_id", str(interaction.user.id)).execute()
+
+    embed = discord.Embed(
+        title=f"🎒 Inventario di {interaction.user.display_name}",
+        description=f"⚖️ **Peso Trasportato:** `{current_weight} / {max_weight} kg`",
+        color=discord.Color.green() if current_weight <= max_weight else discord.Color.red()
+    )
+
+    if res.data:
+        for row in res.data:
+            m = row.get("master_items", {})
+            name = m.get("name", "Oggetto")
+            q = row.get("quantity", 1)
+            w = (m.get("weight", 0.1) if m else 0.1) * q
+            cat = (m.get("category", "N/D") if m else "N/D").capitalize()
+            embed.add_field(name=f"📦 {name} x{q}", value=f"└ Cat: `{cat}` | Peso: `{w:.1f}kg`", inline=False)
+        
+        view = InventoryUseView(interaction.user.id, res.data)
+        await interaction.response.send_message(embed=embed, view=view, ephemeral=True)
+    else:
+        embed.description += "\n\n*Il tuo inventario è vuoto.*"
+        await interaction.response.send_message(embed=embed, ephemeral=True)
+
+
+# --- BANCOMAT CON PIN ---
+
+class DepositModal(ui.Modal, title="💵 Deposito Contanti"):
+    amount_input = ui.TextInput(label="Importo ($)", placeholder="Es. 500", required=True)
+
+    def __init__(self, user_id: int):
+        super().__init__()
+        self.user_id = user_id
+
+    async def on_submit(self, interaction: discord.Interaction):
+        try:
+            val = float(self.amount_input.value.strip())
+            if val <= 0: raise ValueError()
+        except ValueError:
+            await interaction.response.send_message("❌ Inserisci un importo valido!", ephemeral=True)
+            return
+
+        user_data = get_or_create_user(self.user_id, interaction.user.name)
+        cash = float(user_data.get("cash", 0.0))
+
+        if cash < val:
+            await interaction.response.send_message(f"❌ Contanti insufficienti! Possiedi `${cash:,.2f}`.", ephemeral=True)
+            return
+
+        new_cash = cash - val
+        new_bank = float(user_data.get("bank", 0.0)) + val
+        supabase.table("users").update({"cash": new_cash, "bank": new_bank}).eq("discord_id", str(self.user_id)).execute()
+        log_transaction(str(self.user_id), "DEPOSITO", val, "Deposito contanti allo sportello")
+
+        embed = discord.Embed(title="💵 Deposito Effettuato", description=f"Hai depositato **${val:,.2f}**.\nNuovo Saldo Banca: **${new_bank:,.2f}**", color=discord.Color.green())
+        await interaction.response.send_message(embed=embed, ephemeral=True)
+
+
+class WithdrawModal(ui.Modal, title="💸 Prelievo Contanti"):
+    amount_input = ui.TextInput(label="Importo ($)", placeholder="Es. 200", required=True)
+
+    def __init__(self, user_id: int):
+        super().__init__()
+        self.user_id = user_id
+
+    async def on_submit(self, interaction: discord.Interaction):
+        try:
+            val = float(self.amount_input.value.strip())
+            if val <= 0: raise ValueError()
+        except ValueError:
+            await interaction.response.send_message("❌ Inserisci un importo valido!", ephemeral=True)
+            return
+
+        user_data = get_or_create_user(self.user_id, interaction.user.name)
+        bank = float(user_data.get("bank", 0.0))
+
+        if bank < val:
+            await interaction.response.send_message(f"❌ Saldo insufficiente! Saldo in banca: `${bank:,.2f}`.", ephemeral=True)
+            return
+
+        new_bank = bank - val
+        new_cash = float(user_data.get("cash", 0.0)) + val
+        supabase.table("users").update({"cash": new_cash, "bank": new_bank}).eq("discord_id", str(self.user_id)).execute()
+        log_transaction(str(self.user_id), "PRELIEVO", val, "Prelievo contanti da bancomat")
+
+        embed = discord.Embed(title="💸 Prelievo Effettuato", description=f"Hai prelevato **${val:,.2f}**.\nNuovo Saldo Banca: **${new_bank:,.2f}**", color=discord.Color.orange())
+        await interaction.response.send_message(embed=embed, ephemeral=True)
+
+
+class TransferModal(ui.Modal, title="📲 Bonifico Bancario"):
+    amount_input = ui.TextInput(label="Importo ($)", placeholder="Es. 1000", required=True)
+    causale_input = ui.TextInput(label="Causale", placeholder="Es. Acquisto auto", required=False, max_length=100)
+
+    def __init__(self, sender_id: int, target_member: discord.Member):
+        super().__init__()
+        self.sender_id = sender_id
+        self.target_member = target_member
+
+    async def on_submit(self, interaction: discord.Interaction):
+        try:
+            val = float(self.amount_input.value.strip())
+            if val <= 0: raise ValueError()
+        except ValueError:
+            await interaction.response.send_message("❌ Importo non valido!", ephemeral=True)
+            return
+
+        sender_data = get_or_create_user(self.sender_id, interaction.user.name)
+        sender_bank = float(sender_data.get("bank", 0.0))
+
+        if sender_bank < val:
+            await interaction.response.send_message(f"❌ Saldo insufficiente per bonifico di `${val:,.2f}`.", ephemeral=True)
+            return
+
+        target_data = get_or_create_user(self.target_member.id, self.target_member.name)
+        causale = self.causale_input.value.strip() or "Nessuna causale"
+
+        new_sender_bank = sender_bank - val
+        new_target_bank = float(target_data.get("bank", 0.0)) + val
+
+        supabase.table("users").update({"bank": new_sender_bank}).eq("discord_id", str(self.sender_id)).execute()
+        supabase.table("users").update({"bank": new_target_bank}).eq("discord_id", str(self.target_member.id)).execute()
+
+        log_transaction(str(self.sender_id), "BONIFICO_INVIATO", val, f"A {self.target_member.display_name} | {causale}")
+        log_transaction(str(self.target_member.id), "BONIFICO_RICEVUTO", val, f"Da {interaction.user.display_name} | {causale}")
+
+        embed = discord.Embed(
+            title="📲 Bonifico Effettuato",
+            description=f"Inviati **${val:,.2f}** a {self.target_member.mention}.\nCausale: `{causale}`",
+            color=discord.Color.green()
+        )
+        await interaction.response.send_message(embed=embed, ephemeral=True)
+
+
+class TransferUserSelectView(ui.View):
+    def __init__(self, sender_id: int):
+        super().__init__(timeout=60)
+        self.sender_id = sender_id
+
+    @ui.select(cls=ui.UserSelect, placeholder="Seleziona il destinatario del bonifico...")
+    async def select_user(self, interaction: discord.Interaction, select: ui.UserSelect):
+        if interaction.user.id != self.sender_id: return
+        target_member = select.values[0]
+        if target_member.id == self.sender_id:
+            await interaction.response.send_message("❌ Non puoi fare un bonifico a te stesso!", ephemeral=True)
+            return
+        await interaction.response.send_modal(TransferModal(self.sender_id, target_member))
+
+
+class AtmMenuView(ui.View):
+    def __init__(self, user_id: int):
+        super().__init__(timeout=120)
+        self.user_id = user_id
+
+    @ui.button(label="💵 Deposita", style=discord.ButtonStyle.success, row=0)
+    async def btn_dep(self, interaction: discord.Interaction, button: ui.Button):
+        if interaction.user.id == self.user_id: await interaction.response.send_modal(DepositModal(self.user_id))
+
+    @ui.button(label="💸 Preleva", style=discord.ButtonStyle.danger, row=0)
+    async def btn_with(self, interaction: discord.Interaction, button: ui.Button):
+        if interaction.user.id == self.user_id: await interaction.response.send_modal(WithdrawModal(self.user_id))
+
+    @ui.button(label="📲 Bonifico", style=discord.ButtonStyle.primary, row=0)
+    async def btn_trf(self, interaction: discord.Interaction, button: ui.Button):
+        if interaction.user.id == self.user_id:
+            await interaction.response.send_message("👤 Seleziona l'utente destinatario:", view=TransferUserSelectView(self.user_id), ephemeral=True)
+
+    @ui.button(label="📜 Storico", style=discord.ButtonStyle.secondary, row=1)
+    async def btn_his(self, interaction: discord.Interaction, button: ui.Button):
+        if interaction.user.id != self.user_id: return
+        res = supabase.table("bank_transactions").select("*").eq("discord_id", str(self.user_id)).order("created_at", desc=True).limit(8).execute()
+        embed = discord.Embed(title="📜 Storico Transazioni", color=discord.Color.blue())
+        if res.data:
+            for tx in res.data:
+                icon = "🟢" if "RICEVUTO" in tx['type'] or "DEPOSITO" in tx['type'] else "🔴"
+                embed.add_field(name=f"{icon} {tx['type']} - ${tx['amount']:,.2f}", value=f"└ `{tx['details']}`", inline=False)
+        else:
+            embed.description = "Nessuna transazione."
+        await interaction.response.send_message(embed=embed, ephemeral=True)
+
+    @ui.button(label="🚪 Esci", style=discord.ButtonStyle.secondary, row=1)
+    async def btn_exit(self, interaction: discord.Interaction, button: ui.Button):
+        if interaction.user.id == self.user_id:
+            self.stop()
+            await interaction.response.edit_message(content="🔒 Sessione Bancomat terminata.", embed=None, view=None)
+
+
+class PinKeypadView(ui.View):
     def __init__(self, user_id: int, user_data: dict, mode: str = "login"):
         super().__init__(timeout=60)
         self.user_id = user_id
         self.user_data = user_data
         self.mode = mode
         self.entered_pin = ""
-        self.max_length = 4
 
-    async def update_display(self, interaction: discord.Interaction, message_text: str):
-        masked_pin = "*" * len(self.entered_pin) + "_" * (self.max_length - len(self.entered_pin))
-        embed = discord.Embed(
-            title="💳 Tastierino Bancomat - Evren City RP",
-            description=f"{message_text}\n\n**PIN inserito:** `{masked_pin}`",
-            color=discord.Color.blue()
-        )
+    async def update_display(self, interaction: discord.Interaction, text: str):
+        masked_pin = "*" * len(self.entered_pin) + "_" * (4 - len(self.entered_pin))
+        embed = discord.Embed(title="💳 Tastierino Bancomat", description=f"{text}\n\n**PIN:** `{masked_pin}`", color=discord.Color.blue())
         await interaction.response.edit_message(embed=embed, view=self)
 
     async def handle_digit(self, interaction: discord.Interaction, digit: str):
-        if interaction.user.id != self.user_id:
-            await interaction.response.send_message("❌ Questo bancomat non è per te!", ephemeral=True)
-            return
+        if interaction.user.id != self.user_id: return
+        if len(self.entered_pin) < 4: self.entered_pin += digit
 
-        if len(self.entered_pin) < self.max_length:
-            self.entered_pin += digit
-
-        if len(self.entered_pin) == self.max_length:
+        if len(self.entered_pin) == 4:
             if self.mode == "register":
                 supabase.table("users").update({"pin": self.entered_pin}).eq("discord_id", str(self.user_id)).execute()
-                embed = discord.Embed(
-                    title="🔐 Bancomat - Registrato",
-                    description=f"PIN impostato con successo!\nSaldo Conto: **${float(self.user_data.get('bank', 0.0)):,.2f}**",
-                    color=discord.Color.green()
-                )
+                embed = self._get_dashboard()
                 self.stop()
-                await interaction.response.edit_message(embed=embed, view=None)
-            
+                await interaction.response.edit_message(embed=embed, view=AtmMenuView(self.user_id))
             elif self.mode == "login":
-                saved_pin = self.user_data.get("pin")
-                if self.entered_pin == saved_pin:
-                    bank_balance = float(self.user_data.get("bank", 0.0))
-                    embed = discord.Embed(
-                        title="💳 Bancomat - Accesso Riuscito",
-                        description=f"Benvenuto nel tuo conto.\nSaldo attuale: **${bank_balance:,.2f}**",
-                        color=discord.Color.green()
-                    )
+                if self.entered_pin == self.user_data.get("pin"):
+                    embed = self._get_dashboard()
                     self.stop()
-                    await interaction.response.edit_message(embed=embed, view=None)
+                    await interaction.response.edit_message(embed=embed, view=AtmMenuView(self.user_id))
                 else:
                     self.entered_pin = ""
                     await self.update_display(interaction, "❌ **PIN Errato!** Riprova:")
         else:
-            action_text = "Crea il tuo PIN segreto di 4 cifre:" if self.mode == "register" else "Inserisci il tuo PIN segreto:"
-            await self.update_display(interaction, action_text)
+            await self.update_display(interaction, "Inserisci il PIN:")
 
-    @discord.ui.button(label="1", style=discord.ButtonStyle.secondary, row=0)
-    async def b1(self, interaction: discord.Interaction, button: discord.ui.Button): await self.handle_digit(interaction, "1")
-    @discord.ui.button(label="2", style=discord.ButtonStyle.secondary, row=0)
-    async def b2(self, interaction: discord.Interaction, button: discord.ui.Button): await self.handle_digit(interaction, "2")
-    @discord.ui.button(label="3", style=discord.ButtonStyle.secondary, row=0)
-    async def b3(self, interaction: discord.Interaction, button: discord.ui.Button): await self.handle_digit(interaction, "3")
-    @discord.ui.button(label="4", style=discord.ButtonStyle.secondary, row=1)
-    async def b4(self, interaction: discord.Interaction, button: discord.ui.Button): await self.handle_digit(interaction, "4")
-    @discord.ui.button(label="5", style=discord.ButtonStyle.secondary, row=1)
-    async def b5(self, interaction: discord.Interaction, button: discord.ui.Button): await self.handle_digit(interaction, "5")
-    @discord.ui.button(label="6", style=discord.ButtonStyle.secondary, row=1)
-    async def b6(self, interaction: discord.Interaction, button: discord.ui.Button): await self.handle_digit(interaction, "6")
-    @discord.ui.button(label="7", style=discord.ButtonStyle.secondary, row=2)
-    async def b7(self, interaction: discord.Interaction, button: discord.ui.Button): await self.handle_digit(interaction, "7")
-    @discord.ui.button(label="8", style=discord.ButtonStyle.secondary, row=2)
-    async def b8(self, interaction: discord.Interaction, button: discord.ui.Button): await self.handle_digit(interaction, "8")
-    @discord.ui.button(label="9", style=discord.ButtonStyle.secondary, row=2)
-    async def b9(self, interaction: discord.Interaction, button: discord.ui.Button): await self.handle_digit(interaction, "9")
-    @discord.ui.button(label="C", style=discord.ButtonStyle.danger, row=3)
-    async def clear(self, interaction: discord.Interaction, button: discord.ui.Button):
-        if interaction.user.id != self.user_id: return
-        self.entered_pin = ""
-        action_text = "Crea il tuo PIN segreto di 4 cifre:" if self.mode == "register" else "Inserisci il tuo PIN segreto:"
-        await self.update_display(interaction, action_text)
-    @discord.ui.button(label="0", style=discord.ButtonStyle.secondary, row=3)
-    async def b0(self, interaction: discord.Interaction, button: discord.ui.Button): await self.handle_digit(interaction, "0")
-    @discord.ui.button(label="✖", style=discord.ButtonStyle.danger, row=3)
-    async def cancel(self, interaction: discord.Interaction, button: discord.ui.Button):
-        if interaction.user.id != self.user_id: return
-        self.stop()
-        await interaction.response.edit_message(content="❌ Operazione annullata.", embed=None, view=None)
+    def _get_dashboard(self):
+        u = get_or_create_user(self.user_id, "User")
+        return discord.Embed(
+            title="🏦 Sportello Bancomat",
+            description=f"• **Conto N°:** `ACC-{self.user_id}`\n• **Banca:** `${float(u.get('bank', 0)):,.2f}`\n• **Contanti:** `${float(u.get('cash', 0)):,.2f}`",
+            color=discord.Color.green()
+        )
+
+    @ui.button(label="1", style=discord.ButtonStyle.secondary, row=0)
+    async def b1(self, i: discord.Interaction, b: ui.Button): await self.handle_digit(i, "1")
+    @ui.button(label="2", style=discord.ButtonStyle.secondary, row=0)
+    async def b2(self, i: discord.Interaction, b: ui.Button): await self.handle_digit(i, "2")
+    @ui.button(label="3", style=discord.ButtonStyle.secondary, row=0)
+    async def b3(self, i: discord.Interaction, b: ui.Button): await self.handle_digit(i, "3")
+    @ui.button(label="4", style=discord.ButtonStyle.secondary, row=1)
+    async def b4(self, i: discord.Interaction, b: ui.Button): await self.handle_digit(i, "4")
+    @ui.button(label="5", style=discord.ButtonStyle.secondary, row=1)
+    async def b5(self, i: discord.Interaction, b: ui.Button): await self.handle_digit(i, "5")
+    @ui.button(label="6", style=discord.ButtonStyle.secondary, row=1)
+    async def b6(self, i: discord.Interaction, b: ui.Button): await self.handle_digit(i, "6")
+    @ui.button(label="7", style=discord.ButtonStyle.secondary, row=2)
+    async def b7(self, i: discord.Interaction, b: ui.Button): await self.handle_digit(i, "7")
+    @ui.button(label="8", style=discord.ButtonStyle.secondary, row=2)
+    async def b8(self, i: discord.Interaction, b: ui.Button): await self.handle_digit(i, "8")
+    @ui.button(label="9", style=discord.ButtonStyle.secondary, row=2)
+    async def b9(self, i: discord.Interaction, b: ui.Button): await self.handle_digit(i, "9")
+    @ui.button(label="C", style=discord.ButtonStyle.danger, row=3)
+    async def clear(self, i: discord.Interaction, b: ui.Button):
+        if i.user.id == self.user_id: self.entered_pin = ""; await self.update_display(i, "PIN azzerato:")
+    @ui.button(label="0", style=discord.ButtonStyle.secondary, row=3)
+    async def b0(self, i: discord.Interaction, b: ui.Button): await self.handle_digit(i, "0")
+    @ui.button(label="✖", style=discord.ButtonStyle.danger, row=3)
+    async def cancel(self, i: discord.Interaction, b: ui.Button):
+        if i.user.id == self.user_id: self.stop(); await i.response.edit_message(content="❌ Annullato.", embed=None, view=None)
 
 
-# --- COMANDI ECONOMIA & BANCOMAT ---
-
-@bot.event
-async def on_ready():
-    print(f"✅ Bot online come {bot.user} (Evren City RP)")
-
-@bot.tree.command(name="portafoglio", description="Mostra i contanti che hai nel portafoglio.")
-async def portafoglio(interaction: discord.Interaction):
-    user_data = get_or_create_user(interaction.user.id, interaction.user.name)
-    cash = float(user_data.get("cash", 0.0))
-    embed = discord.Embed(title="💼 Portafoglio - Evren City RP", description=f"Contanti attuali di **{interaction.user.mention}**:\n💵 **${cash:,.2f}**", color=discord.Color.green())
-    await interaction.response.send_message(embed=embed, ephemeral=True)
-
-@bot.tree.command(name="bancomat", description="Accedi al conto bancario tramite tastierino interattivo.")
+@bot.tree.command(name="bancomat", description="Accedi allo sportello Bancomat tramite PIN.")
 async def bancomat(interaction: discord.Interaction):
     if RUOLO_BANCOMAT_ID:
         role = interaction.guild.get_role(RUOLO_BANCOMAT_ID)
-        if not role or role not in interaction.user.roles:
-            await interaction.response.send_message(f"❌ Non possiedi il ruolo richiesto per accedere agli sportelli bancari.", ephemeral=True)
+        if role and role not in interaction.user.roles:
+            await interaction.response.send_message("❌ Non possiedi una carta bancomat.", ephemeral=True)
             return
 
     user_data = get_or_create_user(interaction.user.id, interaction.user.name)
-    saved_pin = user_data.get("pin")
-
-    if saved_pin is None:
-        view = PinKeypadView(interaction.user.id, user_data, mode="register")
-        embed = discord.Embed(title="💳 Bancomat - Primo Accesso", description="Crea il tuo PIN segreto di 4 cifre:\n\n**PIN inserito:** `____`", color=discord.Color.orange())
-        await interaction.response.send_message(embed=embed, view=view, ephemeral=True)
-    else:
-        view = PinKeypadView(interaction.user.id, user_data, mode="login")
-        embed = discord.Embed(title="💳 Tastierino Bancomat - Evren City RP", description="Inserisci il tuo PIN segreto:\n\n**PIN inserito:** `____`", color=discord.Color.blue())
-        await interaction.response.send_message(embed=embed, view=view, ephemeral=True)
+    mode = "register" if user_data.get("pin") is None else "login"
+    view = PinKeypadView(interaction.user.id, user_data, mode=mode)
+    embed = discord.Embed(title="💳 Tastierino Bancomat", description="Inserisci il tuo PIN:\n\n**PIN:** `____`", color=discord.Color.blue())
+    await interaction.response.send_message(embed=embed, view=view, ephemeral=True)
 
 
-# --- AUTOCOMPLETE INTELLIGENTE ---
+# --- POLIZIA CAD (SELEZIONE PER NOME E COGNOME RP) ---
 
-async def user_inventory_autocomplete(interaction: discord.Interaction, current: str):
-    res = supabase.table("inventory").select("item_id, items(name)").eq("discord_id", str(interaction.user.id)).execute()
-    items = []
-    if res.data:
-        for row in res.data:
-            item_info = row.get("items")
-            if item_info:
-                name = item_info.get("name")
-                if current.lower() in name.lower():
-                    items.append(app_commands.Choice(name=name, value=name))
-    return items[:25]
+class PoliceCadDetailView(ui.View):
+    def __init__(self, citizen_doc: dict, officer_id: int):
+        super().__init__(timeout=180)
+        self.doc = citizen_doc
+        self.officer_id = officer_id
+        self.target_id_str = citizen_doc.get("discord_id")
 
-async def global_items_autocomplete(interaction: discord.Interaction, current: str):
-    res = supabase.table("items").select("name").ilike("name", f"%{current}%").limit(25).execute()
-    return [app_commands.Choice(name=row["name"], value=row["name"]) for row in res.data] if res.data else []
+    def _check_officer(self, interaction: discord.Interaction):
+        return interaction.user.id == self.officer_id
 
-
-# --- GESTIONE OGGETTI & SHOP ---
-
-@bot.tree.command(name="item-crea", description="[STAFF] Crea un nuovo oggetto con peso, ruolo richiesto, categoria e azione.")
-@app_commands.describe(
-    name="Nome univoco dell'oggetto",
-    category="Categoria dell'oggetto",
-    action_type="Azione scatenata all'uso",
-    weight="Peso in kg (per gli zaini rappresenta i kg di espansione capienza)",
-    required_role="Ruolo richiesto per acquistarlo/riceverlo (Lasciare vuoto se libero)",
-    success_rate="Percentuale di successo (0 a 100)",
-    description="Descrizione dell'oggetto"
-)
-@app_commands.choices(category=[
-    app_commands.Choice(name="Cibo / Bevanda", value="cibo"),
-    app_commands.Choice(name="Droga / Sostanza", value="droga"),
-    app_commands.Choice(name="Arma / Munizioni", value="arma"),
-    app_commands.Choice(name="Zaino / Contenitore", value="zaino"),
-    app_commands.Choice(name="Strumento / Utility", value="strumento"),
-    app_commands.Choice(name="Medico / Cura", value="medico"),
-    app_commands.Choice(name="Generico", value="generico")
-], action_type=[
-    app_commands.Choice(name="Espandi Zaino (Capacità Inventario)", value="expand_backpack"),
-    app_commands.Choice(name="Guarisci / Ripristina HP", value="heal"),
-    app_commands.Choice(name="Dà Denaro (Contanti)", value="give_cash"),
-    app_commands.Choice(name="Rischio / Sballo (Effetto Casuale)", value="sballo"),
-    app_commands.Choice(name="Sblocca Accesso / Azione RP", value="rp_action"),
-    app_commands.Choice(name="Distruggilo / Consumabile Normale", value="consume")
-])
-async def item_crea(
-    interaction: discord.Interaction, 
-    name: str, 
-    category: str, 
-    action_type: str, 
-    weight: float, 
-    required_role: discord.Role = None, 
-    success_rate: int = 100, 
-    description: str = "Nessuna descrizione."
-):
-    if RUOLO_STAFF_ID:
-        role = interaction.guild.get_role(RUOLO_STAFF_ID)
-        if not role or role not in interaction.user.roles:
-            await interaction.response.send_message("❌ Non hai i permessi per creare oggetti.", ephemeral=True)
-            return
-
-        if weight < 0.0:
-            await interaction.response.send_message("❌ Il valore non può essere negativo.", ephemeral=True)
-            return
-
-        if not (0 <= success_rate <= 100):
-            await interaction.response.send_message("❌ La percentuale di successo deve essere tra **0 e 100**.", ephemeral=True)
-            return
-
-        item_data = {
-            "name": name,
-            "category": category,
-            "action_type": action_type,
-            "weight": round(weight, 2),
-            "required_role_id": str(required_role.id) if required_role else None,
-            "success_rate": success_rate,
-            "description": description
-        }
-        
-        supabase.table("items").upsert(item_data, on_conflict="name").execute()
-
-        role_name = required_role.name if required_role else "Nessuno (Libero)"
+    @ui.button(label="📋 Generalità", style=discord.ButtonStyle.primary, row=0)
+    async def btn_gen(self, interaction: discord.Interaction, button: ui.Button):
+        if not self._check_officer(interaction): return
         embed = discord.Embed(
-            title="📦 Oggetto Creato con Successo!",
+            title=f"🚔 Scheda Anagrafica: {self.doc.get('name')} {self.doc.get('surname')}",
             description=(
-                f"**Nome:** `{name}`\n"
-                f"**Categoria:** `{category}`\n"
-                f"**Valore/Peso:** `{weight} kg`\n"
-                f"**Ruolo Richiesto:** `{role_name}`\n"
-                f"**Azione:** `{action_type}`\n"
-                f"**Successo:** `{success_rate}%`\n"
-                f"**Descrizione:** {description}"
+                f"• **Nome & Cognome:** `{self.doc.get('name')} {self.doc.get('surname')}`\n"
+                f"• **Data di Nascita:** `{self.doc.get('birth_date', 'N/D')}`\n"
+                f"• **Codice Fiscale:** `{self.doc.get('cf', 'N/D')}`\n"
+                f"• **N° Documento:** `{self.doc.get('doc_number', 'N/D')}`\n"
+                f"• **Discord User:** `<@{self.target_id_str}>`"
             ),
-            color=discord.Color.gold()
+            color=discord.Color.dark_blue()
         )
-        await interaction.response.send_message(embed=embed, ephemeral=True)
+        await interaction.response.edit_message(embed=embed, view=self)
+
+    @ui.button(label="🚗 Proprietá", style=discord.ButtonStyle.success, row=0)
+    async def btn_prop(self, interaction: discord.Interaction, button: ui.Button):
+        if not self._check_officer(interaction): return
+        v_res = supabase.table("registered_vehicles").select("*").eq("discord_id", self.target_id_str).execute()
+        h_res = supabase.table("registered_properties").select("*").eq("discord_id", self.target_id_str).execute()
+
+        v_text = "\n".join([f"• **{v['model']}** - Targa: `{v['plate']}`" for v in v_res.data]) if v_res.data else "*Nessun veicolo.*"
+        h_text = "\n".join([f"• **{h['address']}** ({h['property_type']})" for h in h_res.data]) if h_res.data else "*Nessun immobile.*"
+
+        embed = discord.Embed(
+            title=f"🚘 Veicoli & Case - {self.doc.get('name')} {self.doc.get('surname')}",
+            description=f"### 🚗 Veicoli:\n{v_text}\n\n### 🏠 Immobili:\n{h_text}",
+            color=discord.Color.dark_green()
+        )
+        await interaction.response.edit_message(embed=embed, view=self)
+
+    @ui.button(label="🔫 Armi e Licenze", style=discord.ButtonStyle.danger, row=0)
+    async def btn_weapons(self, interaction: discord.Interaction, button: ui.Button):
+        if not self._check_officer(interaction): return
+        g_res = supabase.table("registered_weapons").select("*").eq("discord_id", self.target_id_str).execute()
+        l_res = supabase.table("gun_licenses").select("*").eq("discord_id", self.target_id_str).execute()
+        d_res = supabase.table("driver_licenses").select("*").eq("discord_id", self.target_id_str).execute()
+
+        g_text = "\n".join([f"• **{w['model']}** - Mat: `{w['serial_number']}`" for w in g_res.data]) if g_res.data else "*Nessuna arma.*"
+        l_text = "\n".join([f"• **{l['license_type']}** (`{l['status']}`)" for l in l_res.data]) if l_res.data else "*Nessun porto d'armi.*"
+        d_text = "\n".join([f"• Patente **{d['license_type']}** (`{d['status']}`)" for d in d_res.data]) if d_res.data else "*Nessuna patente.*"
+
+        embed = discord.Embed(
+            title=f"🛡️ Licenze e Armi - {self.doc.get('name')} {self.doc.get('surname')}",
+            description=f"### 🔫 Armi Registrate:\n{g_text}\n\n### 📜 Porto d'Armi:\n{l_text}\n\n### 💳 Patenti:\n{d_text}",
+            color=discord.Color.red()
+        )
+        await interaction.response.edit_message(embed=embed, view=self)
 
 
-@bot.tree.command(name="compra", description="Acquista un oggetto dallo shop (con ricerca intelligente e controllo ruoli/peso).")
-@app_commands.describe(item_name="Nome o parte del nome dell'oggetto da acquistare", quantity="Quantità (default 1)", price="Prezzo totale o unitario dell'acquisto")
-@app_commands.autocomplete(item_name=global_items_autocomplete)
-async def compra(interaction: discord.Interaction, item_name: str, price: float, quantity: int = 1):
-    user_id = str(interaction.user.id)
-    user_data = get_or_create_user(interaction.user.id, interaction.user.name)
-    max_weight = float(user_data.get("max_weight", 20.0))
-    current_cash = float(user_data.get("cash", 0.0))
+class CitizenSelectMenu(ui.Select):
+    def __init__(self, citizens_list: list, officer_id: int):
+        options = []
+        for c in citizens_list[:25]:
+            options.append(discord.SelectOption(
+                label=f"{c.get('name')} {c.get('surname')}",
+                value=c.get("discord_id"),
+                description=f"CF: {c.get('cf')} | Doc: {c.get('doc_number')}"
+            ))
+        super().__init__(placeholder="Seleziona il cittadino dal nome...", min_values=1, max_values=1, options=options)
+        self.citizens_list = citizens_list
+        self.officer_id = officer_id
 
-    item_res = supabase.table("items").select("*").ilike("name", f"%{item_name}%").execute()
-    if not item_res.data:
-        await interaction.response.send_message("❌ Nessun oggetto trovato con questo nome nel database.", ephemeral=True)
-        return
-    
-    item = item_res.data[0]
-    real_item_name = item["name"]
-    item_id = item["id"]
-    category = item["category"]
-    item_weight = float(item.get("weight", 0.0))
-    required_role_id = item.get("required_role_id")
+    async def callback(self, interaction: discord.Interaction):
+        if interaction.user.id != self.officer_id: return
+        selected_id = self.values[0]
+        doc = next((c for c in self.citizens_list if c.get("discord_id") == selected_id), None)
 
-    is_staff = False
-    if RUOLO_STAFF_ID:
-        staff_role = interaction.guild.get_role(RUOLO_STAFF_ID)
-        if staff_role and staff_role in interaction.user.roles:
-            is_staff = True
-
-    if required_role_id and not is_staff:
-        req_role = interaction.guild.get_role(int(required_role_id))
-        if not req_role or req_role not in interaction.user.roles:
-            await interaction.response.send_message(
-                f"❌ Non possiedi il ruolo richiesto (**{req_role.name if req_role else 'Ruolo Specifico'}**) per acquistare **{real_item_name}**.",
-                ephemeral=True
+        if doc:
+            view = PoliceCadDetailView(doc, self.officer_id)
+            embed = discord.Embed(
+                title=f"🚔 Terminale Polizia - {doc.get('name')} {doc.get('surname')}",
+                description="Usa i pulsanti sottostanti per verificare il profilo dell'individuo:",
+                color=discord.Color.blue()
             )
+            await interaction.response.edit_message(embed=embed, view=view)
+
+
+class PoliceCadSelectView(ui.View):
+    def __init__(self, citizens_list: list, officer_id: int):
+        super().__init__(timeout=120)
+        self.add_item(CitizenSelectMenu(citizens_list, officer_id))
+
+
+@bot.tree.command(name="cad_polizia", description="[POLIZIA] Cerca un cittadino nel database tramite Nome e Cognome.")
+async def cad_polizia(interaction: discord.Interaction):
+    if RUOLO_POLIZIA_ID:
+        police_role = interaction.guild.get_role(RUOLO_POLIZIA_ID)
+        if police_role and police_role not in interaction.user.roles:
+            await interaction.response.send_message("❌ Riservato alle Forze dell'Ordine!", ephemeral=True)
             return
 
-    if current_cash < price:
-        await interaction.response.send_message(
-            f"❌ **Fondi insufficienti!** Ti servono **${price:,.2f}** in contanti, ma ne hai solo **${current_cash:,.2f}**.",
-            ephemeral=True
-        )
+    res = supabase.table("documents").select("*").order("name", desc=False).execute()
+    if not res.data:
+        await interaction.response.send_message("❌ Nessun cittadino con documento trovato.", ephemeral=True)
         return
 
-    current_weight = get_user_current_weight(user_id)
-    added_weight = item_weight * quantity
-    if (current_weight + added_weight) > max_weight:
-        await interaction.response.send_message(
-            f"❌ **Zaino Pieno!** Non puoi trasportare questo peso.\n"
-            f"• Peso attuale: `{current_weight} kg` / `{max_weight} kg`\n"
-            f"• Peso aggiuntivo richiesto: `{added_weight} kg`",
-            ephemeral=True
-        )
+    view = PoliceCadSelectView(res.data, interaction.user.id)
+    embed = discord.Embed(
+        title="🚔 CAD Polizia di Stato",
+        description="Seleziona Nome e Cognome del cittadino per la verifica:",
+        color=discord.Color.dark_blue()
+    )
+    await interaction.response.send_message(embed=embed, view=view, ephemeral=True)
+
+
+# --- COMANDI REGISTRAZIONE DOCUMENTI E SERVIZI ---
+
+@bot.tree.command(name="crea_documenti", description="Genera i tuoi documenti identificativi (Codice Fiscale e Carta d'Identità).")
+async def crea_documenti(interaction: discord.Interaction, nome: str, cognome: str, data_nascita: str):
+    user_id = str(interaction.user.id)
+    existing = supabase.table("documents").select("*").eq("discord_id", user_id).execute()
+
+    if existing.data:
+        doc = existing.data[0]
+        await interaction.response.send_message(f"❌ Documenti già esistenti!\nCF: `{doc['cf']}`", ephemeral=True)
         return
 
-    success_payment = update_balance_safe(interaction.user.id, cash_change=-price)
-    if not success_payment:
-        await interaction.response.send_message("❌ Errore durante la transazione monetaria.", ephemeral=True)
-        return
+    cf = genera_codice_fiscale(nome, cognome)
+    doc_num = genera_num_documento()
 
-    final_item_name = real_item_name
-    if category == "arma":
-        serial_part1 = f"{random.randint(1000, 9999)}"
-        serial_part2 = f"{random.randint(1000, 9999)}"
-        matricola = f"[{serial_part1}-{serial_part2}]"
-        final_item_name = f"{real_item_name} {matricola}"
-
-    if category == "arma":
-        supabase.table("inventory").insert({
-            "discord_id": user_id,
-            "item_id": item_id,
-            "quantity": quantity,
-            "custom_name": final_item_name
-        }).execute()
-    else:
-        inv_res = supabase.table("inventory").select("*").eq("discord_id", user_id).eq("item_id", item_id).is_("custom_name", "null").execute()
-        if inv_res.data:
-            new_qty = inv_res.data[0]["quantity"] + quantity
-            supabase.table("inventory").update({"quantity": new_qty}).eq("id", inv_res.data[0]["id"]).execute()
-        else:
-            supabase.table("inventory").insert({"discord_id": user_id, "item_id": item_id, "quantity": quantity}).execute()
-
-    new_total_w = get_user_current_weight(user_id)
-    remaining_cash = current_cash - price
+    supabase.table("documents").insert({
+        "discord_id": user_id,
+        "name": nome.capitalize(),
+        "surname": cognome.capitalize(),
+        "birth_date": data_nascita,
+        "cf": cf,
+        "doc_number": doc_num
+    }).execute()
 
     embed = discord.Embed(
-        title="🛍️ Acquisto Effettuato con Successo!",
-        description=(
-            f"Hai acquistato **{quantity}x {final_item_name}** per **${price:,.2f}**.\n\n"
-            f"💵 Contanti rimasti: **${remaining_cash:,.2f}**\n"
-            f"🎒 Peso zaino: **{new_total_w} / {max_weight} kg**"
-        ),
+        title="🪪 Documenti Rilasciati",
+        description=f"• **Intestatario:** {nome.capitalize()} {cognome.capitalize()}\n• **Data di Nascita:** `{data_nascita}`\n• **Codice Fiscale:** `{cf}`\n• **Carta Identità:** `{doc_num}`",
         color=discord.Color.green()
     )
     await interaction.response.send_message(embed=embed, ephemeral=True)
 
 
-@bot.tree.command(name="vendi", description="Vendi un oggetto dal tuo inventario per recuperare contanti.")
-@app_commands.describe(item_name="Seleziona l'oggetto da vendere dal tuo inventario", price="Prezzo totale o unitario di vendita", quantity="Quantità da vendere (default 1)")
-@app_commands.autocomplete(item_name=user_inventory_autocomplete)
-async def vendi(interaction: discord.Interaction, item_name: str, price: float, quantity: int = 1):
-    user_id = str(interaction.user.id)
-
-    if price < 0.0:
-        await interaction.response.send_message("❌ Il prezzo di vendita non può essere negativo.", ephemeral=True)
+@bot.tree.command(name="registra_veicolo", description="[MOTORIZZAZIONE] Registra un veicolo con targa.")
+async def registra_veicolo(interaction: discord.Interaction, proprietario: discord.Member, modello: str, targa: str):
+    if RUOLO_MOTORIZZAZIONE_ID and interaction.guild.get_role(RUOLO_MOTORIZZAZIONE_ID) not in interaction.user.roles:
+        await interaction.response.send_message("❌ Riservato alla Motorizzazione!", ephemeral=True)
         return
 
-    if quantity <= 0:
-        await interaction.response.send_message("❌ La quantità deve essere maggiore di zero.", ephemeral=True)
-        return
-
-    inv_query = supabase.table("inventory").select("id, quantity, custom_name, item_id, items(*)").eq("discord_id", user_id).execute()
-    
-    target_row = None
-    if inv_query.data:
-        for row in inv_query.data:
-            item_info = row.get("items")
-            if item_info:
-                base_name = item_info.get("name")
-                custom = row.get("custom_name")
-                displayed_name = custom if custom else base_name
-                if displayed_name.lower() == item_name.lower() or base_name.lower() == item_name.lower():
-                    target_row = row
-                    break
-
-    if not target_row or target_row["quantity"] < quantity:
-        await interaction.response.send_message("❌ Non possiedi una quantità sufficiente di questo oggetto nel tuo inventario!", ephemeral=True)
-        return
-
-    current_qty = target_row["quantity"]
-    row_id = target_row["id"]
-    display_name = target_row.get("custom_name") if target_row.get("custom_name") else target_row["items"]["name"]
-
-    success_payment = update_balance_safe(interaction.user.id, cash_change=price)
-    if not success_payment:
-        await interaction.response.send_message("❌ Errore durante l'accredito dei contanti.", ephemeral=True)
-        return
-
-    new_qty = current_qty - quantity
-    if new_qty <= 0:
-        supabase.table("inventory").delete().eq("id", row_id).execute()
-    else:
-        supabase.table("inventory").update({"quantity": new_qty}).eq("id", row_id).execute()
-
-    user_data = get_or_create_user(interaction.user.id, interaction.user.name)
-    new_cash = float(user_data.get("cash", 0.0))
-    max_weight = float(user_data.get("max_weight", 20.0))
-    new_weight = get_user_current_weight(user_id)
-
-    embed = discord.Embed(
-        title="💰 Vendita Effettuata con Successo!",
-        description=(
-            f"Hai venduto **{quantity}x {display_name}** per **${price:,.2f}**.\n\n"
-            f"💵 Contanti attuali: **${new_cash:,.2f}**\n"
-            f"🎒 Peso zaino: **{new_weight} / {max_weight} kg**"
-        ),
-        color=discord.Color.green()
-    )
+    supabase.table("registered_vehicles").insert({"discord_id": str(proprietario.id), "model": modello, "plate": targa.upper()}).execute()
+    embed = discord.Embed(title="🚗 Veicolo Immatricolato", description=f"• Proprietario: {proprietario.mention}\n• Modello: `{modello}`\n• Targa: `{targa.upper()}`", color=discord.Color.green())
     await interaction.response.send_message(embed=embed, ephemeral=True)
 
 
-@bot.tree.command(name="item-give", description="[STAFF] Aggiunge un oggetto direttamente all'inventario di un utente.")
-@app_commands.describe(member="Utente a cui dare l'oggetto", item_name="Nome dell'oggetto da dare", quantity="Quantità (default 1)")
-@app_commands.autocomplete(item_name=global_items_autocomplete)
-async def item_give(interaction: discord.Interaction, member: discord.Member, item_name: str, quantity: int = 1):
-    if RUOLO_STAFF_ID:
-        role = interaction.guild.get_role(RUOLO_STAFF_ID)
-        if not role or role not in interaction.user.roles:
-            await interaction.response.send_message("❌ Non hai i permessi per usare questo comando.", ephemeral=True)
-            return
-
-    if quantity <= 0:
-        await interaction.response.send_message("❌ La quantità deve essere maggiore di zero.", ephemeral=True)
+@bot.tree.command(name="registra_patente", description="[MOTORIZZAZIONE] Rilascia una patente di guida.")
+async def registra_patente(interaction: discord.Interaction, cittadino: discord.Member, tipo_patente: str):
+    if RUOLO_MOTORIZZAZIONE_ID and interaction.guild.get_role(RUOLO_MOTORIZZAZIONE_ID) not in interaction.user.roles:
+        await interaction.response.send_message("❌ Riservato alla Motorizzazione!", ephemeral=True)
         return
 
-    user_id = str(member.id)
-    user_data = get_or_create_user(member.id, member.name)
-    max_weight = float(user_data.get("max_weight", 20.0))
-
-    item_res = supabase.table("items").select("*").ilike("name", f"%{item_name}%").execute()
-    if not item_res.data:
-        await interaction.response.send_message("❌ Oggetto non trovato nel database.", ephemeral=True)
-        return
-    
-    item = item_res.data[0]
-    item_id = item["id"]
-    category = item["category"]
-    item_weight = float(item.get("weight", 0.0))
-
-    final_item_name = item["name"]
-    if category == "arma":
-        serial_part1 = f"{random.randint(1000, 9999)}"
-        serial_part2 = f"{random.randint(1000, 9999)}"
-        matricola = f"[{serial_part1}-{serial_part2}]"
-        final_item_name = f"{item['name']} {matricola}"
-
-    current_weight = get_user_current_weight(user_id)
-    added_weight = item_weight * quantity
-    
-    if (current_weight + added_weight) > max_weight:
-        await interaction.response.send_message(
-            f"❌ **Zaino Pieno!** L'utente non può trasportare questo peso.\n"
-            f"• Peso attuale: `{current_weight} kg` / `{max_weight} kg`\n"
-            f"• Peso aggiuntivo richiesto: `{added_weight} kg`",
-            ephemeral=True
-        )
-        return
-
-    if category == "arma":
-        supabase.table("inventory").insert({
-            "discord_id": user_id,
-            "item_id": item_id,
-            "quantity": quantity,
-            "custom_name": final_item_name
-        }).execute()
-    else:
-        inv_res = supabase.table("inventory").select("*").eq("discord_id", user_id).eq("item_id", item_id).is_("custom_name", "null").execute()
-        if inv_res.data:
-            new_qty = inv_res.data[0]["quantity"] + quantity
-            supabase.table("inventory").update({"quantity": new_qty}).eq("id", inv_res.data[0]["id"]).execute()
-        else:
-            supabase.table("inventory").insert({"discord_id": user_id, "item_id": item_id, "quantity": quantity}).execute()
-
-    new_total_w = get_user_current_weight(user_id)
-    await interaction.response.send_message(
-        f"✅ Hai dato **{quantity}x {final_item_name}** a **{member.mention}** (`{added_weight} kg`).\n"
-        f"🎒 Peso zaino utente: **{new_total_w} / {max_weight} kg**",
-        ephemeral=True
-    )
-
-
-@bot.tree.command(name="item-remove", description="[STAFF] Rimuove un oggetto dall'inventario di un utente.")
-@app_commands.describe(member="Utente da cui rimuovere l'oggetto", item_name="Nome o parte del nome dell'oggetto", quantity="Quantità da rimuovere (default 1)")
-@app_commands.autocomplete(item_name=user_inventory_autocomplete)
-async def item_remove(interaction: discord.Interaction, member: discord.Member, item_name: str, quantity: int = 1):
-    if RUOLO_STAFF_ID:
-        role = interaction.guild.get_role(RUOLO_STAFF_ID)
-        if not role or role not in interaction.user.roles:
-            await interaction.response.send_message("❌ Non hai i permessi per usare questo comando.", ephemeral=True)
-            return
-
-    if quantity <= 0:
-        await interaction.response.send_message("❌ La quantità deve essere maggiore di zero.", ephemeral=True)
-        return
-
-    user_id = str(member.id)
-    inv_query = supabase.table("inventory").select("id, quantity, custom_name, item_id, items(*)").eq("discord_id", user_id).execute()
-    
-    target_row = None
-    if inv_query.data:
-        for row in inv_query.data:
-            item_info = row.get("items")
-            if item_info:
-                base_name = item_info.get("name")
-                custom = row.get("custom_name")
-                displayed_name = custom if custom else base_name
-                if displayed_name.lower() == item_name.lower() or base_name.lower() == item_name.lower():
-                    target_row = row
-                    break
-
-    if not target_row or target_row["quantity"] < quantity:
-        await interaction.response.send_message("❌ L'utente non possiede una quantità sufficiente di questo oggetto!", ephemeral=True)
-        return
-
-    current_qty = target_row["quantity"]
-    row_id = target_row["id"]
-    display_name = target_row.get("custom_name") if target_row.get("custom_name") else target_row["items"]["name"]
-
-    new_qty = current_qty - quantity
-    if new_qty <= 0:
-        supabase.table("inventory").delete().eq("id", row_id).execute()
-    else:
-        supabase.table("inventory").update({"quantity": new_qty}).eq("id", row_id).execute()
-
-    new_weight = get_user_current_weight(user_id)
-    user_data = get_or_create_user(member.id, member.name)
-    max_weight = float(user_data.get("max_weight", 20.0))
-
-    await interaction.response.send_message(
-        f"✅ Rimosso con successo **{quantity}x {display_name}** dall'inventario di **{member.mention}**.\n"
-        f"🎒 Peso zaino attuale: **{new_weight} / {max_weight} kg**",
-        ephemeral=True
-    )
-
-
-@bot.tree.command(name="add-money", description="[STAFF] Aggiunge denaro (contanti o banca) a un utente.")
-@app_commands.describe(member="Utente a cui aggiungere denaro", wallet="Contanti da aggiungere", bank="Denaro in banca da aggiungere")
-async def add_money(interaction: discord.Interaction, member: discord.Member, wallet: float = 0.0, bank: float = 0.0):
-    if RUOLO_STAFF_ID:
-        role = interaction.guild.get_role(RUOLO_STAFF_ID)
-        if not role or role not in interaction.user.roles:
-            await interaction.response.send_message("❌ Non hai i permessi per usare questo comando.", ephemeral=True)
-            return
-
-    if wallet < 0.0 or bank < 0.0:
-        await interaction.response.send_message("❌ Non puoi aggiungere valori negativi.", ephemeral=True)
-        return
-
-    success = update_balance_safe(member.id, cash_change=wallet, bank_change=bank)
-    if not success:
-        await interaction.response.send_message("❌ Errore durante l'aggiornamento del saldo.", ephemeral=True)
-        return
-
-    updated_user = get_or_create_user(member.id, member.name)
-    await interaction.response.send_message(
-        f"✅ Aggiunti a **{member.mention}**:\n"
-        f"💵 Contanti: **+${wallet:,.2f}** (Totale: ${float(updated_user.get('cash', 0)):,.2f})\n"
-        f"💳 Banca: **+${bank:,.2f}** (Totale: ${float(updated_user.get('bank', 0)):,.2f})",
-        ephemeral=True
-    )
-
-
-@bot.tree.command(name="remove-money", description="[STAFF] Rimuove denaro (contanti o banca) da un utente (con controllo anti-negativo).")
-@app_commands.describe(member="Utente da cui rimuovere denaro", wallet="Contanti da rimuovere", bank="Denaro in banca da rimuovere")
-async def remove_money(interaction: discord.Interaction, member: discord.Member, wallet: float = 0.0, bank: float = 0.0):
-    if RUOLO_STAFF_ID:
-        role = interaction.guild.get_role(RUOLO_STAFF_ID)
-        if not role or role not in interaction.user.roles:
-            await interaction.response.send_message("❌ Non hai i permessi per usare questo comando.", ephemeral=True)
-            return
-
-    if wallet < 0.0 or bank < 0.0:
-        await interaction.response.send_message("❌ Inserisci valori positivi da sottrarre.", ephemeral=True)
-        return
-
-    user_data = get_or_create_user(member.id, member.name)
-    current_cash = float(user_data.get("cash", 0.0))
-    current_bank = float(user_data.get("bank", 0.0))
-
-    if current_cash < wallet or current_bank < bank:
-        await interaction.response.send_message(
-            f"❌ L'utente non ha abbastanza fondi da rimuovere!\n"
-            f"• Contanti attuali: **${current_cash:,.2f}** (Richiesti: ${wallet:,.2f})\n"
-            f"• Banca attuale: **${current_bank:,.2f}** (Richiesti: ${bank:,.2f})",
-            ephemeral=True
-        )
-        return
-
-    success = update_balance_safe(member.id, cash_change=-wallet, bank_change=-bank)
-    if not success:
-        await interaction.response.send_message("❌ Errore durante la rimozione del denaro.", ephemeral=True)
-        return
-
-    updated_user = get_or_create_user(member.id, member.name)
-    await interaction.response.send_message(
-        f"✅ Rimossi da **{member.mention}**:\n"
-        f"💵 Contanti: **-${wallet:,.2f}** (Rimasti: ${float(updated_user.get('cash', 0)):,.2f})\n"
-        f"💳 Banca: **-${bank:,.2f}** (Rimasti: ${float(updated_user.get('bank', 0)):,.2f})",
-        ephemeral=True
-    )
-
-@bot.tree.command(name="zaino", description="Mostra il contenuto del tuo zaino, il peso attuale e la capienza massima.")
-async def zaino(interaction: discord.Interaction):
-    user_id = str(interaction.user.id)
-    user_data = get_or_create_user(interaction.user.id, interaction.user.name)
-    max_weight = float(user_data.get("max_weight", 20.0))
-    current_weight = get_user_current_weight(user_id)
-
-    inv_res = supabase.table("inventory").select("quantity, custom_name, items(name, category, weight, description)").eq("discord_id", user_id).execute()
-
-    embed = discord.Embed(
-        title=f"🎒 Zaino di {interaction.user.display_name}",
-        description=f"Capacità Massima: **{current_weight} kg / {max_weight} kg**",
-        color=discord.Color.blurple()
-    )
-
-    if not inv_res.data:
-        embed.add_field(name="Zaino Vuoto", value="Non hai nessun oggetto all'interno.", inline=False)
-    else:
-        for row in inv_res.data:
-            item_info = row.get("items")
-            if item_info:
-                qty = row.get("quantity")
-                name = row.get("custom_name") if row.get("custom_name") else item_info.get("name")
-                cat = item_info.get("category").upper()
-                w = float(item_info.get("weight", 0.0))
-                total_item_w = round(w * qty, 2)
-                desc = item_info.get("description")
-                embed.add_field(
-                    name=f"[{cat}] {name} (x{qty})",
-                    value=f"Peso unitario: `{w} kg` | Totale: `{total_item_w} kg`\n*{desc}*",
-                    inline=False
-                )
-
+    supabase.table("driver_licenses").insert({"discord_id": str(cittadino.id), "license_type": tipo_patente.upper(), "status": "Valida"}).execute()
+    embed = discord.Embed(title="💳 Patente Rilasciata", description=f"• Cittadino: {cittadino.mention}\n• Tipo Patente: `{tipo_patente.upper()}`", color=discord.Color.green())
     await interaction.response.send_message(embed=embed, ephemeral=True)
 
 
-@bot.tree.command(name="zaino-modifica", description="[STAFF] Modifica la capienza massima dello zaino di un utente.")
-@app_commands.describe(member="Utente da modificare", new_max_weight="Nuovo peso massimo in kg (es. 50.0)")
-async def zaino_modifica(interaction: discord.Interaction, member: discord.Member, new_max_weight: float):
-    if RUOLO_STAFF_ID:
-        role = interaction.guild.get_role(RUOLO_STAFF_ID)
-        if not role or role not in interaction.user.roles:
-            await interaction.response.send_message("❌ Non hai i permessi per modificare gli zaini.", ephemeral=True)
-            return
-
-        if new_max_weight < 1.0:
-            await interaction.response.send_message("❌ La capienza minima dello zaino deve essere almeno `1.0 kg`.", ephemeral=True)
-            return
-
-        get_or_create_user(member.id, member.name)
-        supabase.table("users").update({"max_weight": round(new_max_weight, 2)}).eq("discord_id", str(member.id)).execute()
-
-        await interaction.response.send_message(
-            f"✅ Capienza dello zaino di **{member.mention}** impostata a **{new_max_weight} kg**.",
-            ephemeral=True
-        )
-
-
-@bot.tree.command(name="usa", description="Usa un oggetto dal tuo inventario in base alla sua categoria e azione.")
-@app_commands.describe(item_name="Seleziona l'oggetto da usare dal tuo inventario")
-@app_commands.autocomplete(item_name=user_inventory_autocomplete)
-async def usa(interaction: discord.Interaction, item_name: str):
-    user_id = str(interaction.user.id)
-
-    inv_query = supabase.table("inventory").select("id, quantity, custom_name, item_id, items(*)").eq("discord_id", user_id).execute()
-    
-    target_row = None
-    if inv_query.data:
-        for row in inv_query.data:
-            item_info = row.get("items")
-            if item_info:
-                base_name = item_info.get("name")
-                custom = row.get("custom_name")
-                displayed_name = custom if custom else base_name
-                if displayed_name.lower() == item_name.lower() or base_name.lower() == item_name.lower():
-                    target_row = row
-                    break
-
-    if not target_row or target_row["quantity"] <= 0:
-        await interaction.response.send_message("❌ Non possiedi questo oggetto nel tuo inventario!", ephemeral=True)
+@bot.tree.command(name="registra_arma", description="[ARMERIA] Registra una matricola d'arma a un cittadino.")
+async def registra_arma(interaction: discord.Interaction, acquirente: discord.Member, matricola: str, modello: str):
+    if RUOLO_ARMERIA_ID and interaction.guild.get_role(RUOLO_ARMERIA_ID) not in interaction.user.roles:
+        await interaction.response.send_message("❌ Riservato all'Armeria!", ephemeral=True)
         return
 
-    item = target_row["items"]
-    item_id = item["id"]
-    category = item["category"]
-    action_type = item["action_type"]
-    success_rate = item["success_rate"]
-    item_weight = float(item.get("weight", 0.0))
-    current_qty = target_row["quantity"]
-    row_id = target_row["id"]
-    display_name = target_row.get("custom_name") if target_row.get("custom_name") else item["name"]
-
-    roll = random.randint(1, 100)
-    successo = roll <= success_rate
-
-    if not successo:
-        new_qty = current_qty - 1
-        if new_qty <= 0:
-            supabase.table("inventory").delete().eq("id", row_id).execute()
-        else:
-            supabase.table("inventory").update({"quantity": new_qty}).eq("id", row_id).execute()
-
-        await interaction.response.send_message(
-            f"⚠️ Hai tentato di usare **{display_name}**, ma qualcosa è andato storto e l'oggetto è andato sprecato! *(Tiro: {roll}/{success_rate}%)*",
-            ephemeral=True
-        )
-        return
-
-    risultato_testo = ""
-    if category == "zaino" or action_type == "expand_backpack":
-        user_data = get_or_create_user(interaction.user.id, interaction.user.name)
-        current_max_weight = float(user_data.get("max_weight", 20.0))
-        expansion_amount = item_weight if item_weight > 0 else 10.0
-        new_max_weight = current_max_weight + expansion_amount
-
-        supabase.table("users").update({"max_weight": round(new_max_weight, 2)}).eq("discord_id", str(interaction.user.id)).execute()
-        risultato_testo = f"🎒 Hai indossato/aperto **{display_name}**. La capienza massima del tuo zaino è aumentata di **+{expansion_amount} kg**! (Nuovo limite: **{new_max_weight} kg**)"
-    elif category == "cibo":
-        risultato_testo = f"🍔 Hai mangiato/bevuto **{display_name}**. Sazi la tua fame e ti senti in forze!"
-    elif category == "medico":
-        risultato_testo = f"💉 Hai usato il kit medico **{display_name}**. Le tue ferite si rimarginano correttamente."
-    elif category == "droga":
-        risultato_testo = f"💊 Hai assunto **{display_name}**. Una strana euforia comincia a scorrere nel tuo corpo..."
-    elif category == "arma":
-        risultato_testo = f"🔫 Hai impugnato l'arma **{display_name}** ed estratto la sicura. Prontə all'azione!"
-    elif category == "strumento":
-        if action_type == "give_cash":
-            vincita = random.randint(50, 250)
-            update_balance_safe(interaction.user.id, cash_change=vincita)
-            risultato_testo = f"🔧 Hai utilizzato con successo **{display_name}** e hai ricavato **${vincita:.2f}** in contanti!"
-        else:
-            risultato_testo = f"🛠️ Hai adoperato lo strumento **{display_name}** con successo."
-    else:
-        risultato_testo = f"✨ Hai usato con successo l'oggetto **{display_name}**."
-
-    new_qty = current_qty - 1
-    if new_qty <= 0:
-        supabase.table("inventory").delete().eq("id", row_id).execute()
-    else:
-        supabase.table("inventory").update({"quantity": new_qty}).eq("id", row_id).execute()
-
-    new_weight = get_user_current_weight(user_id)
-    updated_user = get_or_create_user(interaction.user.id, interaction.user.name)
-    current_max_w = float(updated_user.get("max_weight", 20.0))
-
-    embed = discord.Embed(
-        title=f"📦 Utilizzo Oggetto: {display_name}",
-        description=f"{risultato_testo}\n\n*(Tiro di successo: {roll}/{success_rate}%)*\n⚖️ Zaino: `{new_weight} / {current_max_w} kg`",
-        color=discord.Color.green()
-    )
+    supabase.table("registered_weapons").insert({"discord_id": str(acquirente.id), "model": modello, "serial_number": matricola}).execute()
+    embed = discord.Embed(title="📜 Arma Registrata", description=f"• Intestatario: {acquirente.mention}\n• Modello: `{modello}`\n• Matricola: `{matricola}`", color=discord.Color.blue())
     await interaction.response.send_message(embed=embed, ephemeral=True)
 
 
-# --- SERVER FLASK INTEGRATO ---
-app = Flask(__name__)
+@bot.tree.command(name="registra_porto_darmi", description="[POLIZIA] Rilascia un porto d'armi.")
+async def registra_porto_darmi(interaction: discord.Interaction, cittadino: discord.Member, tipo_licenza: str, numero_licenza: str):
+    if RUOLO_POLIZIA_ID and interaction.guild.get_role(RUOLO_POLIZIA_ID) not in interaction.user.roles:
+        await interaction.response.send_message("❌ Riservato alla Polizia!", ephemeral=True)
+        return
 
-@app.route("/")
-def home():
-    return jsonify({"status": "online", "server": "Evren City RP", "message": "Flask & Bot running with smart-search compra & vendi commands!"})
+    supabase.table("gun_licenses").insert({"discord_id": str(cittadino.id), "license_type": tipo_licenza, "license_number": numero_licenza, "status": "Attivo"}).execute()
+    embed = discord.Embed(title="🛡️ Porto d'Armi Registrato", description=f"• Intestatario: {cittadino.mention}\n• Licenza: `{tipo_licenza}`\n• N°: `{numero_licenza}`", color=discord.Color.dark_blue())
+    await interaction.response.send_message(embed=embed, ephemeral=True)
 
-def run_flask():
-    app.run(host="0.0.0.0", port=PORT)
+
+@bot.tree.command(name="registra_casa", description="[IMMOBILIARE] Registra un immobile.")
+async def registra_casa(interaction: discord.Interaction, proprietario: discord.Member, indirizzo: str, tipologia: str):
+    if RUOLO_IMMOBILIARE_ID and interaction.guild.get_role(RUOLO_IMMOBILIARE_ID) not in interaction.user.roles:
+        await interaction.response.send_message("❌ Riservato all'Agenzia Immobiliare!", ephemeral=True)
+        return
+
+    supabase.table("registered_properties").insert({"discord_id": str(proprietario.id), "address": indirizzo, "property_type": tipologia}).execute()
+    embed = discord.Embed(title="🏠 Immobile Registrato", description=f"• Proprietario: {proprietario.mention}\n• Indirizzo: `{indirizzo}`\n• Categoria: `{tipologia}`", color=discord.Color.gold())
+    await interaction.response.send_message(embed=embed, ephemeral=True)
+
+
+# --- EVENTO READY E AVVIO ---
+
+@bot.event
+async def on_ready():
+    await bot.tree.sync()
+    print(f"✅ Bot online come {bot.user}")
 
 if __name__ == "__main__":
     flask_thread = threading.Thread(target=run_flask)
