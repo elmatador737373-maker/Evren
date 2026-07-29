@@ -900,6 +900,9 @@ async def deposito_fazione(interaction: discord.Interaction, fazione: str):
 async def portafoglio(interaction: discord.Interaction):
     user_id = str(interaction.user.id)
     
+    # Assicura che l'utente esista nel database
+    get_or_create_user(user_id, interaction.user.name)
+    
     res = supabase.table("users").select("wallet").eq("discord_id", user_id).execute()
     
     contanti = 0
@@ -915,7 +918,6 @@ async def portafoglio(interaction: discord.Interaction):
     embed.set_footer(text="Evren City OS • Sistema Finanziario")
 
     await interaction.response.send_message(embed=embed, ephemeral=True)
-
 
 @bot.tree.command(name="crea_item", description="[STAFF] Crea un nuovo oggetto con meccaniche specifiche.")
 @app_commands.choices(categoria=[
