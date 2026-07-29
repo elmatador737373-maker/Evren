@@ -818,12 +818,12 @@ async def fazione_autocomplete(interaction: discord.Interaction, current: str) -
     return [app_commands.Choice(name=f["faction_name"], value=f["faction_name"]) for f in fazioni]
 
 
-@app_commands.command(name="registra_fazione", description="[STAFF] Registra una nuova fazione e il suo ruolo autorizzato.")
+@bot.tree.command(name="registra_fazione", description="[STAFF] Registra una nuova fazione e il suo ruolo autorizzato.")
 @app_commands.describe(
     fazione="Nome della fazione da registrare",
     ruolo="Ruolo di Discord associato alla fazione"
 )
-@app_commands.checks.has_permissions(administrator=True) # Modifica i permessi staff come preferisci (es. manage_guild)
+@app_commands.checks.has_permissions(administrator=True)
 async def registra_fazione(interaction: discord.Interaction, fazione: str, ruolo: discord.Role):
     
     # 1. Verifica se la fazione esiste già nel database
@@ -840,14 +840,14 @@ async def registra_fazione(interaction: discord.Interaction, fazione: str, ruolo
             "role_id": str(ruolo.id)
         }).execute()
 
-        # 3. Inizializza anche il deposito vuoto nella tabella faction_vaults (opzionale ma consigliato)
+        # 3. Inizializza anche il deposito vuoto nella tabella faction_vaults
         supabase.table("faction_vaults").upsert({
             "faction_name": fazione,
             "cash_balance": 0.0,
             "items_list": "Deposito vuoto."
         }).execute()
 
-        await interaction.response.send_message(f"✅ Fazione **{fazioneregistrata}** registrata con successo! Ruolo associato: {ruolo.mention}", ephemeral=True)
+        await interaction.response.send_message(f"✅ Fazione **{fazione}** registrata con successo! Ruolo associato: {ruolo.mention}", ephemeral=True)
 
     except Exception as e:
         await interaction.response.send_message(f"❌ Si è verificato un errore durante la registrazione: `{e}`", ephemeral=True)
