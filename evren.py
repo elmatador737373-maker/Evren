@@ -99,6 +99,81 @@ def calculate_user_inventory_weight(user_id: str) -> float:
             total_weight += q * w
     return round(total_weight, 2)
 
+# --- VIEW CON BOTTONI REINDIRIZZAMENTO (LINK) ---
+
+class WelcomeButtonsView(ui.View):
+    def __init__(self):
+        super().__init__(timeout=None)
+        
+        # Bottone N1 -> Guida Sblocco Canali
+        self.add_item(ui.Button(
+            label="Bottone N1", 
+            style=discord.ButtonStyle.link, 
+            url="https://discord.com/channels/1233353915559313478/1500844219424706581"
+        ))
+        
+        # Bottone N2 -> Regolamento 1
+        self.add_item(ui.Button(
+            label="Bottone N2", 
+            style=discord.ButtonStyle.link, 
+            url="https://discord.com/channels/1233353915559313478/1252225171553652787"
+        ))
+        
+        # Bottone N3 -> Regolamento 2
+        self.add_item(ui.Button(
+            label="Bottone N3", 
+            style=discord.ButtonStyle.link, 
+            url="https://discord.com/channels/1233353915559313478/1374421195163963553"
+        ))
+
+        # Bottone N4 -> Regolamento 3
+        self.add_item(ui.Button(
+            label="Bottone N4", 
+            style=discord.ButtonStyle.link, 
+            url="https://discord.com/channels/1233353915559313478/1519623994591019189"
+        ))
+
+        # Bottone N5 -> Background
+        self.add_item(ui.Button(
+            label="Bottone N5", 
+            style=discord.ButtonStyle.link, 
+            url="https://discord.com/channels/1233353915559313478/1252225106785337355"
+        ))
+
+        # Bottone N6 -> Whitelist
+        self.add_item(ui.Button(
+            label="Bottone N6", 
+            style=discord.ButtonStyle.link, 
+            url="https://discord.com/channels/1233353915559313478/1503750254028390580"
+        ))
+
+
+# --- EVENTO INVIO MESSAGGIO PRIVATO (DM) ALL'INGRESSO ---
+
+@bot.event
+async def on_member_join(member: discord.Member):
+    welcome_text = (
+        "✦ **BENVENUTO SU EVREN!** ✦\n"
+        "Ecco i passaggi fondamentali per iniziare la tua avventura:\n\n"
+        "> 🔓 **1. Sblocco Canali**\n"
+        "> Se non vedi tutti i canali, segui la guida iniziale premendo **Bottone N1** per sbloccarli.\n> \n"
+        "> 📜 **2. Regolamenti**\n"
+        "> Leggi le linee guida nei canali associati a **Bottone N2**, **Bottone N3** e **Bottone N4** per conoscere le regole del server.\n> \n"
+        "> 📝 **3. Background**\n"
+        "> Scrivi la storia del tuo personaggio seguendo i modelli nella sezione **Bottone N5**.\n> \n"
+        "> 🛡️ **4. Whitelist (WL)**\n"
+        "> Invia la tua richiesta di WL nel canale **Bottone N6** per completare l'accesso e iniziare a giocare.\n> \n"
+        "Hai dubbi o domande? Lo staff è sempre a tua disposizione. Buon divertimento! ✨"
+    )
+
+    try:
+        # Invia il messaggio nei messaggi privati dell'utente con i bottoni associati
+        await member.send(content=welcome_text, view=WelcomeButtonsView())
+    except discord.Forbidden:
+        # L'utente ha i messaggi privati disabilitati
+        print(f"⚠️ Impossibile inviare il DM di benvenuto a {member.display_name} (DM chiusi).")
+    except Exception as e:
+        print(f"❌ Errore durante l'invio del messaggio di benvenuto: {e}")
 
 # --- SISTEMA OGGETTI (COMANDO STAFF /crea_item & INVENTARIO) ---
 
