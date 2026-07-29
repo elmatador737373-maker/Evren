@@ -297,32 +297,45 @@ FFMPEG_PATH = imageio_ffmpeg.get_ffmpeg_exe()
 # Sostituisci con l'ID numerico del ruolo richiesto per usare il telefono (lascia None se è aperto a tutti)
 RUOLO_RICHIESTO_ID = None  # Esempio: 123456789012345678
 
-
 # --- TASK AUDIO PER RIPRODURRE I SUONI NELLE VOCALI ---
 async def riproduci_audio_canale(channel: discord.VoiceChannel, audio_file: str, loop: bool = False):
     vc = None
     try:
+        # Verifica che il file audio esista prima di connettersi
+        if not os.path.exists(audio_file):
+            print(f"❌ File audio non trovato: {audio_file}")
+            return
+
+        # Connessione al canale vocale
         vc = await channel.connect()
-        while True:
-            if not os.path.exists(audio_file):
-                break
-            
-            source = discord.FFmpegPCMAudio(audio_file, executable=FFMPEG_PATH)
-            
-            # Evento di fine traccia
+        
+        while vc.is_connected():
             fatto = asyncio.Event()
-            def after_play(e):
+
+            def after_play(error):
+                if error:
+                    print(f"Errore nella riproduzione audio: {error}")
                 fatto.set()
+
+            # Configura la sorgente audio (assicurati che FFMPEG_PATH sia corretto o usa None se è nel PATH di sistema)
+            kwargs = {"executable": FFMPEG_PATH} if FFMPEG_PATH else {}
+            source = discord.FFmpegPCMAudio(audio_file, **kwargs)
 
             if not vc.is_playing():
                 vc.play(source, after=after_play)
                 await fatto.wait()
 
+            # Se il loop è disattivato, esce dal ciclo
             if not loop:
                 break
+            
+            # Breve pausa prima di ripetere (se è in loop)
             await asyncio.sleep(0.5)
+
+    except discord.ClientException as ce:
+        print(f"Errore di connessione vocale (già connesso?): {ce}")
     except Exception as e:
-        print(f"Errore audio: {e}")
+        print(f"Errore generico audio: {e}")
     finally:
         if vc and vc.is_connected():
             await vc.disconnect()
@@ -553,8 +566,10 @@ async def avvia_chiamata_vocale(interaction: discord.Interaction, numero_destina
         await interaction.followup.send("❌ Impossibile inviare il DM al destinatario (potrebbe averli chiusi).", ephemeral=True)
         return
 
-    await interaction.followup.send(f"📞 Squillo in corso verso **{destinatario.display_name}**...", ephemeral=True)
+    await interaction.followup.send(f"📞 Squillo in corso verso **{destinatario.display_name}**...", ephemeral=true
 
+
+import random
 
 # --- 6. COMANDO /TELEFONO ---
 @bot.tree.command(name="telefono", description="Apre lo schermo del tuo smartphone di Evren City OS.")
@@ -575,7 +590,30 @@ async def telefono(interaction: discord.Interaction):
     res = supabase.table("user_phones").select("phone_number").eq("discord_id", user_id).execute()
     
     if not res.data or len(res.data) == 0:
-        phone_number = "Nessun numero registrato"
+        # Genera un numero americano univoco
+        while True:
+            area_code = random.randint(200, 999)
+            central_office = random.randint(200, 999)
+            line_number = random.randint(1000, 9999)
+            numero_casuale = f"+1 ({area_code}) {central_office}-{line_number}"
+            
+            # Verifica se questo numero esiste già nel database
+            check_exist = supabase.table("user_phones").select("phone_number").eq("phone_number", numero_casuale).execute()
+            
+            # Se il numero non esiste, possiamo usarlo ed uscire dal ciclo
+            if not check_exist.data or len(check_exist.data) == 0:
+                break
+        
+        # Salva il nuovo numero univoco nel database associato all'utente
+        try:
+            supabase.table("user_phones").insert({
+                "discord_id": user_id,
+                "phone_number": numero_casuale
+            }).execute()
+            phone_number = numero_casuale
+        except Exception as e:
+            print(f"Errore durante la generazione automatica del numero: {e}")
+            phone_number = "Errore di generazione"
     else:
         phone_number = res.data[0]["phone_number"]
 
