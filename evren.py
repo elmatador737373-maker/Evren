@@ -2,18 +2,25 @@ import os
 import random
 import string
 import threading
+import io
+import json
+import asyncio
+import aiohttp
 from flask import Flask, jsonify
 import discord
 from discord import app_commands, ui
 from discord.ext import commands
 from dotenv import load_dotenv
 from supabase import create_client, Client
+from playwright.async_api import async_playwright
+import imageio_ffmpeg
 
 load_dotenv()
 
 DISCORD_TOKEN = os.getenv("DISCORD_TOKEN")
 SUPABASE_URL = os.getenv("SUPABASE_URL")
 SUPABASE_KEY = os.getenv("SUPABASE_KEY")
+IMGBB_API_KEY = os.getenv("IMGBB_API_KEY")
 
 # --- CONFIGURAZIONE RUOLI SPECIFICI ---
 RUOLO_STAFF_ID = 123456789012345676           # Permesso per /crea_item
@@ -22,6 +29,9 @@ RUOLO_ARMERIA_ID = 123456789012345678        # Permesso per registrare ed emette
 RUOLO_MOTORIZZAZIONE_ID = 123456789012345679  # Permesso per registrare veicoli e patenti
 RUOLO_POLIZIA_ID = 1521205969269555351         # Permesso per CAD Polizia e Porto d'Armi
 RUOLO_IMMOBILIARE_ID = 123456789012345681     # Permesso per registrare le case/immobili
+RUOLO_RICHIESTO_ID = None
+
+FFMPEG_PATH = imageio_ffmpeg.get_ffmpeg_exe()
 
 supabase: Client = create_client(SUPABASE_URL, SUPABASE_KEY)
 
@@ -55,7 +65,7 @@ def get_or_create_user(user_id: int, username: str):
         new_user = {
             "discord_id": str(user_id),
             "username": username,
-            "cash": 500.0,
+            "wallet": 500.0,
             "bank": 1500.0,
             "pin": None,
             "max_weight": 10.0  # Limite peso base
@@ -64,25 +74,26 @@ def get_or_create_user(user_id: int, username: str):
         return insert_res.data[0]
 
 def log_transaction(user_id: str, trans_type: str, amount: float, details: str):
-    supabase.table("bank_transactions").insert({
+    supabase.table("transactions_log").insert({
         "discord_id": str(user_id),
         "type": trans_type,
         "amount": round(amount, 2),
-        "details": details
+        "description": details
     }).execute()
 
 def genera_codice_fiscale(nome: str, cognome: str) -> str:
-    cons_cog = "".join([c for c in cognome.upper() if c in "BCDFGHJKLMNPQRSTVWXYZ"]) + "XXX"
-    cons_nom = "".join([c for c in nome.upper() if c in "BCDFGHJKLMNPQRSTVWXYZ"]) + "XXX"
-    letters = "".join(random.choices(string.ascii_uppercase, k=3))
-    digits = "".join(random.choices(string.digits, k=5))
-    return f"{cons_cog[:3]}{cons_nom[:3]}{digits}{letters}"
+    letters = string.ascii_uppercase
+    cf_parte1 = "".join(random.choices(letters, k=6))
+    cf_parte2 = "".join(random.choices(string.digits, k=2))
+    cf_parte3 = "".join(random.choices(letters, k=1))
+    cf_parte4 = "".join(random.choices(string.digits, k=3))
+    cf_parte5 = "".join(random.choices(letters, k=1))
+    return f"{cf_parte1}{cf_parte2}{cf_parte3}{cf_parte4}{cf_parte5}"
 
 def genera_num_documento() -> str:
-    letters1 = "".join(random.choices(string.ascii_uppercase, k=2))
-    digits = "".join(random.choices(string.digits, k=5))
-    letters2 = "".join(random.choices(string.ascii_uppercase, k=2))
-    return f"{letters1}{digits}{letters2}"
+    prefisso = "".join(random.choices(string.ascii_uppercase, k=2))
+    numero = "".join(random.choices(string.digits, k=7))
+    return f"{prefisso}{numero}"
 
 def genera_matricola_arma() -> str:
     parte1 = "".join(random.choices(string.digits + string.ascii_uppercase, k=4))
@@ -90,14 +101,67 @@ def genera_matricola_arma() -> str:
     return f"{parte1}-{parte2}"
 
 def calculate_user_inventory_weight(user_id: str) -> float:
-    res = supabase.table("inventory").select("quantity, item_id, master_items(weight)").eq("discord_id", str(user_id)).execute()
+    res = supabase.table("inventory").select("quantity, weight").eq("discord_id", str(user_id)).execute()
     total_weight = 0.0
     if res.data:
         for row in res.data:
             q = row.get("quantity", 1)
-            w = row.get("master_items", {}).get("weight", 0.1) if row.get("master_items") else 0.1
+            w = row.get("weight", 0.1)
             total_weight += q * w
     return round(total_weight, 2)
+
+async def upload_to_imgbb(foto: discord.Attachment) -> str:
+    url = "https://api.imgbb.com/1/upload"
+    foto_bytes = await foto.read()
+    data = aiohttp.FormData()
+    data.add_field("key", IMGBB_API_KEY)
+    data.add_field("image", foto_bytes, filename="foto.png", content_type="image/png")
+    
+    async with aiohttp.ClientSession() as session:
+        async with session.post(url, data=data) as response:
+            if response.status == 200:
+                res_json = await response.json()
+                return res_json["data"]["url"]
+            else:
+                raise Exception(f"Errore ImgBB status code: {response.status}")
+
+async def riproduci_audio_canale(channel: discord.VoiceChannel, audio_file: str, loop: bool = False):
+    vc = None
+    try:
+        if not os.path.exists(audio_file):
+            print(f"❌ File audio non trovato: {audio_file}")
+            return
+
+        vc = await channel.connect()
+        
+        while vc.is_connected():
+            fatto = asyncio.Event()
+
+            def after_play(error):
+                if error:
+                    print(f"Errore nella riproduzione audio: {error}")
+                fatto.set()
+
+            kwargs = {"executable": FFMPEG_PATH} if FFMPEG_PATH else {}
+            source = discord.FFmpegPCMAudio(audio_file, **kwargs)
+
+            if not vc.is_playing():
+                vc.play(source, after=after_play)
+                await fatto.wait()
+
+            if not loop:
+                break
+            
+            await asyncio.sleep(0.5)
+
+    except discord.ClientException as ce:
+        print(f"Errore di connessione vocale (già connesso?): {ce}")
+    except Exception as e:
+        print(f"Errore generico audio: {e}")
+    finally:
+        if vc and vc.is_connected():
+            await vc.disconnect()
+
 
 # --- VIEW CON BOTTONI REINDIRIZZAMENTO (LINK) ---
 
@@ -105,42 +169,36 @@ class WelcomeButtonsView(ui.View):
     def __init__(self):
         super().__init__(timeout=None)
         
-        # Bottone N1 -> Guida Sblocco Canali
         self.add_item(ui.Button(
             label="Bottone N1", 
             style=discord.ButtonStyle.link, 
             url="https://discord.com/channels/1233353915559313478/1500844219424706581"
         ))
         
-        # Bottone N2 -> Regolamento 1
         self.add_item(ui.Button(
             label="Bottone N2", 
             style=discord.ButtonStyle.link, 
             url="https://discord.com/channels/1233353915559313478/1252225171553652787"
         ))
         
-        # Bottone N3 -> Regolamento 2
         self.add_item(ui.Button(
             label="Bottone N3", 
             style=discord.ButtonStyle.link, 
             url="https://discord.com/channels/1233353915559313478/1374421195163963553"
         ))
 
-        # Bottone N4 -> Regolamento 3
         self.add_item(ui.Button(
             label="Bottone N4", 
             style=discord.ButtonStyle.link, 
             url="https://discord.com/channels/1233353915559313478/1519623994591019189"
         ))
 
-        # Bottone N5 -> Background
         self.add_item(ui.Button(
             label="Bottone N5", 
             style=discord.ButtonStyle.link, 
             url="https://discord.com/channels/1233353915559313478/1252225106785337355"
         ))
 
-        # Bottone N6 -> Whitelist
         self.add_item(ui.Button(
             label="Bottone N6", 
             style=discord.ButtonStyle.link, 
@@ -148,16 +206,10 @@ class WelcomeButtonsView(ui.View):
         ))
 
 
-# --- EVENTO INVIO MESSAGGIO PRIVATO (DM) ALL'INGRESSO ---
+# --- SHOP OS ---
 
-import discord
-from discord import app_commands
-from discord.ui import View, Button, Select
-
-# --- 1. SELETTORE DELLE CATEGORIE NELLO SHOP ---
-class ShopCategorySelect(Select):
+class ShopCategorySelect(ui.Select):
     def __init__(self):
-        # Definisci qui le categorie disponibili nel tuo shop
         options = [
             discord.SelectOption(label="Armi", description="Acquista armi e munizioni", emoji="🔫", value="armi"),
             discord.SelectOption(label="Mediche", description="Kit medici e bende", emoji="💊", value="mediche"),
@@ -168,8 +220,7 @@ class ShopCategorySelect(Select):
     async def callback(self, interaction: discord.Interaction):
         categoria = self.values[0]
         
-        # Interroga Supabase per prendere gli item della categoria scelta
-        res = supabase.table("shop_items").select("*").eq("category", categoria).execute()
+        res = supabase.table("custom_items").select("*").eq("category", categoria).execute()
         items = res.data if res.data else []
 
         embed = discord.Embed(
@@ -184,7 +235,7 @@ class ShopCategorySelect(Select):
             for item in items:
                 nome = item.get("name", "Oggetto")
                 prezzo = item.get("price", 0)
-                ruolo_req = item.get("required_role_name", "Nessuno")
+                ruolo_req = item.get("required_role_id", "Nessuno")
                 embed.add_field(
                     name=f"🔹 {nome}",
                     value=f"💰 Prezzo: **€ {prezzo:,.2f}**\n🔒 Ruolo richiesto: `{ruolo_req}`",
@@ -195,13 +246,12 @@ class ShopCategorySelect(Select):
         await interaction.response.edit_message(embed=embed, view=self.view)
 
 
-class ShopView(View):
+class ShopView(ui.View):
     def __init__(self):
         super().__init__(timeout=300)
         self.add_item(ShopCategorySelect())
 
 
-# --- 2. COMANDO /SHOP ---
 @bot.tree.command(name="shop", description="Visualizza lo store di Evren City OS e naviga tra le categorie.")
 async def shop(interaction: discord.Interaction):
     embed = discord.Embed(
@@ -215,14 +265,12 @@ async def shop(interaction: discord.Interaction):
     await interaction.response.send_message(embed=embed, view=view, ephemeral=True)
 
 
-# --- 3. FUNZIONE DI AUTOCOMPLETE PER IL COMANDO /COMPRA ---
 async def shop_item_autocomplete(interaction: discord.Interaction, current: str) -> list[app_commands.Choice[str]]:
-    res = supabase.table("shop_items").select("name").ilike("name", f"%{current}%").limit(25).execute()
+    res = supabase.table("custom_items").select("name").ilike("name", f"%{current}%").limit(25).execute()
     items = res.data if res.data else []
     return [app_commands.Choice(name=i["name"], value=i["name"]) for i in items]
 
 
-# --- 4. COMANDO /COMPRA ---
 @bot.tree.command(name="compra", description="Acquista un oggetto dallo shop verificando fondi e requisiti.")
 @app_commands.describe(item="Nome dell'oggetto da acquistare")
 @app_commands.autocomplete(item=shop_item_autocomplete)
@@ -230,26 +278,25 @@ async def compra(interaction: discord.Interaction, item: str):
     user = interaction.user
     user_id = str(user.id)
 
-    # 1. Cerca l'oggetto nel database dello shop
-    res_item = supabase.table("shop_items").select("*").ilike("name", item).execute()
+    res_item = supabase.table("custom_items").select("*").ilike("name", item).execute()
     if not res_item.data:
         await interaction.response.send_message("❌ L'oggetto selezionato non esiste nello shop.", ephemeral=True)
         return
 
     item_data = res_item.data[0]
     prezzo = item_data.get("price", 0)
-    required_role_id = item_data.get("required_role_id") # ID del ruolo Discord (opzionale)
+    required_role_id = item_data.get("required_role_id")
     item_name = item_data.get("name")
+    category = item_data.get("category", "Generale")
+    weight = item_data.get("weight", 0.1)
 
-    # 2. Verifica se è richiesto un ruolo specifico
     if required_role_id:
-        if not any(r.id == int(required_role_id) for r in user.roles): # type: ignore
+        if not any(r.id == int(required_role_id) for r in user.roles):
             await interaction.response.send_message(f"❌ Non possiedi il ruolo richiesto per poter acquistare **{item_name}**.", ephemeral=True)
             return
 
-    # 3. Verifica i contanti dell'utente nel database
-    res_user = supabase.table("users").select("cash").eq("discord_id", user_id).execute()
-    contanti_attuali = res_user.data[0].get("cash", 0) if res_user.data else 0
+    res_user = supabase.table("users").select("wallet").eq("discord_id", user_id).execute()
+    contanti_attuali = res_user.data[0].get("wallet", 0) if res_user.data else 0
 
     if contanti_attuali < prezzo:
         await interaction.response.send_message(
@@ -258,15 +305,14 @@ async def compra(interaction: discord.Interaction, item: str):
         )
         return
 
-    # 4. Scala i soldi e aggiunge l'oggetto all'inventario dell'utente
     nuovo_saldo = contanti_attuali - prezzo
-    supabase.table("users").update({"cash": nuovo_saldo}).eq("discord_id", user_id).execute()
+    supabase.table("users").update({"wallet": nuovo_saldo}).eq("discord_id", user_id).execute()
 
-    # Esempio di aggiunta all'inventario personale (tabella "user_inventory")
-    # Puoi adattarla in base alla struttura delle tue tabelle
-    supabase.table("user_inventory").insert({
+    supabase.table("inventory").insert({
         "discord_id": user_id,
         "item_name": item_name,
+        "category": category,
+        "weight": weight,
         "quantity": 1
     }).execute()
 
@@ -277,79 +323,17 @@ async def compra(interaction: discord.Interaction, item: str):
         ephemeral=True
     )
 
-import json
-import numpy as np
-import discord
-from discord import app_commands
-from playwright.async_api import async_playwright
 
-import asyncio
-import os
-import discord
-from discord import app_commands
-from discord.ui import View, Button, Select
-import imageio_ffmpeg
+# --- TELEFONO E CONTATTI ---
 
-# Ottiene il percorso sicuro di FFmpeg compatibile con Render e GitHub
-FFMPEG_PATH = imageio_ffmpeg.get_ffmpeg_exe()
-
-# --- CONFIGURAZIONE RUOLO ---
-# Sostituisci con l'ID numerico del ruolo richiesto per usare il telefono (lascia None se è aperto a tutti)
-RUOLO_RICHIESTO_ID = None  # Esempio: 123456789012345678
-
-# --- TASK AUDIO PER RIPRODURRE I SUONI NELLE VOCALI ---
-async def riproduci_audio_canale(channel: discord.VoiceChannel, audio_file: str, loop: bool = False):
-    vc = None
-    try:
-        # Verifica che il file audio esista prima di connettersi
-        if not os.path.exists(audio_file):
-            print(f"❌ File audio non trovato: {audio_file}")
-            return
-
-        # Connessione al canale vocale
-        vc = await channel.connect()
-        
-        while vc.is_connected():
-            fatto = asyncio.Event()
-
-            def after_play(error):
-                if error:
-                    print(f"Errore nella riproduzione audio: {error}")
-                fatto.set()
-
-            # Configura la sorgente audio (assicurati che FFMPEG_PATH sia corretto o usa None se è nel PATH di sistema)
-            kwargs = {"executable": FFMPEG_PATH} if FFMPEG_PATH else {}
-            source = discord.FFmpegPCMAudio(audio_file, **kwargs)
-
-            if not vc.is_playing():
-                vc.play(source, after=after_play)
-                await fatto.wait()
-
-            # Se il loop è disattivato, esce dal ciclo
-            if not loop:
-                break
-            
-            # Breve pausa prima di ripetere (se è in loop)
-            await asyncio.sleep(0.5)
-
-    except discord.ClientException as ce:
-        print(f"Errore di connessione vocale (già connesso?): {ce}")
-    except Exception as e:
-        print(f"Errore generico audio: {e}")
-    finally:
-        if vc and vc.is_connected():
-            await vc.disconnect()
-
-
-# --- 1. MODAL PER AGGIUNGERE UN CONTATTO IN RUBRICA ---
-class AggiungiContattoModal(discord.ui.Modal, title="Nuovo Contatto - Evren City OS"):
-    nome_contatto = discord.ui.TextInput(
+class AggiungiContattoModal(ui.Modal, title="Nuovo Contatto - Evren City OS"):
+    nome_contatto = ui.TextInput(
         label="Nome del Contatto",
         placeholder="Es. Mario Rossi",
         required=True,
         max_length=50
     )
-    numero_contatto = discord.ui.TextInput(
+    numero_contatto = ui.TextInput(
         label="Numero di Telefono",
         placeholder="Es. 3331234567",
         required=True,
@@ -371,19 +355,18 @@ class AggiungiContattoModal(discord.ui.Modal, title="Nuovo Contatto - Evren City
         )
 
 
-# --- 2. MENU INTERATTIVO WHATSAPP ---
-class WhatsAppChatView(View):
+class WhatsAppChatView(ui.View):
     def __init__(self, destinatario: str):
         super().__init__(timeout=180)
         self.destinatario = destinatario
 
-    @discord.ui.button(label="Invia Messaggio", style=discord.ButtonStyle.green, emoji="💬")
-    async def invia_messaggio(self, interaction: discord.Interaction, button: Button):
+    @ui.button(label="Invia Messaggio", style=discord.ButtonStyle.green, emoji="💬")
+    async def invia_messaggio(self, interaction: discord.Interaction, button: ui.Button):
         await interaction.response.send_modal(WhatsAppMessageModal(self.destinatario))
 
 
-class WhatsAppMessageModal(discord.ui.Modal, title="WhatsApp - Invia Messaggio"):
-    testo_messaggio = discord.ui.TextInput(
+class WhatsAppMessageModal(ui.Modal, title="WhatsApp - Invia Messaggio"):
+    testo_messaggio = ui.TextInput(
         label="Messaggio",
         placeholder="Scrivi qui il messaggio...",
         style=discord.TextStyle.paragraph,
@@ -401,22 +384,20 @@ class WhatsAppMessageModal(discord.ui.Modal, title="WhatsApp - Invia Messaggio")
         )
 
 
-# --- 3. VIEW PER RISPONDERE O RIFIUTARE LA CHIAMATA IN DM ---
-class RispondiChiamataView(View):
+class RispondiChiamataView(ui.View):
     def __init__(self, chiamante: discord.Member, destinatario: discord.Member, channel: discord.VoiceChannel, task_squillo: asyncio.Task):
-        super().__init__(timeout=120)  # 2 minuti di tempo massimo
+        super().__init__(timeout=120)
         self.chiamante = chiamante
         self.destinatario = destinatario
         self.channel = channel
         self.task_squillo = task_squillo
         self.risposta_data = False
 
-    @discord.ui.button(label="Rispondi", style=discord.ButtonStyle.green, emoji="📞")
-    async def rispondi(self, interaction: discord.Interaction, button: Button):
+    @ui.button(label="Rispondi", style=discord.ButtonStyle.green, emoji="📞")
+    async def rispondi(self, interaction: discord.Interaction, button: ui.Button):
         self.risposta_data = True
         self.stop()
         
-        # Interrompe lo squillo in corso
         if not self.task_squillo.done():
             self.task_squillo.cancel()
         
@@ -432,12 +413,11 @@ class RispondiChiamataView(View):
         except Exception:
             pass
 
-    @discord.ui.button(label="Rifiuta", style=discord.ButtonStyle.red, emoji="❌")
-    async def rifiuta(self, interaction: discord.Interaction, button: Button):
+    @ui.button(label="Rifiuta", style=discord.ButtonStyle.red, emoji="❌")
+    async def rifiuta(self, interaction: discord.Interaction, button: ui.Button):
         self.risposta_data = False
         self.stop()
         
-        # Interrompe lo squillo
         if not self.task_squillo.done():
             self.task_squillo.cancel()
         
@@ -451,7 +431,6 @@ class RispondiChiamataView(View):
         except Exception:
             pass
 
-        # Riproduce il suono di rifiuto prima di eliminare il canale
         await riproduci_audio_canale(self.channel, "rifiuto.mp3", loop=False)
         try:
             await self.channel.delete()
@@ -469,8 +448,8 @@ class RispondiChiamataView(View):
             except Exception:
                 pass
 
-# --- 4. INTERFACCIA DEL TELEFONO (OS PRINCIPALE) ---
-class EvrenPhoneView(View):
+
+class EvrenPhoneView(ui.View):
     def __init__(self, user_id: str, phone_number: str):
         super().__init__(timeout=300)
         self.user_id = user_id
@@ -483,18 +462,18 @@ class EvrenPhoneView(View):
         res = supabase.table("contacts").select("*").eq("owner_id", self.user_id).execute()
         contacts = res.data if res.data else []
 
-        btn_aggiungi = Button(label="Nuovo Contatto", style=discord.ButtonStyle.blurple, emoji="➕", row=0)
+        btn_aggiungi = ui.Button(label="Nuovo Contatto", style=discord.ButtonStyle.blurple, emoji="➕", row=0)
         btn_aggiungi.callback = self.apri_modal_contatto
         self.add_item(btn_aggiungi)
 
         if contacts:
             options = [discord.SelectOption(label=c["name"], description=c["phone_number"], value=str(c["phone_number"])) for c in contacts[:25]]
             
-            select_chiama = Select(placeholder="📞 Seleziona contatto da chiamare", options=options, row=1)
+            select_chiama = ui.Select(placeholder="📞 Seleziona contatto da chiamare", options=options, row=1)
             select_chiama.callback = self.avvia_chiamata_callback
             self.add_item(select_chiama)
 
-            select_wa = Select(placeholder="💬 Apri chat WhatsApp", options=options, row=2)
+            select_wa = ui.Select(placeholder="💬 Apri chat WhatsApp", options=options, row=2)
             select_wa.callback = self.apri_whatsapp_callback
             self.add_item(select_wa)
 
@@ -502,12 +481,12 @@ class EvrenPhoneView(View):
         await interaction.response.send_modal(AggiungiContattoModal())
 
     async def avvia_chiamata_callback(self, interaction: discord.Interaction):
-        numero = interaction.data["values"][0] # type: ignore
+        numero = interaction.data["values"][0]
         await interaction.response.defer(ephemeral=True)
         await avvia_chiamata_vocale(interaction, numero)
 
     async def apri_whatsapp_callback(self, interaction: discord.Interaction):
-        numero = interaction.data["values"][0] # type: ignore
+        numero = interaction.data["values"][0]
         res = supabase.table("contacts").select("name").eq("owner_id", self.user_id).eq("phone_number", numero).execute()
         nome_destinatario = res.data[0]["name"] if res.data else numero
 
@@ -519,12 +498,10 @@ class EvrenPhoneView(View):
         )
 
 
-# --- 5. LOGICA DI AVVIO DELLA CHIAMATA VOCALE ---
 async def avvia_chiamata_vocale(interaction: discord.Interaction, numero_destinatario: str):
     guild = interaction.guild
     chiamante = interaction.user
 
-    # Cerca il proprietario del numero nella tabella dei numeri univoci degli utenti
     res = supabase.table("user_phones").select("discord_id").eq("phone_number", numero_destinatario).execute()
     
     if not res.data or len(res.data) == 0:
@@ -549,7 +526,6 @@ async def avvia_chiamata_vocale(interaction: discord.Interaction, numero_destina
     
     voice_channel = await guild.create_voice_channel(name=nome_canale, category=categoria, overwrites=overwrites)
 
-    # Avvia il task audio dello squillo in loop nel canale vocale
     task_squillo = asyncio.create_task(riproduci_audio_canale(voice_channel, "squillo.mp3", loop=True))
 
     view = RispondiChiamataView(chiamante, destinatario, voice_channel, task_squillo)
@@ -566,15 +542,11 @@ async def avvia_chiamata_vocale(interaction: discord.Interaction, numero_destina
         await interaction.followup.send("❌ Impossibile inviare il DM al destinatario (potrebbe averli chiusi).", ephemeral=True)
         return
 
-    await interaction.followup.send(f"📞 Squillo in corso verso **{destinatario.display_name}**...", ephemeral=true
+    await interaction.followup.send(f"📞 Squillo in corso verso **{destinatario.display_name}**...", ephemeral=True)
 
 
-import random
-
-# --- 6. COMANDO /TELEFONO ---
 @bot.tree.command(name="telefono", description="Apre lo schermo del tuo smartphone di Evren City OS.")
 async def telefono(interaction: discord.Interaction):
-    # Controllo del ruolo richiesto (se impostato)
     if RUOLO_RICHIESTO_ID is not None:
         ruolo = interaction.guild.get_role(RUOLO_RICHIESTO_ID)
         if not ruolo or ruolo not in interaction.user.roles:
@@ -586,25 +558,20 @@ async def telefono(interaction: discord.Interaction):
 
     user_id = str(interaction.user.id)
 
-    # Recupera il numero di telefono dell'utente dal database
     res = supabase.table("user_phones").select("phone_number").eq("discord_id", user_id).execute()
     
     if not res.data or len(res.data) == 0:
-        # Genera un numero americano univoco
         while True:
             area_code = random.randint(200, 999)
             central_office = random.randint(200, 999)
             line_number = random.randint(1000, 9999)
             numero_casuale = f"+1 ({area_code}) {central_office}-{line_number}"
             
-            # Verifica se questo numero esiste già nel database
             check_exist = supabase.table("user_phones").select("phone_number").eq("phone_number", numero_casuale).execute()
             
-            # Se il numero non esiste, possiamo usarlo ed uscire dal ciclo
             if not check_exist.data or len(check_exist.data) == 0:
                 break
         
-        # Salva il nuovo numero univoco nel database associato all'utente
         try:
             supabase.table("user_phones").insert({
                 "discord_id": user_id,
@@ -619,7 +586,6 @@ async def telefono(interaction: discord.Interaction):
 
     view = EvrenPhoneView(user_id, phone_number)
     
-    # Messaggio abbellito con stile UI smartphone
     embed = discord.Embed(
         title="📱 Evren City OS — Smartphone",
         description="*Benvenuto nel tuo terminale personale. Gestisci la tua rubrica, effettua chiamate vocali e chatta in tempo reale.*",
@@ -635,10 +601,11 @@ async def telefono(interaction: discord.Interaction):
     )
 
 
+# --- RICONOSCIMENTO BIOMETRICO ---
+
 @bot.tree.command(name="cerca_foto", description="[Riservato Polizia] Riconosce un cittadino dalla foto tramite scansione AI remota.")
 @app_commands.describe(foto="Carica la foto o il documento da analizzare")
 async def cerca_foto(interaction: discord.Interaction, foto: discord.Attachment):
-    # 1. Controllo se l'utente ha il ruolo di polizia
     ruolo_polizia = interaction.guild.get_role(RUOLO_POLIZIA_ID)
     
     if not ruolo_polizia or ruolo_polizia not in interaction.user.roles:
@@ -655,7 +622,6 @@ async def cerca_foto(interaction: discord.Interaction, foto: discord.Attachment)
     url_target = f"{sito_vercel}/?url={url_foto_utente}"
 
     try:
-        # 2. Usa Playwright per aprire la pagina, lasciando che Vercel esegua l'IA e interroghi Supabase
         async with async_playwright() as p:
             browser = await p.chromium.launch(headless=True)
             page = await browser.new_page()
@@ -663,7 +629,6 @@ async def cerca_foto(interaction: discord.Interaction, foto: discord.Attachment)
             await page.goto(url_target, wait_until="networkidle")
 
             try:
-                # Attende che il div #result venga popolato con un JSON o che compaia un errore nello status
                 await page.wait_for_selector("#result", timeout=60000)
                 await page.wait_for_function(
                     "document.getElementById('result').innerText.startsWith('{') || document.getElementById('status').innerText.includes('❌')",
@@ -688,7 +653,6 @@ async def cerca_foto(interaction: discord.Interaction, foto: discord.Attachment)
         await interaction.followup.send(f"❌ Errore di comunicazione con il motore biometrico: {e}", ephemeral=True)
         return
 
-    # 3. Gestione dei risultati restituiti da Vercel
     status = dati_risultato.get("status")
 
     if status == "not_found":
@@ -708,7 +672,6 @@ async def cerca_foto(interaction: discord.Interaction, foto: discord.Attachment)
         match = dati_risultato.get("match", {})
         distanza = dati_risultato.get("distance", 0)
 
-        # Estrai i dati del cittadino trovato (modifica i campi in base alle colonne della tua tabella documents)
         nome_cittadino = match.get("name", "Sconosciuto")
         codice_fiscale = match.get("fiscal_code", match.get("id", "N/D"))
 
@@ -727,6 +690,8 @@ async def cerca_foto(interaction: discord.Interaction, foto: discord.Attachment)
 
     await interaction.followup.send("❌ Risposta imprevista dal server biometrico.", ephemeral=True)
 
+
+@bot.event
 async def on_member_join(member: discord.Member):
     welcome_text = (
         "✦ **BENVENUTO SU EVREN!** ✦\n"
@@ -743,30 +708,23 @@ async def on_member_join(member: discord.Member):
     )
 
     try:
-        # Invia il messaggio nei messaggi privati dell'utente con i bottoni associati
         await member.send(content=welcome_text, view=WelcomeButtonsView())
     except discord.Forbidden:
-        # L'utente ha i messaggi privati disabilitati
         print(f"⚠️ Impossibile inviare il DM di benvenuto a {member.display_name} (DM chiusi).")
     except Exception as e:
         print(f"❌ Errore durante l'invio del messaggio di benvenuto: {e}")
 
-# --- SISTEMA OGGETTI (COMANDO STAFF /crea_item & INVENTARIO) ---
-import discord
-from discord import app_commands
-from discord.ui import View, Button
 
-# --- SUPPORTO DEPOSITI FAZIONE CON AUTOCOMPLETE ---
+# --- DEPOSITI FAZIONE ---
 
-# --- MODAL PER DEPOSITARE O PRELEVARE DENARO ---
-class FactionCashModal(discord.ui.Modal):
+class FactionCashModal(ui.Modal):
     def __init__(self, faction_name: str, action_type: str):
         title = "Deposita Soldi" if action_type == "deposita" else "Preleva Soldi"
         super().__init__(title=f"{title} - {faction_name}")
         self.faction_name = faction_name
         self.action_type = action_type
 
-        self.quantita = discord.ui.TextInput(
+        self.quantita = ui.TextInput(
             label="Importo in Denaro (€)",
             placeholder="Es. 5000",
             required=True,
@@ -775,32 +733,44 @@ class FactionCashModal(discord.ui.Modal):
         self.add_item(self.quantita)
 
     async def on_submit(self, interaction: discord.Interaction):
-        valore = self.quantita.value.strip()
-        azione_str = "depositato" if self.action_type == "deposita" else "prelevato"
+        valore = float(self.quantita.value.strip())
         
-        # Logica di aggiornamento saldo su Supabase (da collegare al tuo DB)
+        res = supabase.table("faction_vaults").select("cash_balance").eq("faction_name", self.faction_name).execute()
+        current_cash = res.data[0]["cash_balance"] if res.data else 0.0
+
+        if self.action_type == "deposita":
+            new_cash = current_cash + valore
+            azione_str = "depositato"
+        else:
+            if current_cash < valore:
+                await interaction.response.send_message("❌ Frazione non ha fondi sufficienti!", ephemeral=True)
+                return
+            new_cash = current_cash - valore
+            azione_str = "prelevato"
+
+        supabase.table("faction_vaults").upsert({"faction_name": self.faction_name, "cash_balance": new_cash}).execute()
+
         await interaction.response.send_message(
-            f"✅ Hai {azione_str} **€ {valore}** nella cassa della fazione **{self.faction_name}**.",
+            f"✅ Hai {azione_str} **€ {valore:,.2f}** nella cassa della fazione **{self.faction_name}**.",
             ephemeral=True
         )
 
 
-# --- MODAL INTERATTIVO PER ITEM CON CAMPO LIBERO O SCELTA ---
-class FactionItemModal(discord.ui.Modal):
+class FactionItemModal(ui.Modal):
     def __init__(self, faction_name: str, action_type: str, item_scelto: str = ""):
         title = "Deposita Item" if action_type == "deposita" else "Preleva Item"
         super().__init__(title=f"{title} - {faction_name}")
         self.faction_name = faction_name
         self.action_type = action_type
 
-        self.nome_item = discord.ui.TextInput(
+        self.nome_item = ui.TextInput(
             label="Nome dell'Item",
             placeholder="Es. Kit Medico, AK-47...",
             default=item_scelto,
             required=True,
             max_length=50
         )
-        self.quantita_item = discord.ui.TextInput(
+        self.quantita_item = ui.TextInput(
             label="Quantità",
             placeholder="Es. 1 o 5",
             required=True,
@@ -811,7 +781,7 @@ class FactionItemModal(discord.ui.Modal):
 
     async def on_submit(self, interaction: discord.Interaction):
         item = self.nome_item.value.strip()
-        qta = self.quantita_item.value.strip()
+        qta = int(self.quantita_item.value.strip())
         azione_str = "depositato" if self.action_type == "deposita" else "prelevato"
 
         await interaction.response.send_message(
@@ -820,45 +790,40 @@ class FactionItemModal(discord.ui.Modal):
         )
 
 
-# --- VIEW CON I PULSANTI DEL DEPOSITO FAZIONE ---
-class FactionVaultView(View):
+class FactionVaultView(ui.View):
     def __init__(self, faction_name: str):
         super().__init__(timeout=300)
         self.faction_name = faction_name
 
-    @discord.ui.button(label="Deposita Soldi", style=discord.ButtonStyle.green, emoji="💵", row=0)
-    async def dep_soldi(self, interaction: discord.Interaction, button: Button):
+    @ui.button(label="Deposita Soldi", style=discord.ButtonStyle.green, emoji="💵", row=0)
+    async def dep_soldi(self, interaction: discord.Interaction, button: ui.Button):
         await interaction.response.send_modal(FactionCashModal(self.faction_name, "deposita"))
 
-    @discord.ui.button(label="Preleva Soldi", style=discord.ButtonStyle.red, emoji="💸", row=0)
-    async def pre_soldi(self, interaction: discord.Interaction, button: Button):
+    @ui.button(label="Preleva Soldi", style=discord.ButtonStyle.red, emoji="💸", row=0)
+    async def pre_soldi(self, interaction: discord.Interaction, button: ui.Button):
         await interaction.response.send_modal(FactionCashModal(self.faction_name, "preleva"))
 
-    @discord.ui.button(label="Deposita Item", style=discord.ButtonStyle.blurple, emoji="📦", row=1)
-    async def dep_item(self, interaction: discord.Interaction, button: Button):
+    @ui.button(label="Deposita Item", style=discord.ButtonStyle.blurple, emoji="📦", row=1)
+    async def dep_item(self, interaction: discord.Interaction, button: ui.Button):
         await interaction.response.send_modal(FactionItemModal(self.faction_name, "deposita"))
 
-    @discord.ui.button(label="Preleva Item", style=discord.ButtonStyle.grey, emoji="📤", row=1)
-    async def pre_item(self, interaction: discord.Interaction, button: Button):
+    @ui.button(label="Preleva Item", style=discord.ButtonStyle.grey, emoji="📤", row=1)
+    async def pre_item(self, interaction: discord.Interaction, button: ui.Button):
         await interaction.response.send_modal(FactionItemModal(self.faction_name, "preleva"))
 
 
-# --- FUNZIONI DI AUTOCOMPLETE ---
 async def fazione_autocomplete(interaction: discord.Interaction, current: str) -> list[app_commands.Choice[str]]:
-    # Prende le fazioni registrate da Supabase in base a ciò che digita l'utente
     res = supabase.table("faction_roles").select("faction_name").ilike("faction_name", f"%{current}%").limit(25).execute()
     fazioni = res.data if res.data else []
     return [app_commands.Choice(name=f["faction_name"], value=f["faction_name"]) for f in fazioni]
 
 
-# --- COMANDO /DEPOSITO_FAZIONE CON AUTOCOMPLETE ---
 @bot.tree.command(name="deposito_fazione", description="Accedi al deposito della tua fazione basato sul tuo ruolo.")
 @app_commands.describe(fazione="Nome della fazione registrata")
 @app_commands.autocomplete(fazione=fazione_autocomplete)
 async def deposito_fazione(interaction: discord.Interaction, fazione: str):
     user = interaction.user
     
-    # Verifica il ruolo associato alla fazione
     res = supabase.table("faction_roles").select("role_id").eq("faction_name", fazione).execute()
     
     if not res.data:
@@ -867,11 +832,10 @@ async def deposito_fazione(interaction: discord.Interaction, fazione: str):
 
     role_id = int(res.data[0]["role_id"])
     
-    if not any(r.id == role_id for r in user.roles): # type: ignore
+    if not any(r.id == role_id for r in user.roles):
         await interaction.response.send_message(f"❌ Non possiedi il ruolo autorizzato per accedere a questo deposito.", ephemeral=True)
         return
 
-    # Recupera dati deposito
     res_vault = supabase.table("faction_vaults").select("cash_balance, items_list").eq("faction_name", fazione).execute()
     saldo_soldi = res_vault.data[0].get("cash_balance", 0) if res_vault.data else 0
     lista_item = res_vault.data[0].get("items_list", "Deposito vuoto.") if res_vault.data else "Deposito vuoto."
@@ -888,19 +852,18 @@ async def deposito_fazione(interaction: discord.Interaction, fazione: str):
     view = FactionVaultView(fazione)
     await interaction.response.send_message(embed=embed, view=view, ephemeral=True)
 
-import discord
-from discord import app_commands
+
+# --- PORTAFOGLIO ED OGGETTI ---
 
 @bot.tree.command(name="portafoglio", description="Visualizza i contanti e lo stato del tuo portafoglio su Evren City OS.")
 async def portafoglio(interaction: discord.Interaction):
     user_id = str(interaction.user.id)
     
-    # Interroga Supabase per prendere i contanti dell'utente
     res = supabase.table("users").select("wallet").eq("discord_id", user_id).execute()
     
     contanti = 0
     if res.data and len(res.data) > 0:
-        contanti = res.data[0].get("cash", 0)
+        contanti = res.data[0].get("wallet", 0)
 
     embed = discord.Embed(
         title="💼 Portafoglio - Evren City OS",
@@ -911,6 +874,7 @@ async def portafoglio(interaction: discord.Interaction):
     embed.set_footer(text="Evren City OS • Sistema Finanziario")
 
     await interaction.response.send_message(embed=embed, ephemeral=True)
+
 
 @bot.tree.command(name="crea_item", description="[STAFF] Crea un nuovo oggetto con meccaniche specifiche.")
 @app_commands.choices(categoria=[
@@ -949,12 +913,12 @@ async def crea_item(
         "name": nome,
         "category": categoria.value,
         "weight": max(0.0, round(peso, 2)),
-        "success_rate": probabilita_riuscita,
-        "capacity_boost": round(capienza_zaino, 2) if categoria.value == "zaino" else 0.0
+        "probability": float(probabilita_riuscita),
+        "backpack_capacity": round(capienza_zaino, 2) if categoria.value == "zaino" else 0.0
     }
 
     try:
-        supabase.table("master_items").insert(item_data).execute()
+        supabase.table("custom_items").insert(item_data).execute()
     except Exception as e:
         await interaction.response.send_message(f"❌ Errore durante la creazione! Nome già in uso o errore DB.", ephemeral=True)
         return
@@ -980,10 +944,9 @@ class InventoryUseView(ui.View):
         
         options = []
         for item in user_items[:25]:
-            m = item.get("master_items", {})
-            name = m.get("name", "Oggetto")
-            cat = m.get("category", "N/D")
-            w = m.get("weight", 0.0)
+            name = item.get("item_name", "Oggetto")
+            cat = item.get("category", "N/D")
+            w = item.get("weight", 0.0)
             options.append(discord.SelectOption(
                 label=f"{name} (x{item.get('quantity', 1)})",
                 value=str(item.get("id")),
@@ -999,19 +962,22 @@ class InventoryUseView(ui.View):
         if interaction.user.id != self.user_id: return
 
         item_inv_id = int(self.select.values[0])
-        res = supabase.table("inventory").select("*, master_items(*)").eq("id", item_inv_id).execute()
+        res = supabase.table("inventory").select("*").eq("id", item_inv_id).execute()
         if not res.data:
             await interaction.response.send_message("❌ Oggetto non trovato.", ephemeral=True)
             return
 
         inv_item = res.data[0]
-        m_item = inv_item.get("master_items", {})
-        category = m_item.get("category")
-        name = m_item.get("name")
-        rate = m_item.get("success_rate", 100)
-        boost = float(m_item.get("capacity_boost", 0.0))
+        name = inv_item.get("item_name")
+        category = inv_item.get("category")
+        
+        custom_res = supabase.table("custom_items").select("*").eq("name", name).execute()
+        rate = 100
+        boost = 0.0
+        if custom_res.data:
+            rate = custom_res.data[0].get("probability", 100.0)
+            boost = custom_res.data[0].get("backpack_capacity", 0.0)
 
-        # Test Probabilità di riuscita
         roll = random.randint(1, 100)
         if roll > rate:
             await interaction.response.send_message(f"❌ **Azione Fallita!** Hai usato **{name}**, ma la prova non è riuscita ({roll}% su {rate}%).", ephemeral=True)
@@ -1039,7 +1005,6 @@ class InventoryUseView(ui.View):
             supabase.table("users").update({"max_weight": new_max}).eq("discord_id", str(self.user_id)).execute()
             action_msg = f"🎒 **Zaino Indossato!** Capienza inventario aumentata di **+{boost} kg** (Totale: `{new_max} kg`)."
 
-        # Rimozione/Scalo quantita
         qty = inv_item.get("quantity", 1)
         if qty > 1:
             supabase.table("inventory").update({"quantity": qty - 1}).eq("id", item_inv_id).execute()
@@ -1055,7 +1020,7 @@ async def inventario(interaction: discord.Interaction):
     max_weight = float(u_data.get("max_weight", 10.0))
     current_weight = calculate_user_inventory_weight(interaction.user.id)
 
-    res = supabase.table("inventory").select("*, master_items(*)").eq("discord_id", str(interaction.user.id)).execute()
+    res = supabase.table("inventory").select("*").eq("discord_id", str(interaction.user.id)).execute()
 
     embed = discord.Embed(
         title=f"🎒 Inventario di {interaction.user.display_name}",
@@ -1065,11 +1030,10 @@ async def inventario(interaction: discord.Interaction):
 
     if res.data:
         for row in res.data:
-            m = row.get("master_items", {})
-            name = m.get("name", "Oggetto")
+            name = row.get("item_name", "Oggetto")
             q = row.get("quantity", 1)
-            w = (m.get("weight", 0.1) if m else 0.1) * q
-            cat = (m.get("category", "N/D") if m else "N/D").capitalize()
+            w = row.get("weight", 0.1) * q
+            cat = row.get("category", "N/D").capitalize()
             embed.add_field(name=f"📦 {name} x{q}", value=f"└ Cat: `{cat}` | Peso: `{w:.1f}kg`", inline=False)
         
         view = InventoryUseView(interaction.user.id, res.data)
@@ -1079,7 +1043,7 @@ async def inventario(interaction: discord.Interaction):
         await interaction.response.send_message(embed=embed, ephemeral=True)
 
 
-# --- BANCOMAT CON PIN ---
+# --- BANCOMAT ---
 
 class DepositModal(ui.Modal, title="💵 Deposito Contanti"):
     amount_input = ui.TextInput(label="Importo ($)", placeholder="Es. 500", required=True)
@@ -1097,7 +1061,7 @@ class DepositModal(ui.Modal, title="💵 Deposito Contanti"):
             return
 
         user_data = get_or_create_user(self.user_id, interaction.user.name)
-        cash = float(user_data.get("cash", 0.0))
+        cash = float(user_data.get("wallet", 0.0))
 
         if cash < val:
             await interaction.response.send_message(f"❌ Contanti insufficienti! Possiedi `${cash:,.2f}`.", ephemeral=True)
@@ -1105,7 +1069,7 @@ class DepositModal(ui.Modal, title="💵 Deposito Contanti"):
 
         new_cash = cash - val
         new_bank = float(user_data.get("bank", 0.0)) + val
-        supabase.table("users").update({"cash": new_cash, "bank": new_bank}).eq("discord_id", str(self.user_id)).execute()
+        supabase.table("users").update({"wallet": new_cash, "bank": new_bank}).eq("discord_id", str(self.user_id)).execute()
         log_transaction(str(self.user_id), "DEPOSITO", val, "Deposito contanti allo sportello")
 
         embed = discord.Embed(title="💵 Deposito Effettuato", description=f"Hai depositato **${val:,.2f}**.\nNuovo Saldo Banca: **${new_bank:,.2f}**", color=discord.Color.green())
@@ -1135,8 +1099,8 @@ class WithdrawModal(ui.Modal, title="💸 Prelievo Contanti"):
             return
 
         new_bank = bank - val
-        new_cash = float(user_data.get("cash", 0.0)) + val
-        supabase.table("users").update({"cash": new_cash, "bank": new_bank}).eq("discord_id", str(self.user_id)).execute()
+        new_cash = float(user_data.get("wallet", 0.0)) + val
+        supabase.table("users").update({"wallet": new_cash, "bank": new_bank}).eq("discord_id", str(self.user_id)).execute()
         log_transaction(str(self.user_id), "PRELIEVO", val, "Prelievo contanti da bancomat")
 
         embed = discord.Embed(title="💸 Prelievo Effettuato", description=f"Hai prelevato **${val:,.2f}**.\nNuovo Saldo Banca: **${new_bank:,.2f}**", color=discord.Color.orange())
@@ -1223,12 +1187,12 @@ class AtmMenuView(ui.View):
     @ui.button(label="📜 Storico", style=discord.ButtonStyle.secondary, row=1)
     async def btn_his(self, interaction: discord.Interaction, button: ui.Button):
         if interaction.user.id != self.user_id: return
-        res = supabase.table("bank_transactions").select("*").eq("discord_id", str(self.user_id)).order("created_at", desc=True).limit(8).execute()
+        res = supabase.table("transactions_log").select("*").eq("discord_id", str(self.user_id)).order("created_at", desc=True).limit(8).execute()
         embed = discord.Embed(title="📜 Storico Transazioni", color=discord.Color.blue())
         if res.data:
             for tx in res.data:
                 icon = "🟢" if "RICEVUTO" in tx['type'] or "DEPOSITO" in tx['type'] else "🔴"
-                embed.add_field(name=f"{icon} {tx['type']} - ${tx['amount']:,.2f}", value=f"└ `{tx['details']}`", inline=False)
+                embed.add_field(name=f"{icon} {tx['type']} - ${tx['amount']:,.2f}", value=f"└ `{tx['description']}`", inline=False)
         else:
             embed.description = "Nessuna transazione."
         await interaction.response.send_message(embed=embed, ephemeral=True)
@@ -1278,7 +1242,7 @@ class PinKeypadView(ui.View):
         u = get_or_create_user(self.user_id, "User")
         return discord.Embed(
             title="🏦 Sportello Bancomat",
-            description=f"• **Conto N°:** `ACC-{self.user_id}`\n• **Banca:** `${float(u.get('bank', 0)):,.2f}`\n• **Contanti:** `${float(u.get('cash', 0)):,.2f}`",
+            description=f"• **Conto N°:** `ACC-{self.user_id}`\n• **Banca:** `${float(u.get('bank', 0)):,.2f}`\n• **Contanti:** `${float(u.get('wallet', 0)):,.2f}`",
             color=discord.Color.green()
         )
 
@@ -1325,9 +1289,7 @@ async def bancomat(interaction: discord.Interaction):
     await interaction.response.send_message(embed=embed, view=view, ephemeral=True)
 
 
-# --- POLIZIA CAD COMPLETO (NOME, TARGA & MATRICOLA) ---
-
-# --- MODAL PER RICERCA DIRETTA DA CAD ---
+# --- POLIZIA CAD COMPLETO ---
 
 class CadSearchPlateModal(ui.Modal, title="🔍 Ricerca Veicolo per Targa"):
     plate_input = ui.TextInput(label="Inserisci la Targa", placeholder="Es. AB123CD", required=True)
@@ -1394,8 +1356,6 @@ class CadSearchSerialModal(ui.Modal, title="🔍 Ricerca Arma per Matricola"):
 
         await interaction.response.send_message(embed=embed, ephemeral=True)
 
-
-# --- MODAL PER VERBALI, MULTE ED ARRESTI ---
 
 class FineModal(ui.Modal, title="🚨 Rilascia Multa"):
     reason_input = ui.TextInput(label="Motivazione Sanzione", placeholder="Es. Eccesso di velocità", required=True)
@@ -1488,8 +1448,6 @@ class ReportModal(ui.Modal, title="📝 Verbale / Rapporto Giudiziario"):
         )
         await interaction.response.send_message(embed=embed, ephemeral=True)
 
-
-# --- DETTAGLIO SCHEDA CITTADINO ---
 
 class PoliceCadDetailView(ui.View):
     def __init__(self, citizen_doc: dict, officer_id: int):
@@ -1597,8 +1555,6 @@ class PoliceCadDetailView(ui.View):
         await interaction.response.send_modal(ReportModal(self.target_id_str, interaction.user.display_name))
 
 
-# --- MENU SCHERMATA INIZIALE CAD CON SELEZIONE E BOTTONI RAPIDI ---
-
 class CitizenSelectMenu(ui.Select):
     def __init__(self, citizens_list: list, officer_id: int):
         options = []
@@ -1631,7 +1587,6 @@ class PoliceCadSelectView(ui.View):
     def __init__(self, citizens_list: list, officer_id: int):
         super().__init__(timeout=120)
         self.officer_id = officer_id
-        # Aggiunge il menu a tendina
         self.add_item(CitizenSelectMenu(citizens_list, officer_id))
 
     @ui.button(label="🔍 Cerca Targa", style=discord.ButtonStyle.success, row=1)
@@ -1644,8 +1599,6 @@ class PoliceCadSelectView(ui.View):
         if interaction.user.id == self.officer_id:
             await interaction.response.send_modal(CadSearchSerialModal(self.officer_id))
 
-
-# --- COMANDO UNICO `/cad_polizia` ---
 
 @bot.tree.command(name="cad_polizia", description="[POLIZIA] Terminale operativo per ricerche anagrafiche, targhe e matricole.")
 async def cad_polizia(interaction: discord.Interaction):
@@ -1671,7 +1624,6 @@ async def cad_polizia(interaction: discord.Interaction):
     )
     await interaction.response.send_message(embed=embed, view=view, ephemeral=True)
 
-# --- COMANDO CITTADINO PER PAGARE LE MULTE ---
 
 class FinePaySelectView(ui.View):
     def __init__(self, user_id: int, fines_list: list):
@@ -1715,12 +1667,10 @@ class FinePaySelectView(ui.View):
             await interaction.response.send_message(f"❌ Saldo in banca insufficiente! Ti servono **${amount:,.2f}**.", ephemeral=True)
             return
 
-        # Scalo i soldi dal conto e aggiorno lo stato della multa
         new_bank = bank_balance - amount
         supabase.table("users").update({"bank": new_bank}).eq("discord_id", str(self.user_id)).execute()
         supabase.table("police_fines").update({"status": "Pagata"}).eq("id", fine_id).execute()
 
-        # Log transazione
         log_transaction(str(self.user_id), "PAGAMENTO_MULTA", amount, f"Pagata multa #{fine_id}")
 
         embed = discord.Embed(
@@ -1755,51 +1705,9 @@ async def paga_multa(interaction: discord.Interaction):
     view = FinePaySelectView(interaction.user.id, res.data)
     await interaction.response.send_message(embed=embed, view=view, ephemeral=True)
 
-import io
-import random
-import string
-import aiohttp
-import discord
-from discord import app_commands
-from playwright.async_api import async_playwright
 
-# Inserisci qui la tua API Key di ImgBB
-IMGBB_API_KEY = os.getenv("IMGBB_API_KEY")
-async def upload_to_imgbb(foto: discord.Attachment) -> str:
-    url = "https://api.imgbb.com/1/upload"
-    
-    foto_bytes = await foto.read()
-    
-    # Usiamo FormData di aiohttp per gestire correttamente testo e file insieme
-    data = aiohttp.FormData()
-    data.add_field("key", IMGBB_API_KEY)
-    data.add_field("image", foto_bytes, filename="foto.png", content_type="image/png")
-    
-    async with aiohttp.ClientSession() as session:
-        async with session.post(url, data=data) as response:
-            if response.status == 200:
-                res_json = await response.json()
-                return res_json["data"]["url"]
-            else:
-                raise Exception(f"Errore ImgBB status code: {response.status}")
+# --- DOCUMENTI IDENTIFICATIVI ---
 
-# --- 2. FUNZIONI DI SUPPORTO (Codice Fiscale e Numero Documento) ---
-def genera_codice_fiscale(nome: str, cognome: str) -> str:
-    letters = string.ascii_uppercase
-    cf_parte1 = "".join(random.choices(letters, k=6))
-    cf_parte2 = "".join(random.choices(string.digits, k=2))
-    cf_parte3 = "".join(random.choices(letters, k=1))
-    cf_parte4 = "".join(random.choices(string.digits, k=3))
-    cf_parte5 = "".join(random.choices(letters, k=1))
-    return f"{cf_parte1}{cf_parte2}{cf_parte3}{cf_parte4}{cf_parte5}"
-
-def genera_num_documento() -> str:
-    prefisso = "".join(random.choices(string.ascii_uppercase, k=2))
-    numero = "".join(random.choices(string.digits, k=7))
-    return f"{prefisso}{numero}"
-
-
-# --- 3. FUNZIONE CHE CREA L'IMMAGINE REALISTICA (HTML/PLAYWRIGHT) ---
 async def genera_carta_identita(nome, cognome, birth_date, birth_place, cf, doc_number, photo_url, colore_occhi, colore_capelli, segni_particolari):
     html_content = f"""
     <!DOCTYPE html>
@@ -1954,7 +1862,6 @@ async def genera_carta_identita(nome, cognome, birth_date, birth_place, cf, doc_
     return discord.File(buffer, filename="carta_identita.png")
 
 
-# --- 4. COMANDO CREA DOCUMENTI ---
 @bot.tree.command(name="crea_documenti", description="Genera i tuoi documenti identificativi completi di caratteristiche fisiche e foto.")
 async def crea_documenti(
     interaction: discord.Interaction, 
@@ -1982,7 +1889,6 @@ async def crea_documenti(
     await interaction.response.defer(ephemeral=True)
 
     try:
-        # Carica automaticamente l'immagine su ImgBB usando la funzione dedicata
         photo_url = await upload_to_imgbb(foto)
     except Exception as e:
         await interaction.followup.send(f"❌ Errore durante il caricamento della foto su ImgBB: {e}", ephemeral=True)
@@ -2005,7 +1911,6 @@ async def crea_documenti(
         "doc_number": doc_num
     }).execute()
 
-    # Genera l'immagine grafica realistica del documento
     file_documento = await genera_carta_identita(
         nome=nome,
         cognome=cognome,
@@ -2026,7 +1931,6 @@ async def crea_documenti(
     )
 
 
-# --- 5. COMANDO MOSTRA DOCUMENTO ---
 @bot.tree.command(name="mostra_documento", description="Mostra la tua carta d'identità ufficiale in chat.")
 async def mostra_documento(interaction: discord.Interaction):
     await interaction.response.defer()
@@ -2040,7 +1944,6 @@ async def mostra_documento(interaction: discord.Interaction):
         
     doc = response.data[0]
     
-    # Genera l'immagine grafica riprendendo i dati salvati nel database
     file_documento = await genera_carta_identita(
         nome=doc["name"],
         cognome=doc["surname"],
@@ -2055,6 +1958,9 @@ async def mostra_documento(interaction: discord.Interaction):
     )
     
     await interaction.followup.send(file=file_documento)
+
+
+# --- COMANDI REGISTRAZIONE ISTITUZIONALE ---
 
 @bot.tree.command(name="registra_veicolo", description="[MOTORIZZAZIONE] Registra un veicolo con targa.")
 async def registra_veicolo(interaction: discord.Interaction, proprietario: discord.Member, modello: str, targa: str):
@@ -2073,7 +1979,7 @@ async def registra_patente(interaction: discord.Interaction, cittadino: discord.
         await interaction.response.send_message("❌ Riservato alla Motorizzazione!", ephemeral=True)
         return
 
-    supabase.table("driver_licenses").insert({"discord_id": str(cittadino.id), "license_type": tipo_patente.upper(), "status": "Valida"}).execute()
+    supabase.table("driver_licenses").insert({"discord_id": str(cittadino.id), "license_type": tipo_patente.upper(), "status": "Attiva"}).execute()
     embed = discord.Embed(title="💳 Patente Rilasciata", description=f"• Cittadino: {cittadino.mention}\n• Tipo Patente: `{tipo_patente.upper()}`", color=discord.Color.green())
     await interaction.response.send_message(embed=embed, ephemeral=True)
 
@@ -2090,13 +1996,13 @@ async def registra_arma(interaction: discord.Interaction, acquirente: discord.Me
 
 
 @bot.tree.command(name="registra_porto_darmi", description="[POLIZIA] Rilascia un porto d'armi.")
-async def registra_porto_darmi(interaction: discord.Interaction, cittadino: discord.Member, tipo_licenza: str, numero_licenza: str):
+async def registra_porto_darmi(interaction: discord.Interaction, cittadino: discord.Member, tipo_licenza: str):
     if RUOLO_POLIZIA_ID and interaction.guild.get_role(RUOLO_POLIZIA_ID) not in interaction.user.roles:
         await interaction.response.send_message("❌ Riservato alla Polizia!", ephemeral=True)
         return
 
-    supabase.table("gun_licenses").insert({"discord_id": str(cittadino.id), "license_type": tipo_licenza, "license_number": numero_licenza, "status": "Attivo"}).execute()
-    embed = discord.Embed(title="🛡️ Porto d'Armi Registrato", description=f"• Intestatario: {cittadino.mention}\n• Licenza: `{tipo_licenza}`\n• N°: `{numero_licenza}`", color=discord.Color.dark_blue())
+    supabase.table("gun_licenses").insert({"discord_id": str(cittadino.id), "license_type": tipo_licenza, "status": "Attivo"}).execute()
+    embed = discord.Embed(title="🛡️ Porto d'Armi Registrato", description=f"• Intestatario: {cittadino.mention}\n• Licenza: `{tipo_licenza}`", color=discord.Color.dark_blue())
     await interaction.response.send_message(embed=embed, ephemeral=True)
 
 
