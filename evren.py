@@ -271,6 +271,9 @@ async def shop_item_autocomplete(interaction: discord.Interaction, current: str)
     return [app_commands.Choice(name=i["name"], value=i["name"]) for i in items]
 
 
+import random
+import string
+
 @bot.tree.command(name="compra", description="Acquista un oggetto dallo shop verificando fondi e requisiti.")
 @app_commands.describe(item="Nome dell'oggetto da acquistare")
 @app_commands.autocomplete(item=shop_item_autocomplete)
@@ -304,13 +307,25 @@ async def compra(interaction: discord.Interaction, item: str):
             ephemeral=True
         )
         return
+    
+    nome_finale_oggetto = item_name
+    matricola_testo = ""
+
+    # Usiamo direttamente 'category' (con la c minuscola) che hai definito all'inizio della funzione
+    if category.lower() in ["armi", "arma"]:
+        parte1 = "".join(random.choices(string.digits + string.ascii_uppercase, k=4))
+        parte2 = "".join(random.choices(string.digits + string.ascii_uppercase, k=4))
+        matricola = f"{parte1}-{parte2}"
+        
+        nome_finale_oggetto = f"{item_name} [{matricola}]"
+        matricola_testo = f"\nMatricola: **{matricola}**"
 
     nuovo_saldo = contanti_attuali - prezzo
     supabase.table("users").update({"wallet": nuovo_saldo}).eq("discord_id", user_id).execute()
 
     supabase.table("inventory").insert({
         "discord_id": user_id,
-        "item_name": item_name,
+        "item_name": nome_finale_oggetto,
         "category": category,
         "weight": weight,
         "quantity": 1
@@ -318,11 +333,11 @@ async def compra(interaction: discord.Interaction, item: str):
 
     await interaction.response.send_message(
         f"✅ Acquisto effettuato con successo!\n"
-        f"Hai comprato: **{item_name}** per **€ {prezzo:,.2f}**.\n"
+        f"Hai comprato: **{nome_finale_oggetto}** per **€ {prezzo:,.2f}**."
+        f"{matricola_testo}\n"
         f"Nuovo saldo contanti: **€ {nuovo_saldo:,.2f}**",
         ephemeral=True
     )
-
 
 # --- TELEFONO E CONTATTI ---
 
@@ -714,7 +729,6 @@ async def on_member_join(member: discord.Member):
     except Exception as e:
         print(f"❌ Errore durante l'invio del messaggio di benvenuto: {e}")
 
-
 # --- DEPOSITI FAZIONE ---
 
 class FactionCashModal(ui.Modal):
@@ -733,7 +747,13 @@ class FactionCashModal(ui.Modal):
         self.add_item(self.quantita)
 
     async def on_submit(self, interaction: discord.Interaction):
-        valore = float(self.quantita.value.strip())
+        try:
+            valore = float(self.quantita.value.strip().replace(",", "."))
+            if valore <= 0:
+                raise ValueError()
+        except ValueError:
+            await interaction.response.send_message("❌ Inserisci un importo valido.", ephemeral=True)
+            return
         
         res = supabase.table("faction_vaults").select("cash_balance").eq("faction_name", self.faction_name).execute()
         current_cash = res.data[0]["cash_balance"] if res.data else 0.0
@@ -743,7 +763,7 @@ class FactionCashModal(ui.Modal):
             azione_str = "depositato"
         else:
             if current_cash < valore:
-                await interaction.response.send_message("❌ Frazione non ha fondi sufficienti!", ephemeral=True)
+                await interaction.response.send_message("❌ La fazione non ha fondi sufficienti nella cassa!", ephemeral=True)
                 return
             new_cash = current_cash - valore
             azione_str = "prelevato"
@@ -780,12 +800,100 @@ class FactionItemModal(ui.Modal):
         self.add_item(self.quantita_item)
 
     async def on_submit(self, interaction: discord.Interaction):
-        item = self.nome_item.value.strip()
-        qta = int(self.quantita_item.value.strip())
+        user_id = str(interaction.user.id)
+        item_richiesto = self.nome_item.value.strip()
+        
+        try:
+            qta = int(self.quantita_item.value.strip())
+            if qta <= 0:
+                raise ValueError()
+        except ValueError:
+            await interaction.response.send_message("❌ Inserisci una quantità numerica valida.", ephemeral=True)
+            return
+
         azione_str = "depositato" if self.action_type == "deposita" else "prelevato"
 
+        if self.action_type == "deposita":
+            # Verifica se l'utente possiede l'oggetto nell'inventario personale (controllando item_name che potrebbe includere la matricola)
+            res_inv = supabase.table("inventory").select("*").eq("discord_id", user_id).ilike("item_name", f"%{item_richiesto}%").execute()
+            
+            if not res_inv.data:
+                await interaction.response.send_message(f"❌ Non possiedi **{item_richiesto}** nel tuo inventario.", ephemeral=True)
+                return
+
+            item_inv = res_inv.data[0]
+            item_full_name = item_inv.get("item_name")
+            qta_posseduta = item_inv.get("quantity", 1)
+            category = item_inv.get("category", "Generale")
+            weight = item_inv.get("weight", 0.1)
+
+            if qta_posseduta < qta:
+                await interaction.response.send_message(f"❌ Non hai abbastanza quantità di **{item_full_name}**. Ne possiedi solo {qta_posseduta}.", ephemeral=True)
+                return
+
+            # Aggiorna inventario personale (rimuove o decrementa)
+            if qta_posseduta == qta:
+                supabase.table("inventory").delete().eq("id", item_inv.get("id")).execute()
+            else:
+                supabase.table("inventory").update({"quantity": qta_posseduta - qta}).eq("id", item_inv.get("id")).execute()
+
+            # Aggiunge o aggiorna nel caveau della fazione (faction_inventory)
+            res_faction = supabase.table("faction_inventory").select("*").eq("faction_name", self.faction_name).ilike("item_name", item_full_name).execute()
+            
+            if res_faction.data:
+                f_item = res_faction.data[0]
+                nuova_qta_f = f_item.get("quantity", 0) + qta
+                supabase.table("faction_inventory").update({"quantity": nuova_qta_f}).eq("id", f_item.get("id")).execute()
+            else:
+                supabase.table("faction_inventory").insert({
+                    "faction_name": self.faction_name,
+                    "item_name": item_full_name,
+                    "category": category,
+                    "weight": weight,
+                    "quantity": qta
+                }).execute()
+
+        else:  # Preleva Item
+            res_faction = supabase.table("faction_inventory").select("*").eq("faction_name", self.faction_name).ilike("item_name", f"%{item_richiesto}%").execute()
+            
+            if not res_faction.data:
+                await interaction.response.send_message(f"❌ La fazione non possiede **{item_richiesto}** nel caveau.", ephemeral=True)
+                return
+
+            f_item = res_faction.data[0]
+            item_full_name = f_item.get("item_name")
+            qta_fazione = f_item.get("quantity", 0)
+            category = f_item.get("category", "Generale")
+            weight = f_item.get("weight", 0.1)
+
+            if qta_fazione < qta:
+                await interaction.response.send_message(f"❌ La fazione non ha abbastanza quantità di **{item_full_name}**. Ne possiede solo {qta_fazione}.", ephemeral=True)
+                return
+
+            # Aggiorna caveau della fazione
+            if qta_fazione == qta:
+                supabase.table("faction_inventory").delete().eq("id", f_item.get("id")).execute()
+            else:
+                supabase.table("faction_inventory").update({"quantity": qta_fazione - qta}).eq("id", f_item.get("id")).execute()
+
+            # Aggiunge o aggiorna nell'inventario personale
+            res_user = supabase.table("inventory").select("*").eq("discord_id", user_id).eq("item_name", item_full_name).execute()
+            
+            if res_user.data:
+                u_item = res_user.data[0]
+                nuova_qta_u = u_item.get("quantity", 0) + qta
+                supabase.table("inventory").update({"quantity": nuova_qta_u}).eq("id", u_item.get("id")).execute()
+            else:
+                supabase.table("inventory").insert({
+                    "discord_id": user_id,
+                    "item_name": item_full_name,
+                    "category": category,
+                    "weight": weight,
+                    "quantity": qta
+                }).execute()
+
         await interaction.response.send_message(
-            f"✅ Hai {azione_str} **{qta}x {item}** per la fazione **{self.faction_name}**.",
+            f"✅ Hai {azione_str} **{qta}x {item_richiesto}** per la fazione **{self.faction_name}**.",
             ephemeral=True
         )
 
@@ -816,7 +924,6 @@ async def fazione_autocomplete(interaction: discord.Interaction, current: str) -
     res = supabase.table("faction_roles").select("faction_name").ilike("faction_name", f"%{current}%").limit(25).execute()
     fazioni = res.data if res.data else []
     return [app_commands.Choice(name=f["faction_name"], value=f["faction_name"]) for f in fazioni]
-
 
 @bot.tree.command(name="registra_fazione", description="[STAFF] Registra una nuova fazione e il suo ruolo autorizzato.")
 @app_commands.describe(
