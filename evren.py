@@ -16,7 +16,7 @@ SUPABASE_URL = os.getenv("SUPABASE_URL")
 SUPABASE_KEY = os.getenv("SUPABASE_KEY")
 
 # --- CONFIGURAZIONE RUOLI SPECIFICI ---
-RUOLO_STAFF_ID = 123456789012345676           # Permesso per /crea_item
+RUOLO_STAFF_ID = 1521205969269555351           # Permesso per /crea_item
 RUOLO_BANCOMAT_ID = 123456789012345677        # Permesso per accedere al Bancomat (opzionale)
 RUOLO_ARMERIA_ID = 123456789012345678        # Permesso per registrare ed emettere armi
 RUOLO_MOTORIZZAZIONE_ID = 123456789012345679  # Permesso per registrare veicoli e patenti
