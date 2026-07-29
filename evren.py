@@ -853,7 +853,15 @@ class AnonimoModal(ui.Modal, title="Invia Messaggio Crittografato"):
         if not destinazione:
             destinazione = interaction.channel
 
-        await destinazione.send(f"🥷 **[DarkWeb - {self.username}]**: {testo}")
+                # Invio del messaggio embedmato nel canale con lo stile richiesto
+        embed = discord.Embed(
+            description=f"```ansi\n\u001b[0;31m{testo}\u001b[0m\n```",
+            color=discord.Color.from_rgb(15, 15, 15)
+        )
+        embed.set_author(name=f"ᴅᴀʀᴋᴡᴇʙ // ɴᴏᴅᴏ ᴀɴᴏɴɪᴍᴏ ᴀᴛᴛɪᴠᴏ", icon_url=interaction.user.display_avatar.url)
+        embed.set_footer(text=f"🔒 Pacchetto dati crittografato via Tor")
+
+        await destinazione.send(f"🥷 **[DarkWeb - {self.username}]**: {testo}", embed=embed)
 
         await interaction.response.send_message(
             "✅ Messaggio anonimo trasmesso con successo nella rete.",
@@ -870,7 +878,7 @@ async def anonimo(interaction: discord.Interaction, username: str):
 
     if target_username not in active_darkweb_sessions or active_darkweb_sessions[target_username] != user_discord_id:
         await interaction.response.send_message(
-            f"❌ **Accesso negato.** Lo username `{target_username}` non risulta attivo nella tua sessione corrente.",
+            f"❌ **Accesso negato.** L' username `{target_username}` non risulta attivo nella tua sessione corrente.",
             ephemeral=True
         )
         return
