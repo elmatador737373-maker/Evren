@@ -818,6 +818,48 @@ async def fazione_autocomplete(interaction: discord.Interaction, current: str) -
     return [app_commands.Choice(name=f["faction_name"], value=f["faction_name"]) for f in fazioni]
 
 
+@app_commands.command(name="registra_fazione", description="[STAFF] Registra una nuova fazione e il suo ruolo autorizzato.")
+@app_commands.describe(
+    fazione="Nome della fazione da registrare",
+    ruolo="Ruolo di Discord associato alla fazione"
+)
+@app_commands.checks.has_permissions(administrator=True) # Modifica i permessi staff come preferisci (es. manage_guild)
+async def registra_fazione(interaction: discord.Interaction, fazione: str, ruolo: discord.Role):
+    
+    # 1. Verifica se la fazione esiste già nel database
+    check_res = supabase.table("faction_roles").select("faction_name").eq("faction_name", fazione).execute()
+    
+    if check_res.data:
+        await interaction.response.send_message(f"❌ La fazione **{fazione}** risulta già registrata nel sistema.", ephemeral=True)
+        return
+
+    try:
+        # 2. Inserisce la fazione e il role_id nella tabella faction_roles
+        supabase.table("faction_roles").insert({
+            "faction_name": fazione,
+            "role_id": str(ruolo.id)
+        }).execute()
+
+        # 3. Inizializza anche il deposito vuoto nella tabella faction_vaults (opzionale ma consigliato)
+        supabase.table("faction_vaults").upsert({
+            "faction_name": fazione,
+            "cash_balance": 0.0,
+            "items_list": "Deposito vuoto."
+        }).execute()
+
+        await interaction.response.send_message(f"✅ Fazione **{fazioneregistrata}** registrata con successo! Ruolo associato: {ruolo.mention}", ephemeral=True)
+
+    except Exception as e:
+        await interaction.response.send_message(f"❌ Si è verificato un errore durante la registrazione: `{e}`", ephemeral=True)
+
+# Gestione dell'errore se un utente senza permessi prova ad usarlo
+@registra_fazione.error
+async def registra_fazione_error(interaction: discord.Interaction, error):
+    if isinstance(error, app_commands.errors.MissingPermissions):
+        await interaction.response.send_message("❌ Non hai i permessi necessari per utilizzare questo comando.", ephemeral=True)
+    else:
+        await interaction.response.send_message(f"❌ Errore imprevisto: `{error}`", ephemeral=True)
+
 @bot.tree.command(name="deposito_fazione", description="Accedi al deposito della tua fazione basato sul tuo ruolo.")
 @app_commands.describe(fazione="Nome della fazione registrata")
 @app_commands.autocomplete(fazione=fazione_autocomplete)
@@ -851,8 +893,7 @@ async def deposito_fazione(interaction: discord.Interaction, fazione: str):
 
     view = FactionVaultView(fazione)
     await interaction.response.send_message(embed=embed, view=view, ephemeral=True)
-
-
+    
 # --- PORTAFOGLIO ED OGGETTI ---
 
 @bot.tree.command(name="portafoglio", description="Visualizza i contanti e lo stato del tuo portafoglio su Evren City OS.")
@@ -887,11 +928,20 @@ async def portafoglio(interaction: discord.Interaction):
     app_commands.Choice(name="🎒 Zaino", value="zaino"),
     app_commands.Choice(name="🔓 Scassinamento", value="scassinamento")
 ])
+@app_commands.describe(
+    nome="Nome dell'oggetto",
+    categoria="Categoria dell'oggetto",
+    peso="Peso dell'oggetto in kg",
+    probabilita_riuscita="Probabilità di riuscita (1-100)",
+    capienza_zaino="Capienza extra (solo per zaini)",
+    ruolo_richiesto="Ruolo Discord necessario per poter acquistare/usare l'oggetto"
+)
 async def crea_item(
     interaction: discord.Interaction,
     nome: str,
     categoria: app_commands.Choice[str],
     peso: float,
+    ruolo_richiesto: discord.Role,
     probabilita_riuscita: int = 100,
     capienza_zaino: float = 0.0
 ):
@@ -914,7 +964,8 @@ async def crea_item(
         "category": categoria.value,
         "weight": max(0.0, round(peso, 2)),
         "probability": float(probabilita_riuscita),
-        "backpack_capacity": round(capienza_zaino, 2) if categoria.value == "zaino" else 0.0
+        "backpack_capacity": round(capienza_zaino, 2) if categoria.value == "zaino" else 0.0,
+        "role_id": str(required_role_id)  # Salvataggio del ruolo richiesto nel DB
     }
 
     try:
@@ -931,11 +982,12 @@ async def crea_item(
     embed.add_field(name="🏷️ Categoria", value=f"`{categoria.name}`", inline=True)
     embed.add_field(name="⚖️ Peso", value=f"`{peso} kg`", inline=True)
     embed.add_field(name="🎲 Probabilità Successo", value=f"`{probabilita_riuscita}%`", inline=True)
+    embed.add_field(name="🛡️ Ruolo Richiesto", value=f"{ruolo_richiesto.mention}", inline=False)
+    
     if categoria.value == "zaino":
         embed.add_field(name="🎒 Capienza Extra", value=f"`+{capienza_zaino} kg`", inline=False)
 
     await interaction.response.send_message(embed=embed)
-
 
 class InventoryUseView(ui.View):
     def __init__(self, user_id: int, user_items: list):
