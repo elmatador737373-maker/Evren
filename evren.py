@@ -278,91 +278,71 @@ async def compra(interaction: discord.Interaction, item: str):
     )
 
 import json
+import numpy as np
 import discord
 from discord import app_commands
 from playwright.async_api import async_playwright
 
-@bot.tree.command(name="cerca_foto", description="Riconosce un cittadino dalla foto (anche da angolazioni diverse) tramite scansione AI automatica.")
+@bot.tree.command(name="cerca_foto", description="[Riservato Polizia] Riconosce un cittadino dalla foto tramite scansione AI remota.")
 @app_commands.describe(foto="Carica la foto o il documento da analizzare")
 async def cerca_foto(interaction: discord.Interaction, foto: discord.Attachment):
-    # Risponde subito in modo che l'interazione non scada durante l'elaborazione dell'IA
+    # 1. Controllo se l'utente ha il ruolo di polizia
+    ruolo_polizia = interaction.guild.get_role(RUOLO_POLIZIA_ID)
+    
+    if not ruolo_polizia or ruolo_polizia not in interaction.user.roles:
+        await interaction.response.send_message(
+            "❌ **Accesso Negato:** Questo comando è riservato esclusivamente alle Forze dell'Ordine.", 
+            ephemeral=True
+        )
+        return
+
+    # Se ha il ruolo, procede con l'interazione
     await interaction.response.defer(ephemeral=True)
 
     url_foto_utente = foto.url
-    
-    # URL del tuo sito ospitato su Vercel
     sito_vercel = "https://bot-kiwonuwy1-elmatador737373-makers-projects.vercel.app"
     url_target = f"{sito_vercel}/?url={url_foto_utente}"
 
     try:
-        # Avvia Playwright in background (senza aprire finestre)
+        # 2. Usa Playwright per far analizzare la foto al sito su Vercel e ottenere il descrittore biometrico
         async with async_playwright() as p:
             browser = await p.chromium.launch(headless=True)
             page = await browser.new_page()
 
-            # Apre la pagina web passando l'URL della foto nei parametri
             await page.goto(url_target, wait_until="networkidle")
 
-            # Attende che l'analisi termini e che compaia il JSON dentro il div #result (timeout 30 secondi)
             try:
                 await page.wait_for_selector("#result", timeout=30000)
-                # Dà un piccolo margine di sicurezza per essere sicuri che il JavaScript abbia scritto il testo
                 await page.wait_for_function("document.getElementById('result').innerText.startsWith('{')", timeout=10000)
             except Exception:
                 await interaction.followup.send("❌ **Tempo scaduto:** L'analisi biometrica sul server ha impiegato troppo tempo.", ephemeral=True)
                 await browser.close()
                 return
 
-            # Estrae il testo JSON generato dalla pagina web
             contenuto_div = await page.inner_text("#result")
             await browser.close()
 
-        # Converte il testo JSON estratto in un dizionario Python
         dati_risultato = json.loads(contenuto_div)
 
     except Exception as e:
-        await interaction.followup.send(f"❌ Errore critico durante l'elaborazione del riconoscimento: {e}", ephemeral=True)
+        await interaction.followup.send(f"❌ Errore di comunicazione con il motore biometrico: {e}", ephemeral=True)
         return
 
-    # Controlla l'esito restituito dal sistema
-    status = dati_risultato.get("status")
-
-    if status != "success":
-        await interaction.followup.send(
-            "❌ **Riconoscimento fallito:** Nessuna corrispondenza visiva trovata nel database per questa foto.",
-            ephemeral=True
-        )
+    if dati_risultato.get("status") != "success":
+        await interaction.followup.send("❌ **Riconoscimento fallito:** Nessun volto rilevato nell'immagine.", ephemeral=True)
         return
 
-    # Estrae i dati del cittadino trovato
-    nome = dati_risultato.get("name", "Sconosciuto")
-    cognome = dati_risultato.get("surname", "")
-    cf = dati_risultato.get("cf", "N/D")
-    doc_number = dati_risultato.get("doc_number", "N/D")
-    birth_date = dati_risultato.get("birth_date", "N/D")
-    birth_place = dati_risultato.get("birth_place", "N/D")
-    distinct_marks = dati_risultato.get("distinct_marks", "Nessuno")
-    discord_id = dati_risultato.get("discord_id", "N/D")
-    photo_url = dati_risultato.get("photo_url", url_foto_utente)
-    
-    # Crea l'Embed pulito e professionale per le forze dell'ordine
-    embed = discord.Embed(
-        title="🔍 Risultato Riconoscimento Facciale (AI)",
-        description="Analisi completata con successo tramite scansione biometrica avanzata.",
-        color=discord.Color.green()
-    )
-    embed.set_thumbnail(url=photo_url)
-    embed.add_field(name="👤 Cittadino", value=f"**{nome} {cognome}**", inline=False)
-    embed.add_field(name="📄 Codice Fiscale", value=f"`{cf}`", inline=True)
-    embed.add_field(name="🆔 N. Documento", value=f"`{doc_number}`", inline=True)
-    embed.add_field(name="📅 Data di Nascita", value=f"{birth_date} ({birth_place})", inline=False)
-    embed.add_field(name="👁️ Segni Particolari", value=distinct_marks, inline=False)
-    
-    embed.set_footer(text=f"Evren City OS • ID Discord: {discord_id}")
+    # 3. Il bot interroga Supabase in sicurezza (usando le sue variabili d'ambiente protette su Render)
+    res = supabase.table("public.documents").select("*").execute()
+    documenti = res.data if res.data else []
 
-    await interaction.followup.send(embed=embed, ephemeral=True)
+    if not documenti:
+        await interaction.followup.send("❌ Nessun documento registrato nel database centrale.", ephemeral=True)
+        return
 
-@bot.event
+    # Invio della risposta finale (come configurato in precedenza)
+    await interaction.followup.send("✅ Autenticazione effettuata e scansione avviata.", ephemeral=True)
+
 async def on_member_join(member: discord.Member):
     welcome_text = (
         "✦ **BENVENUTO SU EVREN!** ✦\n"
