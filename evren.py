@@ -9,7 +9,6 @@ import aiohttp
 import numpy as np
 import imageio_ffmpeg
 from flask import Flask, jsonify
-
 import discord
 from discord import app_commands, ui
 from discord.ext import commands
