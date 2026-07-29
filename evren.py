@@ -456,12 +456,12 @@ class RispondiChiamataView(View):
             except Exception:
                 pass
 
-
 # --- 4. INTERFACCIA DEL TELEFONO (OS PRINCIPALE) ---
 class EvrenPhoneView(View):
-    def __init__(self, user_id: str):
+    def __init__(self, user_id: str, phone_number: str):
         super().__init__(timeout=300)
         self.user_id = user_id
+        self.phone_number = phone_number
         self.aggiorna_selettori()
 
     def aggiorna_selettori(self):
@@ -570,13 +570,32 @@ async def telefono(interaction: discord.Interaction):
             return
 
     user_id = str(interaction.user.id)
-    view = EvrenPhoneView(user_id)
+
+    # Recupera il numero di telefono dell'utente dal database
+    res = supabase.table("user_phones").select("phone_number").eq("discord_id", user_id).execute()
     
+    if not res.data or len(res.data) == 0:
+        phone_number = "Nessun numero registrato"
+    else:
+        phone_number = res.data[0]["phone_number"]
+
+    view = EvrenPhoneView(user_id, phone_number)
+    
+    # Messaggio abbellito con stile UI smartphone
+    embed = discord.Embed(
+        title="📱 Evren City OS — Smartphone",
+        description="*Benvenuto nel tuo terminale personale. Gestisci la tua rubrica, effettua chiamate vocali e chatta in tempo reale.*",
+        color=discord.Color.from_rgb(40, 167, 69)
+    )
+    embed.add_field(name="📞 Il tuo Numero", value=f"`{phone_number}`", inline=False)
+    embed.set_footer(text=f"Utente: {interaction.user.display_name}", icon_url=interaction.user.display_avatar.url)
+
     await interaction.response.send_message(
-        "📱 **Evren City OS**\nBenvenuto nel tuo smartphone. Gestisci rubrica, chiamate e chat WhatsApp:",
+        embed=embed,
         view=view,
         ephemeral=True
     )
+
 
 @bot.tree.command(name="cerca_foto", description="[Riservato Polizia] Riconosce un cittadino dalla foto tramite scansione AI remota.")
 @app_commands.describe(foto="Carica la foto o il documento da analizzare")
