@@ -896,7 +896,7 @@ async def portafoglio(interaction: discord.Interaction):
     user_id = str(interaction.user.id)
     
     # Interroga Supabase per prendere i contanti dell'utente
-    res = supabase.table("users").select("cash").eq("discord_id", user_id).execute()
+    res = supabase.table("users").select("wallet").eq("discord_id", user_id).execute()
     
     contanti = 0
     if res.data and len(res.data) > 0:
