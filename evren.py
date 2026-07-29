@@ -965,13 +965,13 @@ async def crea_item(
         "weight": max(0.0, round(peso, 2)),
         "probability": float(probabilita_riuscita),
         "backpack_capacity": round(capienza_zaino, 2) if categoria.value == "zaino" else 0.0,
-        "role_id": str(required_role_id)  # Salvataggio del ruolo richiesto nel DB
+        "required_role_id": str(ruolo_richiesto.id)  # Corretto per corrispondere alla colonna SQL
     }
 
     try:
         supabase.table("custom_items").insert(item_data).execute()
     except Exception as e:
-        await interaction.response.send_message(f"❌ Errore durante la creazione! Nome già in uso o errore DB.", ephemeral=True)
+        await interaction.response.send_message(f"❌ Errore durante la creazione! Nome già in uso o errore DB: `{e}`", ephemeral=True)
         return
 
     embed = discord.Embed(
