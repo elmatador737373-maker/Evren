@@ -176,6 +176,165 @@ async def on_member_join(member: discord.Member):
         print(f"❌ Errore durante l'invio del messaggio di benvenuto: {e}")
 
 # --- SISTEMA OGGETTI (COMANDO STAFF /crea_item & INVENTARIO) ---
+import discord
+from discord import app_commands
+from discord.ui import View, Button
+
+# --- SUPPORTO DEPOSITI FAZIONE CON AUTOCOMPLETE ---
+
+# --- MODAL PER DEPOSITARE O PRELEVARE DENARO ---
+class FactionCashModal(discord.ui.Modal):
+    def __init__(self, faction_name: str, action_type: str):
+        title = "Deposita Soldi" if action_type == "deposita" else "Preleva Soldi"
+        super().__init__(title=f"{title} - {faction_name}")
+        self.faction_name = faction_name
+        self.action_type = action_type
+
+        self.quantita = discord.ui.TextInput(
+            label="Importo in Denaro (€)",
+            placeholder="Es. 5000",
+            required=True,
+            max_length=12
+        )
+        self.add_item(self.quantita)
+
+    async def on_submit(self, interaction: discord.Interaction):
+        valore = self.quantita.value.strip()
+        azione_str = "depositato" if self.action_type == "deposita" else "prelevato"
+        
+        # Logica di aggiornamento saldo su Supabase (da collegare al tuo DB)
+        await interaction.response.send_message(
+            f"✅ Hai {azione_str} **€ {valore}** nella cassa della fazione **{self.faction_name}**.",
+            ephemeral=True
+        )
+
+
+# --- MODAL INTERATTIVO PER ITEM CON CAMPO LIBERO O SCELTA ---
+class FactionItemModal(discord.ui.Modal):
+    def __init__(self, faction_name: str, action_type: str, item_scelto: str = ""):
+        title = "Deposita Item" if action_type == "deposita" else "Preleva Item"
+        super().__init__(title=f"{title} - {faction_name}")
+        self.faction_name = faction_name
+        self.action_type = action_type
+
+        self.nome_item = discord.ui.TextInput(
+            label="Nome dell'Item",
+            placeholder="Es. Kit Medico, AK-47...",
+            default=item_scelto,
+            required=True,
+            max_length=50
+        )
+        self.quantita_item = discord.ui.TextInput(
+            label="Quantità",
+            placeholder="Es. 1 o 5",
+            required=True,
+            max_length=5
+        )
+        self.add_item(self.nome_item)
+        self.add_item(self.quantita_item)
+
+    async def on_submit(self, interaction: discord.Interaction):
+        item = self.nome_item.value.strip()
+        qta = self.quantita_item.value.strip()
+        azione_str = "depositato" if self.action_type == "deposita" else "prelevato"
+
+        await interaction.response.send_message(
+            f"✅ Hai {azione_str} **{qta}x {item}** per la fazione **{self.faction_name}**.",
+            ephemeral=True
+        )
+
+
+# --- VIEW CON I PULSANTI DEL DEPOSITO FAZIONE ---
+class FactionVaultView(View):
+    def __init__(self, faction_name: str):
+        super().__init__(timeout=300)
+        self.faction_name = faction_name
+
+    @discord.ui.button(label="Deposita Soldi", style=discord.ButtonStyle.green, emoji="💵", row=0)
+    async def dep_soldi(self, interaction: discord.Interaction, button: Button):
+        await interaction.response.send_modal(FactionCashModal(self.faction_name, "deposita"))
+
+    @discord.ui.button(label="Preleva Soldi", style=discord.ButtonStyle.red, emoji="💸", row=0)
+    async def pre_soldi(self, interaction: discord.Interaction, button: Button):
+        await interaction.response.send_modal(FactionCashModal(self.faction_name, "preleva"))
+
+    @discord.ui.button(label="Deposita Item", style=discord.ButtonStyle.blurple, emoji="📦", row=1)
+    async def dep_item(self, interaction: discord.Interaction, button: Button):
+        await interaction.response.send_modal(FactionItemModal(self.faction_name, "deposita"))
+
+    @discord.ui.button(label="Preleva Item", style=discord.ButtonStyle.grey, emoji="📤", row=1)
+    async def pre_item(self, interaction: discord.Interaction, button: Button):
+        await interaction.response.send_modal(FactionItemModal(self.faction_name, "preleva"))
+
+
+# --- FUNZIONI DI AUTOCOMPLETE ---
+async def fazione_autocomplete(interaction: discord.Interaction, current: str) -> list[app_commands.Choice[str]]:
+    # Prende le fazioni registrate da Supabase in base a ciò che digita l'utente
+    res = supabase.table("faction_roles").select("faction_name").ilike("faction_name", f"%{current}%").limit(25).execute()
+    fazioni = res.data if res.data else []
+    return [app_commands.Choice(name=f["faction_name"], value=f["faction_name"]) for f in fazioni]
+
+
+# --- COMANDO /DEPOSITO_FAZIONE CON AUTOCOMPLETE ---
+@bot.tree.command(name="deposito_fazione", description="Accedi al deposito della tua fazione basato sul tuo ruolo.")
+@app_commands.describe(fazione="Nome della fazione registrata")
+@app_commands.autocomplete(fazione=fazione_autocomplete)
+async def deposito_fazione(interaction: discord.Interaction, fazione: str):
+    user = interaction.user
+    
+    # Verifica il ruolo associato alla fazione
+    res = supabase.table("faction_roles").select("role_id").eq("faction_name", fazione).execute()
+    
+    if not res.data:
+        await interaction.response.send_message(f"❌ La fazione **{fazione}** non risulta registrata nel sistema.", ephemeral=True)
+        return
+
+    role_id = int(res.data[0]["role_id"])
+    
+    if not any(r.id == role_id for r in user.roles): # type: ignore
+        await interaction.response.send_message(f"❌ Non possiedi il ruolo autorizzato per accedere a questo deposito.", ephemeral=True)
+        return
+
+    # Recupera dati deposito
+    res_vault = supabase.table("faction_vaults").select("cash_balance, items_list").eq("faction_name", fazione).execute()
+    saldo_soldi = res_vault.data[0].get("cash_balance", 0) if res_vault.data else 0
+    lista_item = res_vault.data[0].get("items_list", "Deposito vuoto.") if res_vault.data else "Deposito vuoto."
+
+    embed = discord.Embed(
+        title=f"🏛️ Deposito Fazione: {fazione}",
+        description="Gestisci le risorse della fazione tramite i pulsanti sottostanti.",
+        color=discord.Color.gold()
+    )
+    embed.add_field(name="💰 Saldo Cassa", value=f"**€ {saldo_soldi:,.2f}**", inline=False)
+    embed.add_field(name="📦 Inventario Item", value=f"```{lista_item}```", inline=False)
+    embed.set_footer(text="Evren City OS • Gestione Risorse Fazione")
+
+    view = FactionVaultView(fazione)
+    await interaction.response.send_message(embed=embed, view=view, ephemeral=True)
+
+import discord
+from discord import app_commands
+
+@bot.tree.command(name="portafoglio", description="Visualizza i contanti e lo stato del tuo portafoglio su Evren City OS.")
+async def portafoglio(interaction: discord.Interaction):
+    user_id = str(interaction.user.id)
+    
+    # Interroga Supabase per prendere i contanti dell'utente
+    res = supabase.table("users").select("cash").eq("discord_id", user_id).execute()
+    
+    contanti = 0
+    if res.data and len(res.data) > 0:
+        contanti = res.data[0].get("cash", 0)
+
+    embed = discord.Embed(
+        title="💼 Portafoglio - Evren City OS",
+        description="Ecco il riepilogo del tuo denaro contante.",
+        color=discord.Color.green()
+    )
+    embed.add_field(name="💵 Contanti", value=f"**€ {contanti:,.2f}**", inline=False)
+    embed.set_footer(text="Evren City OS • Sistema Finanziario")
+
+    await interaction.response.send_message(embed=embed, ephemeral=True)
 
 @bot.tree.command(name="crea_item", description="[STAFF] Crea un nuovo oggetto con meccaniche specifiche.")
 @app_commands.choices(categoria=[
