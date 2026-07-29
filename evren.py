@@ -1029,7 +1029,7 @@ from discord import app_commands
 from playwright.async_api import async_playwright
 
 # Inserisci qui la tua API Key di ImgBB
-IMGBB_API_KEY = "IL_TUO_TOKEN_API_DI_IMGBB"
+IMGBB_API_KEY = os.getenv("IMGBB_API_KEY")
 
 # --- 1. FUNZIONE DI UPLOAD SU IMGBB ---
 async def upload_to_imgbb(foto: discord.Attachment) -> str:
