@@ -2298,72 +2298,133 @@ async def genera_carta_identita(nome, cognome, birth_date, birth_place, cf, doc_
     buffer.seek(0)
     return discord.File(buffer, filename="carta_identita.png")
 
+import discord
+from discord import app_commands, ui
 
-@bot.tree.command(name="crea_documenti", description="Genera i tuoi documenti identificativi completi di caratteristiche fisiche e foto.")
-async def crea_documenti(
-    interaction: discord.Interaction, 
-    nome: str, 
-    cognome: str, 
-    data_nascita: str, 
-    luogo_nascita: str,
-    colore_occhi: str,
-    colore_capelli: str,
-    foto: discord.Attachment,
-    segni_particolari: str = "Nessuno"
-):
-    user_id = str(interaction.user.id)
-    existing = supabase.table("documents").select("*").eq("discord_id", user_id).execute()
+# =======================================================
+#  MODAL PER LA CREAZIONE DEI DOCUMENTI (Pannello)
+# =======================================================
+class CreaDocumentiModal(ui.Modal, title="🪪 ┃ ʀᴇɢɪsᴛʀᴏ ᴀɴᴀɢʀᴀꜰɪᴄᴏ ᴄɪᴛᴛᴀᴅɪɴᴏ"):
+    def __init__(self):
+        super().__init__()
 
-    if existing.data:
-        doc = existing.data[0]
-        await interaction.response.send_message(f"❌ Documenti già esistenti!\nCF: `{doc['cf']}`", ephemeral=True)
-        return
+        self.nome = ui.TextInput(label="ɴᴏᴍᴇ", placeholder="Es. Mario", required=True, max_length=50)
+        self.cognome = ui.TextInput(label="ᴄᴏɢɴᴏᴍᴇ", placeholder="Es. Rossi", required=True, max_length=50)
+        self.data_nascita = ui.TextInput(label="ᴅᴀᴛᴀ ᴅɪ ɴᴀsᴄɪᴛᴀ", placeholder="Es. 15/05/1998", required=True, max_length=20)
+        self.luogo_nascita = ui.TextInput(label="ʟᴜᴏɢᴏ ᴅɪ ɴᴀsᴄɪᴛᴀ", placeholder="Es. Los Angeles", required=True, max_length=50)
+        self.segni_particolari = ui.TextInput(label="sᴇɢɴɪ ᴘᴀʀᴛɪᴄᴏʟᴀʀɪ", placeholder="Es. Cicatrice sul sopracciglio o Nessuno", required=False, max_length=100)
 
-    if not foto.content_type or not foto.content_type.startswith("image/"):
-        await interaction.response.send_message("❌ Il file allegato deve essere un'immagine valida (PNG, JPG, ecc.)!", ephemeral=True)
-        return
+        self.add_item(self.nome)
+        self.add_item(self.cognome)
+        self.add_item(self.data_nascita)
+        self.add_item(self.luogo_nascita)
+        self.add_item(self.segni_particolari)
 
-    await interaction.response.defer(ephemeral=True)
+    async def on_submit(self, interaction: discord.Interaction):
+        # Passa i dati al secondo passaggio o gestiscili direttamente tramite una seconda modale / allegato foto.
+        # Per semplicità, qui reindirizziamo o salviamo provvisoriamente, oppure puoi combinare nome/cognome/ecc.
+        # Visto che serve anche la foto (discord.Attachment non si può mettere nei Modal standard di Discord), 
+        # la gestione migliore è chiedere prima i dati testuali via Modal e poi generare il documento 
+        # (oppure inviare un prompt successivo per la foto). 
+        # Per mantenere la coerenza con il tuo comando originale, salviamo i dati temporaneamente e chiediamo la foto.
+        
+        nome_val = self.nome.value.strip()
+        cognome_val = self.cognome.value.strip()
+        data_val = self.data_nascita.value.strip()
+        luogo_val = self.luogo_nascita.value.strip()
+        segni_val = self.segni_particolari.value.strip() or "Nessuno"
 
-    try:
-        photo_url = await upload_to_imgbb(foto)
-    except Exception as e:
-        await interaction.followup.send(f"❌ Errore durante il caricamento della foto su ImgBB: {e}", ephemeral=True)
-        return
+        user_id = str(interaction.user.id)
+        existing = supabase.table("documents").select("*").eq("discord_id", user_id).execute()
 
-    cf = genera_codice_fiscale(nome, cognome)
-    doc_num = genera_num_documento()
+        if existing.data:
+            doc = existing.data[0]
+            await interaction.response.send_message(f"❌ **ᴅᴏᴄᴜᴍᴇɴᴛɪ ɢɪÀ ᴇsɪsᴛᴇɴᴛɪ!**\nCF: `{doc['cf']}`", ephemeral=True)
+            return
 
-    supabase.table("documents").insert({
-        "discord_id": user_id,
-        "name": nome.capitalize(),
-        "surname": cognome.capitalize(),
-        "birth_date": data_nascita,
-        "birth_place": luogo_nascita.capitalize(),
-        "eye_color": colore_occhi.capitalize(),
-        "hair_color": colore_capelli.capitalize(),
-        "distinct_marks": segni_particolari,
-        "photo_url": photo_url,
-        "cf": cf,
-        "doc_number": doc_num
-    }).execute()
+        # Salviamo provvisoriamente in un dizionario temporaneo globale del bot (es. user_temp_docs[user_id] = {...})
+        # Oppure procediamo direttamente se preferisci un flusso unico. 
+        # Poiché la modale non accetta allegati (file), l'approccio ideale con View Persistente + Modal è questo:
+        global user_temp_docs
+        try:
+            user_temp_docs
+        except NameError:
+            user_temp_docs = {}
 
-    file_documento = await genera_carta_identita(
-        nome=nome,
-        cognome=cognome,
-        birth_date=data_nascita,
-        birth_place=luogo_nascita,
-        cf=cf,
-        doc_number=doc_num,
-        photo_url=photo_url,
-        colore_occhi=colore_occhi,
-        colore_capelli=colore_capelli,
-        segni_particolari=segni_particolari
+        user_temp_docs[user_id] = {
+            "nome": nome_val,
+            "cognome": cognome_val,
+            "data_nascita": data_val,
+            "luogo_nascita": luogo_val,
+            "segni_particolari": segni_val
+        }
+
+        await interaction.response.send_message(
+            "📝 **ᴅᴀᴛɪ ᴀɴᴀɢʀᴀꜰɪᴄɪ ʀᴇɢɪsᴛʀᴀᴛɪ.**\n"
+            "Ora, per completare i documenti e generare la carta d'identità ufficiale con foto, "
+            "utilizza il comando `/carica_foto` allegando il tuo documento fotografico.",
+            ephemeral=True
+        )
+
+
+# =======================================================
+#  VIEW PERSISTENTE PER IL PANNELLO ANAGRAFE
+# =======================================================
+class PannelloAnagrafeView(ui.View):
+    def __init__(self):
+        super().__init__(timeout=None)
+
+    @ui.button(label="Compila Anagrafica", style=discord.ButtonStyle.green, emoji="🪪", custom_id="anagrafe_apri_modal")
+    async def apri_modal(self, interaction: discord.Interaction, button: ui.Button):
+        await interaction.response.send_modal(CreaDocumentiModal())
+
+
+# =======================================================
+#  COMANDO /PANNELLO_DOCUMENTI (PER GLI ADMIN)
+# =======================================================
+@bot.tree.command(
+    name="pannello_documenti",
+    description="Invia il pannello interattivo permanente per la creazione dei documenti"
+)
+@app_commands.default_permissions(administrator=True)
+async def pannello_documenti(interaction: discord.Interaction):
+    server_name = interaction.guild.name
+    server_icon = interaction.guild.icon.url if interaction.guild.icon else None
+
+    embed = discord.Embed(
+        title="🏛️ ┃ ᴜꜰꜰɪᴄɪᴏ ᴀɴᴀɢʀᴀꜰᴇ ᴄɪᴛᴛᴀᴅɪɴᴏ",
+        description=(
+            f"📋 **sᴘᴏʀᴛᴇʟʟᴏ ᴜꜰꜰɪᴄɪᴀʟᴇ ʀɪʟᴀsᴄɪᴏ ᴅᴏᴄᴜᴍᴇɴᴛɪ**\n"
+            f"# ✦ ɢᴇɴᴇʀᴀᴢɪᴏɴᴇ ɪᴅᴇɴᴛɪᴛÀ\n\n"
+            f"━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n\n"
+            f"📌 **ɢᴜɪᴅᴀ ʀᴀᴘɪᴅᴀ ᴀʟʟᴀ ᴄᴏᴍᴘɪʟᴀᴢɪᴏɴᴇ:**\n"
+            f"1️⃣ Clicca sul pulsante **Compila Anagrafica** qui sotto.\n"
+            f"2️⃣ Inserisci i tuoi dati anagrafici reali o RP nel modulo.\n"
+            f"3️⃣ Segui le istruzioni successive per allegare la foto tessera.\n"
+            f"4️⃣ Il sistema registrerà automaticamente il tuo codice fiscale.\n\n"
+            f"⚠️ *Nota bene: È consentito un solo documento attivo per cittadino.*\n\n"
+            f"━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+        ),
+        color=discord.Color.from_rgb(30, 144, 255)
     )
-    
-    await interaction.followup.send(
-        content="✅ **Documenti creati con successo!** Ecco la tua carta d'identità ufficiale:", 
-        file=file_documento, 
+
+    if server_icon:
+        embed.set_author(name=f"ᴄᴏᴍᴜɴᴇ ᴅɪ {server_name.upper()}", icon_url=server_icon)
+    else:
+        embed.set_author(name=f"ᴀɴᴀɢʀᴀꜰᴇ ᴄɪᴛᴛᴀᴅɪɴᴀ")
+
+    embed.set_footer(
+        text=f"⚖️ Servizi Demografici Ufficiali | {server_name}™",
+        icon_url=server_icon
+    )
+
+    await interaction.channel.send(
+        embed=embed,
+        view=PannelloAnagrafeView()
+    )
+
+    await interaction.response.send_message(
+        "✅ **ᴘᴀɴɴᴇʟʟᴏ ɪɴᴠɪᴀᴛᴏ.** L'interfaccia anagrafica persistente è stata pubblicata con successo.",
         ephemeral=True
     )
 
