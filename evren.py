@@ -648,7 +648,6 @@ async def cerca_foto(interaction: discord.Interaction, foto: discord.Attachment)
         )
         return
 
-    # Se ha il ruolo, procede con l'interazione
     await interaction.response.defer(ephemeral=True)
 
     url_foto_utente = foto.url
@@ -656,7 +655,7 @@ async def cerca_foto(interaction: discord.Interaction, foto: discord.Attachment)
     url_target = f"{sito_vercel}/?url={url_foto_utente}"
 
     try:
-        # 2. Usa Playwright per far analizzare la foto al sito su Vercel e ottenere il descrittore biometrico
+        # 2. Usa Playwright per aprire la pagina, lasciando che Vercel esegua l'IA e interroghi Supabase
         async with async_playwright() as p:
             browser = await p.chromium.launch(headless=True)
             page = await browser.new_page()
@@ -664,15 +663,24 @@ async def cerca_foto(interaction: discord.Interaction, foto: discord.Attachment)
             await page.goto(url_target, wait_until="networkidle")
 
             try:
-                await page.wait_for_selector("#result", timeout=30000)
-                await page.wait_for_function("document.getElementById('result').innerText.startsWith('{')", timeout=10000)
+                # Attende che il div #result venga popolato con un JSON o che compaia un errore nello status
+                await page.wait_for_selector("#result", timeout=60000)
+                await page.wait_for_function(
+                    "document.getElementById('result').innerText.startsWith('{') || document.getElementById('status').innerText.includes('❌')",
+                    timeout=50000
+                )
             except Exception:
-                await interaction.followup.send("❌ **Tempo scaduto:** L'analisi biometrica sul server ha impiegato troppo tempo.", ephemeral=True)
+                await interaction.followup.send("❌ **Tempo scaduto:** L'analisi biometrica e il confronto su Supabase hanno impiegato troppo tempo.", ephemeral=True)
                 await browser.close()
                 return
 
             contenuto_div = await page.inner_text("#result")
+            status_div = await page.inner_text("#status")
             await browser.close()
+
+        if "❌" in status_div and not contenuto_div.startswith("{"):
+            await interaction.followup.send(f"❌ Errore dal server biometrico: {status_div}", ephemeral=True)
+            return
 
         dati_risultato = json.loads(contenuto_div)
 
@@ -680,20 +688,44 @@ async def cerca_foto(interaction: discord.Interaction, foto: discord.Attachment)
         await interaction.followup.send(f"❌ Errore di comunicazione con il motore biometrico: {e}", ephemeral=True)
         return
 
-    if dati_risultato.get("status") != "success":
-        await interaction.followup.send("❌ **Riconoscimento fallito:** Nessun volto rilevato nell'immagine.", ephemeral=True)
+    # 3. Gestione dei risultati restituiti da Vercel
+    status = dati_risultato.get("status")
+
+    if status == "not_found":
+        await interaction.followup.send("❌ **Riconoscimento fallito:** Nessun volto rilevato nell'immagine caricata.", ephemeral=True)
+        return
+    
+    if status == "not_matched":
+        await interaction.followup.send("❌ **Nessun riscontro:** Il volto non corrisponde a nessun cittadino registrato nel database.", ephemeral=True)
         return
 
-    # 3. Il bot interroga Supabase in sicurezza (usando le sue variabili d'ambiente protette su Render)
-    res = supabase.table("public.documents").select("*").execute()
-    documenti = res.data if res.data else []
-
-    if not documenti:
-        await interaction.followup.send("❌ Nessun documento registrato nel database centrale.", ephemeral=True)
+    if status == "error":
+        msg_err = dati_risultato.get("message", "Errore sconosciuto")
+        await interaction.followup.send(f"❌ Errore interno del motore IA: {msg_err}", ephemeral=True)
         return
 
-    # Invio della risposta finale (come configurato in precedenza)
-    await interaction.followup.send("✅ Autenticazione effettuata e scansione avviata.", ephemeral=True)
+    if status == "success":
+        match = dati_risultato.get("match", {})
+        distanza = dati_risultato.get("distance", 0)
+
+        # Estrai i dati del cittadino trovato (modifica i campi in base alle colonne della tua tabella documents)
+        nome_cittadino = match.get("name", "Sconosciuto")
+        codice_fiscale = match.get("fiscal_code", match.get("id", "N/D"))
+
+        embed = discord.Embed(
+            title="🔍 Esito Scansione Biometrica",
+            description="**Match trovato nel database centrale di Evren City!**",
+            color=discord.Color.green()
+        )
+        embed.add_field(name="👤 Cittadino Identificato", value=f"`{nome_cittadino}`", inline=False)
+        embed.add_field(name="📄 Riferimento / ID", value=f"`{codice_fiscale}`", inline=True)
+        embed.add_field(name="📊 Affidabilità Match", value=f"`{round((1 - distanza) * 100, 1)}%`", inline=True)
+        embed.set_footer(text="Evren City OS — Sicurezza e Giustizia")
+
+        await interaction.followup.send(embed=embed, ephemeral=True)
+        return
+
+    await interaction.followup.send("❌ Risposta imprevista dal server biometrico.", ephemeral=True)
 
 async def on_member_join(member: discord.Member):
     welcome_text = (
