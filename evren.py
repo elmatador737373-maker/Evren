@@ -1734,7 +1734,6 @@ async def paga_multa(interaction: discord.Interaction):
 
 
 # --- DOCUMENTI IDENTIFICATIVI ---
-
 async def genera_carta_identita(nome, cognome, birth_date, birth_place, cf, doc_number, photo_url, colore_occhi, colore_capelli, segni_particolari):
     html_content = f"""
     <!DOCTYPE html>
@@ -1747,40 +1746,57 @@ async def genera_carta_identita(nome, cognome, birth_date, birth_place, cf, doc_
                 padding: 0;
                 width: 780px;
                 height: 500px;
-                background: linear-gradient(135deg, #f8f9fa 0%, #e9ecef 100%);
-                font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
-                border: 4px solid #1a252f;
+                background: #f8fafc;
+                font-family: 'Segoe UI', Arial, sans-serif;
+                border: 3px solid #1e3a8a;
                 box-sizing: border-box;
                 position: relative;
+                overflow: hidden;
             }}
             .header {{
-                background-color: #1a252f;
+                background: linear-gradient(135deg, #1e3a8a 0%, #1d4ed8 100%);
                 color: white;
-                padding: 12px 20px;
+                padding: 14px 24px;
                 display: flex;
                 justify-content: space-between;
                 align-items: center;
+                border-bottom: 4px solid #f59e0b;
             }}
-            .header h1 {{
+            .header-left h1 {{
                 margin: 0;
-                font-size: 18px;
-                letter-spacing: 1px;
+                font-size: 21px;
+                letter-spacing: 1.5px;
+                font-weight: 800;
+                text-transform: uppercase;
             }}
-            .header span {{
+            .header-left span {{
+                font-size: 11px;
+                letter-spacing: 2px;
+                color: #93c5fd;
+                text-transform: uppercase;
+                font-weight: 600;
+            }}
+            .header-right {{
+                text-align: right;
                 font-size: 13px;
-                color: #bdc3c7;
+                font-weight: bold;
+                letter-spacing: 1px;
+                color: #fde047;
+                background: rgba(0, 0, 0, 0.2);
+                padding: 4px 10px;
+                border-radius: 4px;
             }}
             .body-content {{
-                padding: 20px;
+                padding: 22px 26px;
                 display: flex;
-                gap: 20px;
+                gap: 25px;
             }}
             .foto-container {{
-                width: 140px;
-                height: 180px;
-                border: 2px solid #1a252f;
+                width: 165px;
+                height: 215px;
+                border: 3px solid #1e3a8a;
                 background: #fff;
-                box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+                box-shadow: 0 4px 10px rgba(0,0,0,0.15);
                 flex-shrink: 0;
             }}
             .foto-container img {{
@@ -1792,47 +1808,60 @@ async def genera_carta_identita(nome, cognome, birth_date, birth_place, cf, doc_
                 flex-grow: 1;
                 display: grid;
                 grid-template-columns: 1fr 1fr;
-                gap: 10px;
+                gap: 12px 18px;
             }}
             .field {{
                 display: flex;
                 flex-direction: column;
-                border-bottom: 1px solid #dcdde1;
-                padding-bottom: 3px;
+                border-bottom: 2px solid #cbd5e1;
+                padding-bottom: 4px;
             }}
             .field.full {{
                 grid-column: span 2;
             }}
             .label {{
-                font-size: 10px;
+                font-size: 11px;
                 text-transform: uppercase;
-                color: #7f8c8d;
-                font-weight: bold;
+                color: #475569;
+                font-weight: 700;
+                letter-spacing: 0.5px;
             }}
             .value {{
-                font-size: 14px;
-                font-weight: bold;
-                color: #2c3e50;
+                font-size: 17px;
+                font-weight: 700;
+                color: #0f172a;
+                margin-top: 2px;
             }}
             .footer {{
                 position: absolute;
-                bottom: 12px;
-                left: 20px;
-                right: 20px;
+                bottom: 14px;
+                left: 26px;
+                right: 26px;
                 display: flex;
                 justify-content: space-between;
                 align-items: center;
-                font-size: 12px;
-                color: #7f8c8d;
-                border-top: 1px solid #dcdde1;
-                padding-top: 8px;
+                font-size: 14px;
+                color: #1e293b;
+                border-top: 2px solid #cbd5e1;
+                padding: 10px 15px;
+                background: #e2e8f0;
+                border-radius: 4px;
+            }}
+            .footer span b {{
+                color: #1e3a8a;
+                font-size: 15px;
             }}
         </style>
     </head>
     <body>
         <div class="header">
-            <h1>REPUBBLICA DI EVREN CITY</h1>
-            <span>CARTA D'IDENTITÀ ELETTRONICA</span>
+            <div class="header-left">
+                <h1>CITTÀ DI LOS ANGELES</h1>
+                <span>CALIFORNIA — CARTA D'IDENTITÀ</span>
+            </div>
+            <div class="header-right">
+                <span>IDENTIFICATION CARD</span>
+            </div>
         </div>
         
         <div class="body-content">
@@ -1846,12 +1875,12 @@ async def genera_carta_identita(nome, cognome, birth_date, birth_place, cf, doc_
                     <span class="value">{cognome.upper()}</span>
                 </div>
                 <div class="field">
-                    <span class="label">Nome / Name</span>
+                    <span class="label">Nome / Given Name</span>
                     <span class="value">{nome.capitalize()}</span>
                 </div>
                 <div class="field full">
-                    <span class="label">Data e Luogo di Nascita / Date & Place</span>
-                    <span class="value">{birth_date} - {birth_place}</span>
+                    <span class="label">Data e Luogo di Nascita / Date & Place of Birth</span>
+                    <span class="value">{birth_date} — {birth_place}</span>
                 </div>
                 <div class="field">
                     <span class="label">Occhi / Eyes</span>
@@ -1862,7 +1891,7 @@ async def genera_carta_identita(nome, cognome, birth_date, birth_place, cf, doc_
                     <span class="value">{colore_capelli}</span>
                 </div>
                 <div class="field full">
-                    <span class="label">Segni Particolari / Distinct Marks</span>
+                    <span class="label">Segni Particolari / Distinctive Marks</span>
                     <span class="value">{segni_particolari}</span>
                 </div>
             </div>
@@ -1870,11 +1899,12 @@ async def genera_carta_identita(nome, cognome, birth_date, birth_place, cf, doc_
 
         <div class="footer">
             <span>Codice Fiscale: <b>{cf}</b></span>
-            <span>N. Doc: <b>{doc_number}</b></span>
+            <span>N. Documento: <b>{doc_number}</b></span>
         </div>
     </body>
     </html>
     """
+    return html_content
 
     async with async_playwright() as p:
         browser = await p.chromium.launch(headless=True)
