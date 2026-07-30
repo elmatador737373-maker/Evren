@@ -206,6 +206,67 @@ class WelcomeButtonsView(ui.View):
         ))
 
 
+import discord
+from discord import app_commands
+
+
+import discord
+from discord import app_commands
+
+
+@bot.tree.command(
+    name="carica_foto_documento",
+    description=(
+        "Carica la foto del tuo documento su ImgBB e la salva nel database"
+    ),
+)
+@app_commands.describe(documento="Seleziona la foto del documento da caricare")
+async def carica_foto_documento(
+    interaction: discord.Interaction, documento: discord.Attachment
+):
+  # Controllo che il file allegato sia un'immagine
+  if not documento.content_type or not documento.content_type.startswith(
+      "image/"
+  ):
+    await interaction.response.send_message(
+        "⚠️ Per favore, allega un file immagine valido.", ephemeral=True
+    )
+    return
+
+  await interaction.response.defer(thinking=True, ephemeral=True)
+
+  try:
+    # 1. Carica la foto su ImgBB usando la tua funzione
+    photo_url = await upload_to_imgbb(documento)
+    discord_id = str(interaction.user.id)
+
+    # 2. Esegue l'upsert su Supabase (sfruttando la chiave primaria discord_id)
+    # Inserisce i valori di default per i campi obbligatori se l'utente non esiste ancora
+    data = {
+        "discord_id": discord_id,
+        "photo_url": photo_url,
+        "name": "Da inserire",
+        "surname": "Da inserire",
+        "birth_date": "Da inserire",
+        "cf": "Da inserire",
+        "doc_number": "Da inserire",
+    }
+
+    # Effettua l'upsert sulla tabella 'documents' nello schema public
+    supabase.table("documents").upsert(data).execute()
+
+    await interaction.followup.send(
+        f"✅ **Foto del documento caricata con successo!**\n🔗 **URL:**"
+        f" {photo_url}",
+        ephemeral=True,
+    )
+
+  except Exception as e:
+    await interaction.followup.send(
+        f"❌ Si è verificato un errore durante il caricamento: {e}",
+        ephemeral=True,
+    )
+
 # --- SHOP OS ---
 
 class ShopCategorySelect(ui.Select):
