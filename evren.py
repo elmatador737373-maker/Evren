@@ -287,6 +287,145 @@ from discord import app_commands
 import discord
 from discord import app_commands
 
+import datetime
+import discord
+from discord import app_commands
+
+
+@bot.tree.command(
+    name="anonimo", description="Invia un messaggio criptato sulla rete segreta"
+)
+@app_commands.describe(
+    messaggio="Il testo del messaggio segreto",
+    nickname=(
+        "Il tuo alias segreto (obbligatorio solo la prima volta o per cambiarlo)"
+    ),
+)
+async def anonimo(
+    interaction: discord.Interaction, messaggio: str, nickname: str = None
+):
+  await interaction.response.defer(ephemeral=True)
+
+  try:
+    user_id = str(interaction.user.id)
+
+    # 1. Controlla se l'utente ha già un nickname salvato su Supabase
+    res = (
+        supabase.table("utenti_anonimi")
+        .select("nickname")
+        .eq("user_id", user_id)
+        .execute()
+    )
+
+    if not res.data and not nickname:
+      return await interaction.followup.send(
+          "❌ Devi specificare un `nickname` la prima volta!", ephemeral=True
+      )
+
+    alias_da_usare = nickname if nickname else res.data[0]["nickname"]
+
+    # 2. Se viene fornito un nuovo nickname, esegue l'upsert
+    if nickname:
+      supabase.table("utenti_anonimi").upsert(
+          {"user_id": user_id, "nickname": nickname}
+      ).execute()
+
+    desc_testo = (
+        f"```\n"
+        f"SISTEMA: Connessione Criptata\n"
+        f"MITTENTE: {alias_da_usare}\n"
+        f"```\n"
+        f"**MESSAGGIO RICEVUTO:**\n"
+        f"> {messaggio}"
+    )
+
+    embed = discord.Embed(
+        title="🔐 █▓▒░ ＥＮＣＲＹＰＴＥＤ ＮＥＴＷＯＲＫ ░▒▓█ 🔐",
+        description=desc_testo,
+        color=discord.Color.dark_theme(),
+        timestamp=datetime.datetime.now(),
+    )
+    embed.set_footer(text="Tracciamento IP: Fallito • Rete Anonima")
+
+    # Invio del messaggio in chiaro nel canale
+    msg_inviato = await interaction.channel.send(embed=embed)
+
+    # 3. Salva il legame tra message_id e user_id su Supabase
+    supabase.table("messaggi_anonimi").insert(
+        {"message_id": str(msg_inviato.id), "user_id": user_id}
+    ).execute()
+
+    await interaction.followup.send(
+        "✅ Messaggio inviato in totale anonimato.", ephemeral=True
+    )
+
+  except Exception as e:
+    print(f"Errore anonimo: {e}")
+    await interaction.followup.send(
+        "❌ Errore critico nel sistema di criptazione.", ephemeral=True
+    )
+
+
+@bot.event
+async def on_raw_reaction_add(payload):
+  # 1. Configurazione ID Ruolo Staff
+  ID_RUOLO_STAFF = 1253460150141059198
+
+  # 2. Filtro: solo l'emoji corretta e non il bot stesso
+  if str(payload.emoji) != "❓" or payload.user_id == bot.user.id:
+    return
+
+  # 3. Recupero Server e Membro
+  guild = bot.get_guild(payload.guild_id)
+  if not guild:
+    return
+  member = guild.get_member(payload.user_id)
+  if not member:
+    return
+
+  # 4. Controllo Permessi Staff
+  is_staff = any(
+      r.id == ID_RUOLO_STAFF for r in member.roles
+  ) or member.guild_permissions.administrator
+
+  if is_staff:
+    try:
+      # Interroga Supabase per risalire all'autore del messaggio anonimo
+      res = (
+          supabase.table("messaggi_anonimi")
+          .select("user_id")
+          .eq("message_id", str(payload.message_id))
+          .execute()
+      )
+
+      if res.data:
+        utente_id = int(res.data[0]["user_id"])
+        utente = await bot.fetch_user(utente_id)
+
+        # Invio il DM allo staffer
+        info_embed = discord.Embed(
+            title="🔍 Identità Svelata", color=discord.Color.red()
+        )
+        info_embed.add_field(
+            name="Messaggio ID", value=f"`{payload.message_id}`", inline=False
+        )
+        info_embed.add_field(
+            name="Autore", value=f"{utente.mention} ({utente.name})", inline=True
+        )
+        info_embed.add_field(
+            name="ID Utente", value=f"`{utente_id}`", inline=True
+        )
+
+        await member.send(embed=info_embed)
+
+        # --- RIMOZIONE REAZIONE ---
+        channel = bot.get_channel(payload.channel_id)
+        if channel:
+          msg = await channel.fetch_message(payload.message_id)
+          await msg.remove_reaction(payload.emoji, member)
+
+    except Exception as e:
+      print(f"Errore durante la rimozione o l'invio DM: {e}")
 
 @bot.tree.command(
     name="carica_foto_documento",
