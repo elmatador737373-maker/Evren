@@ -2367,10 +2367,8 @@ async def genera_carta_identita(nome, cognome, birth_date, birth_place, cf, doc_
     buffer.seek(0)
     return discord.File(buffer, filename="carta_identita.png")
 
-import datetime
-import discord
-from discord import app_commands
-
+import io
+from playwright.async_api import async_playwright
 
 # --- FUNZIONE GENERAZIONE HTML FATTURA ---
 async def genera_fattura_html(
@@ -2538,6 +2536,29 @@ async def genera_fattura_html(
   return html_content
 
 
+# --- FUNZIONE PER CONVERTIRE L'HTML IN IMMAGINE ---
+async def renderizza_fattura_immagine(fattura):
+  html = await genera_fattura_html(
+      invoice_id=fattura["id"],
+      azienda=fattura["azienda"],
+      emittente=fattura["emittente"],
+      destinatario=fattura["destinatario"],
+      importo=fattura["importo"],
+      causale=fattura["causale"],
+      data_emissione=fattura["data"],
+      stato=fattura["status"]
+  )
+  
+  async with async_playwright() as p:
+    browser = await p.chromium.launch(headless=True)
+    page = await browser.new_page(viewport={"width": 780, "height": 480})
+    await page.set_content(html)
+    screenshot_bytes = await page.screenshot(type="png")
+    await browser.close()
+    
+  return io.BytesIO(screenshot_bytes)
+
+
 # --- COMANDO PER EMETTERE UNA FATTURA ---
 @bot.tree.command(
     name="emetti_fattura", description="Emetti una nuova fattura aziendale."
@@ -2558,7 +2579,7 @@ async def emetti_fattura(
   data_oggi = datetime.datetime.now().strftime("%d/%m/%Y")
   emittente_nome = interaction.user.display_name
 
-  # Inserimento nel database delle fatture
+  # Inserimento nel database delle fatture (restituisce anche l'ID generato)
   res = (
       supabase.table("invoices")
       .insert({
@@ -2577,15 +2598,25 @@ async def emetti_fattura(
   if not res.data:
     await interaction.response.send_message(
         "❌ Errore durante la creazione della fattura nel database.",
-        ephemeral=True,
+        ephemeral=False,
     )
     return
 
-  await interaction.response.send_message(
-      f"✅ Fattura emessa con successo per {utente.mention} a nome dell'azienda"
-      f" **{azienda}**!",
-      ephemeral=True,
+  nuova_fattura = res.data[0]
+
+  # Genera l'immagine HTML della fattura appena emessa
+  img_io = await renderizza_fattura_immagine(nuova_fattura)
+  file = discord.File(img_io, filename=f"fattura_{nuova_fattura['id']}.png")
+
+  embed = discord.Embed(
+      title="📑 Nuova Fattura Emessa",
+      description=f"Fattura emessa con successo per {utente.mention} a nome dell'azienda **{azienda}**!",
+      color=discord.Color.from_rgb(15, 23, 42),
   )
+  embed.set_image(url=f"attachment://fattura_{nuova_fattura['id']}.png")
+  embed.set_footer(text="Evren City OS • Sistema Fiscale")
+
+  await interaction.response.send_message(embed=embed, file=file, ephemeral=False)
 
 
 # --- INTERFACCIA PER IL PAGAMENTO DELLE FATTURE ---
@@ -2630,7 +2661,6 @@ class PagaFatturaSelect(discord.ui.Select):
     invoice_id = int(self.values[0])
     user_id_str = str(interaction.user.id)
 
-    # 1. Recupera i dati della fattura
     inv_res = (
         supabase.table("invoices")
         .select("*")
@@ -2646,7 +2676,6 @@ class PagaFatturaSelect(discord.ui.Select):
     fattura = inv_res.data[0]
     importo_dovuto = fattura["importo"]
 
-    # 2. Controlla il saldo bancario/portafoglio dell'utente dalla tabella users
     user_res = (
         supabase.table("users").select("bank, wallet").eq("discord_id", user_id_str).execute()
     )
@@ -2659,7 +2688,6 @@ class PagaFatturaSelect(discord.ui.Select):
     banca = user_res.data[0].get("bank", 0.0) or 0.0
     portafoglio = user_res.data[0].get("wallet", 0.0) or 0.0
 
-    # Dà priorità al conto in banca, se insufficiente prova il portafoglio (o scala direttamente dalla banca)
     if banca >= importo_dovuto:
       nuovo_saldo = banca - importo_dovuto
       supabase.table("users").update({"bank": nuovo_saldo}).eq(
@@ -2680,12 +2708,10 @@ class PagaFatturaSelect(discord.ui.Select):
       )
       return
 
-    # 3. Aggiorna lo stato della fattura a Pagata
     supabase.table("invoices").update({"status": "Pagata"}).eq(
         "id", invoice_id
     ).execute()
 
-    # 4. Registra la transazione nella tabella transactions_log
     supabase.table("transactions_log").insert({
         "discord_id": user_id_str,
         "type": "Pagamento Fattura",
@@ -2708,6 +2734,8 @@ class FabbricaFattureView(discord.ui.View):
   def __init__(self, fatture):
     super().__init__(timeout=180)
     self.add_item(PagaFatturaSelect(fatture))
+
+
 # --- COMANDO PER VEDERE E GESTIRE LE PROPRIE FATTURE ---
 @bot.tree.command(
     name="mie_fatture", description="Visualizza e paga le tue fatture in sospeso."
@@ -2730,7 +2758,6 @@ async def mie_fatture(interaction: discord.Interaction):
   fatture = res.data
   ultima = fatture[0]
 
-  # Genera l'immagine HTML dell'ultima fattura dell'utente
   img_io = await renderizza_fattura_immagine(ultima)
   file = discord.File(img_io, filename=f"fattura_{ultima['id']}.png")
 
@@ -2744,15 +2771,14 @@ async def mie_fatture(interaction: discord.Interaction):
   )
   embed.set_image(url=f"attachment://fattura_{ultima['id']}.png")
 
-  # Crea lo storico delle altre fatture (se ce ne sono)
   if len(fatture) > 1:
     storico_testo = ""
-    for f in fatture[1:]:  # Esclude l'ultima che è già in evidenza nell'immagine
+    for f in fatture[1:]:
       storico_testo += (
           f"• **#{f['id']}** | {f['azienda']} | € {f['importo']:,.2f} |"
           f" `{f['status']}`\n"
       )
-    if len(storico_testo) > 1024:  # Limite caratteri campi Discord
+    if len(storico_testo) > 1024:
       storico_testo = storico_testo[:1021] + "..."
     embed.add_field(
         name="📜 Storico Fatture Precedenti",
@@ -2763,10 +2789,10 @@ async def mie_fatture(interaction: discord.Interaction):
   embed.set_footer(text="Evren City OS • Sistema Fiscale")
 
   view = FabbricaFattureView(fatture)
+  # Impostato su ephemeral=False per renderlo visibile a tutti
   await interaction.response.send_message(
       embed=embed, file=file, view=view, ephemeral=False
   )
-
 
 # =======================================================
 #  VIEW PERSISTENTE PER IL PANNELLO ANAGRAFE
