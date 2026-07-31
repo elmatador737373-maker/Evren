@@ -2708,8 +2708,6 @@ class FabbricaFattureView(discord.ui.View):
   def __init__(self, fatture):
     super().__init__(timeout=180)
     self.add_item(PagaFatturaSelect(fatture))
-
-
 # --- COMANDO PER VEDERE E GESTIRE LE PROPRIE FATTURE ---
 @bot.tree.command(
     name="mie_fatture", description="Visualizza e paga le tue fatture in sospeso."
@@ -2732,28 +2730,43 @@ async def mie_fatture(interaction: discord.Interaction):
   fatture = res.data
   ultima = fatture[0]
 
+  # Genera l'immagine HTML dell'ultima fattura dell'utente
+  img_io = await renderizza_fattura_immagine(ultima)
+  file = discord.File(img_io, filename=f"fattura_{ultima['id']}.png")
+
   embed = discord.Embed(
       title="📑 Gestione Fatture Personali",
       description=(
-          "Visualizza il riepilogo delle tue fatture e seleziona quella da"
-          " pagare tramite il menu sottostante."
+          "Ecco l'anteprima della tua fattura più recente. Usa il menu sotto"
+          " per pagare quelle in sospeso."
       ),
       color=discord.Color.from_rgb(15, 23, 42),
   )
-  embed.add_field(
-      name=f"Ultima Fattura (#{ultima['id']})",
-      value=(
-          f"**Azienda:** {ultima['azienda']}\n**Emittente:**"
-          f" {ultima['emittente']}\n**Importo:** €"
-          f" {ultima['importo']:,.2f}\n**Causale:**"
-          f" {ultima['causale']}\n**Stato:** `{ultima['status']}`"
-      ),
-      inline=False,
-  )
+  embed.set_image(url=f"attachment://fattura_{ultima['id']}.png")
+
+  # Crea lo storico delle altre fatture (se ce ne sono)
+  if len(fatture) > 1:
+    storico_testo = ""
+    for f in fatture[1:]:  # Esclude l'ultima che è già in evidenza nell'immagine
+      storico_testo += (
+          f"• **#{f['id']}** | {f['azienda']} | € {f['importo']:,.2f} |"
+          f" `{f['status']}`\n"
+      )
+    if len(storico_testo) > 1024:  # Limite caratteri campi Discord
+      storico_testo = storico_testo[:1021] + "..."
+    embed.add_field(
+        name="📜 Storico Fatture Precedenti",
+        value=storico_testo,
+        inline=False,
+    )
+
   embed.set_footer(text="Evren City OS • Sistema Fiscale")
 
   view = FabbricaFattureView(fatture)
-  await interaction.response.send_message(embed=embed, view=view, ephemeral=True)
+  await interaction.response.send_message(
+      embed=embed, file=file, view=view, ephemeral=False
+  )
+
 
 # =======================================================
 #  VIEW PERSISTENTE PER IL PANNELLO ANAGRAFE
