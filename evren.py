@@ -1961,7 +1961,10 @@ class PoliceCadSelectView(ui.View):
     async def btn_search_serial(self, interaction: discord.Interaction, button: ui.Button):
         if interaction.user.id == self.officer_id:
             await interaction.response.send_modal(CadSearchSerialModal(self.officer_id))
+from discord import app_commands
 
+
+# --- COMANDO FBI ---
 @bot.tree.command(
     name="cad_fbi",
     description=(
@@ -1969,16 +1972,8 @@ class PoliceCadSelectView(ui.View):
         " matricole."
     ),
 )
+@app_commands.has_role(RUOLO_FBI_ID)
 async def cad_fbi(interaction: discord.Interaction):
-  # Assicurati di definire RUOLO_FBI_ID con l'ID numerico del ruolo dell'FBI
-  if RUOLO_FBI_ID:
-    fbi_role = interaction.guild.get_role(RUOLO_FBI_ID)
-    if fbi_role and fbi_role not in interaction.user.roles:
-      await interaction.response.send_message(
-          "❌ Riservato agli agenti dell'FBI!", ephemeral=True
-      )
-      return
-
   res = (
       supabase.table("documents")
       .select("*")
@@ -1991,7 +1986,6 @@ async def cad_fbi(interaction: discord.Interaction):
     )
     return
 
-  # Nota: Puoi sostituire la view con una classe dedicata all'FBI se necessario (es. FbiCadSelectView)
   view = PoliceCadSelectView(res.data, interaction.user.id)
   embed = discord.Embed(
       title="🕵️‍♂️ CAD FBI - Centrale Operativa Federale",
@@ -2000,36 +1994,65 @@ async def cad_fbi(interaction: discord.Interaction):
           " bottoni sottostanti per cercare direttamente un veicolo tramite"
           " **targa** o un'arma tramite **matricola**."
       ),
-      color=discord.Color.from_rgb(
-          20, 35, 60
-      ),  # Blu scuro/navy tipico dell'FBI
+      color=discord.Color.from_rgb(20, 35, 60),
   )
   await interaction.response.send_message(embed=embed, view=view, ephemeral=True)
 
-@bot.tree.command(name="cad_polizia", description="[POLIZIA] Terminale operativo per ricerche anagrafiche, targhe e matricole.")
-async def cad_polizia(interaction: discord.Interaction):
-    if RUOLO_POLIZIA_ID:
-        police_role = interaction.guild.get_role(RUOLO_POLIZIA_ID)
-        if police_role and police_role not in interaction.user.roles:
-            await interaction.response.send_message("❌ Riservato alle Forze dell'Ordine!", ephemeral=True)
-            return
 
-    res = supabase.table("documents").select("*").order("name", desc=False).execute()
-    if not res.data:
-        await interaction.response.send_message("❌ Nessun cittadino presente nel database.", ephemeral=True)
-        return
-
-    view = PoliceCadSelectView(res.data, interaction.user.id)
-    embed = discord.Embed(
-        title="🚔 CAD Polizia di Stato - Centrale Operativa",
-        description=(
-            "Seleziona un **cittadino** dal menu a tendina oppure premi uno dei bottoni sottostanti "
-            "per cercare direttamente un veicolo tramite **targa** o un'arma tramite **matricola**."
-        ),
-        color=discord.Color.dark_blue()
+@cad_fbi.error
+async def cad_fbi_error(
+    interaction: discord.Interaction, error: app_commands.AppCommandError
+):
+  if isinstance(error, app_commands.MissingRole):
+    await interaction.response.send_message(
+        "❌ Riservato agli agenti dell'FBI!", ephemeral=True
     )
-    await interaction.response.send_message(embed=embed, view=view, ephemeral=True)
-    
+
+
+# --- COMANDO POLIZIA ---
+@bot.tree.command(
+    name="cad_polizia",
+    description=(
+        "[POLIZIA] Terminale operativo per ricerche anagrafiche, targhe e"
+        " matricole."
+    ),
+)
+@app_commands.has_role(RUOLO_POLIZIA_ID)
+async def cad_polizia(interaction: discord.Interaction):
+  res = (
+      supabase.table("documents")
+      .select("*")
+      .order("name", desc=False)
+      .execute()
+  )
+  if not res.data:
+    await interaction.response.send_message(
+        "❌ Nessun cittadino presente nel database.", ephemeral=True
+    )
+    return
+
+  view = PoliceCadSelectView(res.data, interaction.user.id)
+  embed = discord.Embed(
+      title="🚔 CAD Polizia di Stato - Centrale Operativa",
+      description=(
+          "Seleziona un **cittadino** dal menu a tendina oppure premi uno dei"
+          " bottoni sottostanti per cercare direttamente un veicolo tramite"
+          " **targa** o un'arma tramite **matricola**."
+      ),
+      color=discord.Color.dark_blue(),
+  )
+  await interaction.response.send_message(embed=embed, view=view, ephemeral=True)
+
+
+@cad_polizia.error
+async def cad_polizia_error(
+    interaction: discord.Interaction, error: app_commands.AppCommandError
+):
+  if isinstance(error, app_commands.MissingRole):
+    await interaction.response.send_message(
+        "❌ Riservato alle Forze dell'Ordine!", ephemeral=True
+    )
+
 class FinePaySelectView(ui.View):
     def __init__(self, user_id: int, fines_list: list):
         super().__init__(timeout=120)
