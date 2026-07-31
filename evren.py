@@ -1233,7 +1233,15 @@ class EvrenPhoneView(ui.View):
         self.add_item(btn_social)
 
         if contacts:
-            options = [discord.SelectOption(label=c["name"], description=c["phone_number"], value=str(c["phone_number"])) for c in contacts[:25]]
+            # Salviamo il numero pulito (solo cifre) nel value, mentre label e description restano leggibili
+            options = [
+                discord.SelectOption(
+                    label=c["name"], 
+                    description=c["phone_number"], 
+                    value="".join(filter(str.isdigit, c["phone_number"]))
+                ) 
+                for c in contacts[:25]
+            ]
             
             select_chiama = ui.Select(placeholder="📞 Seleziona contatto da chiamare", options=options, row=1)
             select_chiama.callback = self.avvia_chiamata_callback
@@ -1264,7 +1272,7 @@ class EvrenPhoneView(ui.View):
 
         await interaction.response.send_message(embed=embed, view=social_view, ephemeral=True)
 
-    async def avvia_chiamata_callback(self, interaction: discord.Interaction):
+        async def avvia_chiamata_callback(self, interaction: discord.Interaction):
         numero = interaction.data["values"][0]
         await interaction.response.defer(ephemeral=True)
         await avvia_chiamata_vocale(interaction, numero)
@@ -1273,7 +1281,6 @@ class EvrenPhoneView(ui.View):
         numero_selezionato = interaction.data["values"][0]
         numero_pulito = "".join(filter(str.isdigit, numero_selezionato))
 
-        # Cerca il contatto confrontando la versione pulita
         res = supabase.table("contacts").select("phone_number, name").eq("owner_id", self.user_id).execute()
         
         nome_destinatario = numero_selezionato
@@ -1283,7 +1290,7 @@ class EvrenPhoneView(ui.View):
             for c in res.data:
                 if "".join(filter(str.isdigit, c["phone_number"])) == numero_pulito:
                     nome_destinatario = c["name"]
-                    target_phone = c["phone_number"] # Usa il formato esatto del DB
+                    target_phone = c["phone_number"]
                     break
 
         view = WhatsAppChatView(self.phone_number, target_phone, nome_destinatario)
@@ -1294,17 +1301,14 @@ async def avvia_chiamata_vocale(interaction: discord.Interaction, numero_destina
     guild = interaction.guild
     chiamante = interaction.user
 
-    # Pulisce il numero cercato rimuovendo spazi, parentesi e trattini per fare un confronto sicuro
     numero_pulito = "".join(filter(str.isdigit, numero_destinatario))
 
-    # Prende tutti i numeri registrati per confrontarli senza formattazione
     res = supabase.table("user_phones").select("discord_id, phone_number").execute()
     
     target_discord_id = None
     if res.data:
         for row in res.data:
-            db_num_pulito = "".join(filter(str.isdigit, row["phone_number"]))
-            if db_num_pulito == numero_pulito:
+            if "".join(filter(str.isdigit, row["phone_number"])) == numero_pulito:
                 target_discord_id = row["discord_id"]
                 break
 
