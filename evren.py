@@ -196,13 +196,11 @@ async def avvia_chiamata_vocale(interaction: discord.Interaction, numero_destina
     destinatario = guild.get_member(int(target_discord_id))
     
     if not destinatario:
-        await interaction.followup.send("❌ L'utente chiamato non è reperibile nel server.", ephemeral=True)
-        return
-
     overwrites = {
         guild.default_role: discord.PermissionOverwrite(connect=False),
         chiamante: discord.PermissionOverwrite(connect=True, speak=True),
-        destinatario: discord.Permission
+        destinatario: discord.PermissionOverwrite(connect=True, speak=True)
+    }
 
     # =======================================================
 #  SECONDO MODULO: DETTAGLI FISICI E SALVATAGGIO
