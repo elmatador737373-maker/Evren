@@ -333,13 +333,21 @@ async def emergenza_911(
   ID_RUOLO_EMS = 1254146971535544471  # ID Ruolo EMS / Medici
   ID_RUOLO_FIRE = 1436420396726616210  # ID Ruolo Firefighter / Pompieri
 
+  # Tenta di recuperare il canale (prima dalla cache, poi dalle API di Discord)
   canale_emergenza = bot.get_channel(ID_CANALE_EMERGENZA)
+  if not canale_emergenza:
+    try:
+      canale_emergenza = await bot.fetch_channel(ID_CANALE_EMERGENZA)
+    except Exception:
+      canale_emergenza = None
+
   if not canale_emergenza:
     await interaction.response.send_message(
         "❌ Canale delle emergenze non configurato correttamente dal bot.",
         ephemeral=True,
     )
     return
+
 
   await interaction.response.defer(thinking=True, ephemeral=True)
 
