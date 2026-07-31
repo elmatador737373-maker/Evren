@@ -30,7 +30,7 @@ RUOLO_MOTORIZZAZIONE_ID = 123456789012345679  # Permesso per registrare veicoli 
 RUOLO_POLIZIA_ID = 1521205969269555351         # Permesso per CAD Polizia e Porto d'Armi
 RUOLO_IMMOBILIARE_ID = 123456789012345681     # Permesso per registrare le case/immobili
 RUOLO_RICHIESTO_ID = None
-
+RUOLO_SHERIFF_ID = None
 FFMPEG_PATH = imageio_ffmpeg.get_ffmpeg_exe()
 
 supabase: Client = create_client(SUPABASE_URL, SUPABASE_KEY)
