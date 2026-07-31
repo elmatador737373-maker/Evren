@@ -133,17 +133,30 @@ async def riproduci_audio_canale(channel: discord.VoiceChannel, audio_file: str,
             print(f"❌ File audio non trovato: {audio_file}")
             return
 
-        vc = await channel.connect()
-        
-        while vc.is_connected():
+        # Connessione al canale vocale
+        try:
+            vc = await channel.connect()
+        except discord.ClientException:
+            # Se il bot è già connesso da qualche altra parte, recupera la connessione esistente
+            for v in channel.guild.voice_clients:
+                if v.channel == channel:
+                    vc = v
+                    break
+            if not vc:
+                return
+
+        while vc and vc.is_connected():
             fatto = asyncio.Event()
 
             def after_play(error):
                 if error:
                     print(f"Errore nella riproduzione audio: {error}")
-                fatto.set()
+                # Usiamo call_soon_threadsafe per impostare l'evento in modo sicuro dal thread audio di FFmpeg
+                vc.loop.call_soon_threadsafe(fatto.set)
 
-            kwargs = {"executable": FFMPEG_PATH} if FFMPEG_PATH else {}
+            kwargs = {"executable": FFMPEG_PATH} if 'FFMPEG_PATH' in globals() and FFMPEG_PATH else {}
+            
+            # Se la sorgente è in loop, creiamo una nuova istanza audio per ogni iterazione
             source = discord.FFmpegPCMAudio(audio_file, **kwargs)
 
             if not vc.is_playing():
@@ -153,15 +166,19 @@ async def riproduci_audio_canale(channel: discord.VoiceChannel, audio_file: str,
             if not loop:
                 break
             
+            # Breve pausa prima di ripetere l'audio (se loop=True)
             await asyncio.sleep(0.5)
 
     except discord.ClientException as ce:
-        print(f"Errore di connessione vocale (già connesso?): {ce}")
+        print(f"Errore di connessione vocale: {ce}")
     except Exception as e:
         print(f"Errore generico audio: {e}")
     finally:
         if vc and vc.is_connected():
-            await vc.disconnect()
+            try:
+                await vc.disconnect()
+            except Exception:
+                pass
 
     # =======================================================
 #  SECONDO MODULO: DETTAGLI FISICI E SALVATAGGIO
@@ -907,7 +924,16 @@ async def compra(interaction: discord.Interaction, item: str):
         ephemeral=True
     )
 
-# --- TELEFONO E CONTATTI ---
+import discord
+from discord import ui
+import asyncio
+import random
+
+# Assicurati che 'supabase', 'bot', 'RUOLO_RICHIESTO_ID' e 'riproduci_audio_canale' siano già definiti nel tuo progetto principale.
+
+# ==========================================
+# 📱 TELEFONO E RUBRICA
+# ==========================================
 
 class AggiungiContattoModal(ui.Modal, title="Nuovo Contatto - Evren City OS"):
     nome_contatto = ui.TextInput(
@@ -923,30 +949,35 @@ class AggiungiContattoModal(ui.Modal, title="Nuovo Contatto - Evren City OS"):
         max_length=15
     )
 
+    def __init__(self, phone_view):
+        super().__init__()
+        self.phone_view = phone_view
+
     async def on_submit(self, interaction: discord.Interaction):
         user_id = str(interaction.user.id)
         
-        supabase.table("contacts").insert({
-            "owner_id": user_id,
-            "name": self.nome_contatto.value.strip(),
-            "phone_number": self.numero_contatto.value.strip()
-        }).execute()
+        try:
+            supabase.table("contacts").insert({
+                "owner_id": user_id,
+                "name": self.nome_contatto.value.strip(),
+                "phone_number": self.numero_contatto.value.strip()
+            }).execute()
 
-        await interaction.response.send_message(
-            f"✅ Contatto **{self.nome_contatto.value}** (`{self.numero_contatto.value}`) salvato con successo nella rubrica!",
-            ephemeral=True
-        )
+            # Aggiorna la vista del telefono in tempo reale
+            self.phone_view.aggiorna_selettori()
+            await interaction.response.edit_message(view=self.phone_view)
+            
+            await interaction.followup.send(
+                f"✅ Contatto **{self.nome_contatto.value}** (`{self.numero_contatto.value}`) salvato con successo!",
+                ephemeral=True
+            )
+        except Exception as e:
+            await interaction.response.send_message(f"❌ Errore durante il salvataggio del contatto: {e}", ephemeral=True)
 
 
-class WhatsAppChatView(ui.View):
-    def __init__(self, destinatario: str):
-        super().__init__(timeout=180)
-        self.destinatario = destinatario
-
-    @ui.button(label="Invia Messaggio", style=discord.ButtonStyle.green, emoji="💬")
-    async def invia_messaggio(self, interaction: discord.Interaction, button: ui.Button):
-        await interaction.response.send_modal(WhatsAppMessageModal(self.destinatario))
-
+# ==========================================
+# 💬 WHATSAPP - CHAT PERSISTENTE AL 100%
+# ==========================================
 
 class WhatsAppMessageModal(ui.Modal, title="WhatsApp - Invia Messaggio"):
     testo_messaggio = ui.TextInput(
@@ -956,16 +987,168 @@ class WhatsAppMessageModal(ui.Modal, title="WhatsApp - Invia Messaggio"):
         required=True
     )
 
-    def __init__(self, destinatario: str):
+    def __init__(self, user_phone: str, target_phone: str, target_name: str, chat_view):
         super().__init__()
-        self.destinatario = destinatario
+        self.user_phone = user_phone
+        self.target_phone = target_phone
+        self.target_name = target_name
+        self.chat_view = chat_view
 
     async def on_submit(self, interaction: discord.Interaction):
-        await interaction.response.send_message(
-            f"✅ Messaggio inviato a **{self.destinatario}**:\n> {self.testo_messaggio.value}",
-            ephemeral=True
+        testo = self.testo_messaggio.value.strip()
+        
+        try:
+            # Salva il messaggio nel database Supabase (tabella 'whatsapp_messages')
+            supabase.table("whatsapp_messages").insert({
+                "sender_phone": self.user_phone,
+                "receiver_phone": self.target_phone,
+                "message": testo
+            }).execute()
+
+            # Ricarica la chat per mostrare il nuovo messaggio
+            await self.chat_view.aggiorna_embed_chat(interaction)
+        except Exception as e:
+            await interaction.response.send_message(f"❌ Errore nell'invio del messaggio: {e}", ephemeral=True)
+
+
+class WhatsAppChatView(ui.View):
+    def __init__(self, user_phone: str, target_phone: str, target_name: str):
+        super().__init__(timeout=300)
+        self.user_phone = user_phone
+        self.target_phone = target_phone
+        self.target_name = target_name
+
+    @ui.button(label="Invia Messaggio", style=discord.ButtonStyle.green, emoji="💬")
+    async def invia_messaggio(self, interaction: discord.Interaction, button: ui.Button):
+        modal = WhatsAppMessageModal(self.user_phone, self.target_phone, self.target_name, self)
+        await interaction.response.send_modal(modal)
+
+    @ui.button(label="Aggiorna Chat", style=discord.ButtonStyle.blurple, emoji="🔄")
+    async def aggiorna_chat(self, interaction: discord.Interaction, button: ui.Button):
+        await self.aggiorna_embed_chat(interaction)
+
+    async def aggiorna_embed_chat(self, interaction: discord.Interaction):
+        # Recupera gli ultimi messaggi tra i due numeri dal DB ordinati per cronologia
+        res = supabase.table("whatsapp_messages") \
+            .select("*") \
+            .or_(f"and(sender_phone.eq.{self.user_phone},receiver_phone.eq.{self.target_phone}),and(sender_phone.eq.{self.target_phone},receiver_phone.eq.{self.user_phone})") \
+            .order("created_at", desc=False) \
+            .limit(10) \
+            .execute()
+        
+        messaggi = res.data if res.data else []
+        
+        descrizione = f"*Cronologia messaggi con **{self.target_name}** (`{self.target_phone}`)*\n\n"
+        if not messaggi:
+            descrizione += "_Nessun messaggio in questa chat. Inizia a scrivere!_"
+        else:
+            for m in messaggi:
+                mittente = "Tu" if m["sender_phone"] == self.user_phone else self.target_name
+                descrizione += f"**{mittente}:** {m['message']}\n"
+
+        embed = discord.Embed(
+            title=f"💬 WhatsApp — Chat con {self.target_name}",
+            description=descrizione,
+            color=discord.Color.from_rgb(37, 211, 102)
+        )
+        
+        if interaction.response.is_done():
+            await interaction.edit_message(embed=embed, view=self)
+        else:
+            await interaction.response.edit_message(embed=embed, view=self)
+
+
+# ==========================================
+# 🌐 SOCIAL MEDIA INTEGRATI (EvrenGram / EvrenBird)
+# ==========================================
+
+class CreaPostSocialModal(ui.Modal, title="Crea un Post sui Social"):
+    contenuto_post = ui.TextInput(
+        label="A cosa stai pensando?",
+        placeholder="Scrivi il tuo post...",
+        style=discord.TextStyle.paragraph,
+        required=True,
+        max_length=280
+    )
+
+    def __init__(self, social_view, platform_name: str):
+        super().__init__()
+        self.social_view = social_view
+        self.platform_name = platform_name
+
+    async def on_submit(self, interaction: discord.Interaction):
+        user_name = interaction.user.display_name
+        user_id = str(interaction.user.id)
+        
+        try:
+            supabase.table("social_posts").insert({
+                "platform": self.platform_name,
+                "author_id": user_id,
+                "author_name": user_name,
+                "content": self.contenuto_post.value.strip()
+            }).execute()
+
+            await self.social_view.aggiorna_feed(interaction)
+            await interaction.followup.send("✅ Post pubblicato con successo nel feed!", ephemeral=True)
+        except Exception as e:
+            await interaction.response.send_message(f"❌ Errore durante la pubblicazione: {e}", ephemeral=True)
+
+
+class SocialMediaView(ui.View):
+    def __init__(self, user_id: str, platform_name: str = "EvrenGram"):
+        super().__init__(timeout=300)
+        self.user_id = user_id
+        self.platform_name = platform_name
+
+    @ui.button(label="EvrenGram 📸", style=discord.ButtonStyle.secondary)
+    switch_gram = lambda self, i, b: self.cambia_piattaforma(i, "EvrenGram")
+
+    @ui.button(label="EvrenBird 🐦", style=discord.ButtonStyle.secondary)
+    switch_bird = lambda self, i, b: self.cambia_piattaforma(i, "EvrenBird")
+
+    @ui.button(label="Nuovo Post ✍️", style=discord.ButtonStyle.success, row=1)
+    async def nuovo_post(self, interaction: discord.Interaction, button: ui.Button):
+        await interaction.response.send_modal(CreaPostSocialModal(self, self.platform_name))
+
+    async def cambia_piattaforma(self, interaction: discord.Interaction, platform: str):
+        self.platform_name = platform
+        await self.aggiorna_feed(interaction)
+
+    async def aggiorna_feed(self, interaction: discord.Interaction):
+        res = supabase.table("social_posts") \
+            .select("*") \
+            .eq("platform", self.platform_name) \
+            .order("created_at", desc=True) \
+            .limit(5) \
+            .execute()
+        
+        posts = res.data if res.data else []
+        
+        embed = discord.Embed(
+            title=f"🌐 Social Network — {self.platform_name}",
+            description=f"*Esplora gli ultimi post condivisi dai cittadini su {self.platform_name}.*",
+            color=discord.Color.blue() if self.platform_name == "EvrenGram" else discord.Color.from_rgb(29, 161, 242)
         )
 
+        if not posts:
+            embed.add_field(name="Feed Vuoto", value="Nessun post recente. Sii il primo a scriverne uno!", inline=False)
+        else:
+            for p in posts:
+                embed.add_field(
+                    name=f"@{p['author_name']}",
+                    value=p["content"],
+                    inline=False
+                )
+
+        if interaction.response.is_done():
+            await interaction.edit_message(embed=embed, view=self)
+        else:
+            await interaction.response.edit_message(embed=embed, view=self)
+
+
+# ==========================================
+# 📞 GESTIONE CHIAMATE E INTERFACCIA PRINCIPALE
+# ==========================================
 
 class RispondiChiamataView(ui.View):
     def __init__(self, chiamante: discord.Member, destinatario: discord.Member, channel: discord.VoiceChannel, task_squillo: asyncio.Task):
@@ -1049,6 +1232,10 @@ class EvrenPhoneView(ui.View):
         btn_aggiungi.callback = self.apri_modal_contatto
         self.add_item(btn_aggiungi)
 
+        btn_social = ui.Button(label="Apri Social", style=discord.ButtonStyle.secondary, emoji="🌐", row=0)
+        btn_social.callback = self.apri_social_callback
+        self.add_item(btn_social)
+
         if contacts:
             options = [discord.SelectOption(label=c["name"], description=c["phone_number"], value=str(c["phone_number"])) for c in contacts[:25]]
             
@@ -1061,7 +1248,25 @@ class EvrenPhoneView(ui.View):
             self.add_item(select_wa)
 
     async def apri_modal_contatto(self, interaction: discord.Interaction):
-        await interaction.response.send_modal(AggiungiContattoModal())
+        await interaction.response.send_modal(AggiungiContattoModal(self))
+
+    async def apri_social_callback(self, interaction: discord.Interaction):
+        social_view = SocialMediaView(self.user_id)
+        res = supabase.table("social_posts").select("*").eq("platform", "EvrenGram").order("created_at", desc=True).limit(5).execute()
+        posts = res.data if res.data else []
+        
+        embed = discord.Embed(
+            title="🌐 Social Network — EvrenGram",
+            description="*Esplora gli ultimi post condivisi dai cittadini.*",
+            color=discord.Color.blue()
+        )
+        if not posts:
+            embed.add_field(name="Feed Vuoto", value="Nessun post recente.", inline=False)
+        else:
+            for p in posts:
+                embed.add_field(name=f"@{p['author_name']}", value=p["content"], inline=False)
+
+        await interaction.response.send_message(embed=embed, view=social_view, ephemeral=True)
 
     async def avvia_chiamata_callback(self, interaction: discord.Interaction):
         numero = interaction.data["values"][0]
@@ -1073,12 +1278,8 @@ class EvrenPhoneView(ui.View):
         res = supabase.table("contacts").select("name").eq("owner_id", self.user_id).eq("phone_number", numero).execute()
         nome_destinatario = res.data[0]["name"] if res.data else numero
 
-        view = WhatsAppChatView(nome_destinatario)
-        await interaction.response.send_message(
-            f"📱 **WhatsApp - Chat con {nome_destinatario}**",
-            view=view,
-            ephemeral=True
-        )
+        view = WhatsAppChatView(self.phone_number, numero, nome_destinatario)
+        await view.aggiorna_embed_chat(interaction)
 
 
 async def avvia_chiamata_vocale(interaction: discord.Interaction, numero_destinatario: str):
@@ -1108,6 +1309,7 @@ async def avvia_chiamata_vocale(interaction: discord.Interaction, numero_destina
     categoria = interaction.channel.category if hasattr(interaction.channel, 'category') else None
     
     voice_channel = await guild.create_voice_channel(name=nome_canale, category=categoria, overwrites=overwrites)
+    voice_link = voice_channel.jump_url
 
     task_squillo = asyncio.create_task(riproduci_audio_canale(voice_channel, "squillo.mp3", loop=True))
 
@@ -1125,7 +1327,10 @@ async def avvia_chiamata_vocale(interaction: discord.Interaction, numero_destina
         await interaction.followup.send("❌ Impossibile inviare il DM al destinatario (potrebbe averli chiusi).", ephemeral=True)
         return
 
-    await interaction.followup.send(f"📞 Squillo in corso verso **{destinatario.display_name}**...", ephemeral=True)
+    await interaction.followup.send(
+        f"📞 Squillo in corso verso **{destinatario.display_name}**...\n🔊 **Entra nel canale vocale per attendere:** {voice_link}", 
+        ephemeral=True
+    )
 
 
 @bot.tree.command(name="telefono", description="Apre lo schermo del tuo smartphone di Evren City OS.")
@@ -1140,7 +1345,6 @@ async def telefono(interaction: discord.Interaction):
             return
 
     user_id = str(interaction.user.id)
-
     res = supabase.table("user_phones").select("phone_number").eq("discord_id", user_id).execute()
     
     if not res.data or len(res.data) == 0:
@@ -1151,7 +1355,6 @@ async def telefono(interaction: discord.Interaction):
             numero_casuale = f"+1 ({area_code}) {central_office}-{line_number}"
             
             check_exist = supabase.table("user_phones").select("phone_number").eq("phone_number", numero_casuale).execute()
-            
             if not check_exist.data or len(check_exist.data) == 0:
                 break
         
@@ -1161,8 +1364,7 @@ async def telefono(interaction: discord.Interaction):
                 "phone_number": numero_casuale
             }).execute()
             phone_number = numero_casuale
-        except Exception as e:
-            print(f"Errore durante la generazione automatica del numero: {e}")
+        except Exception:
             phone_number = "Errore di generazione"
     else:
         phone_number = res.data[0]["phone_number"]
@@ -1171,18 +1373,13 @@ async def telefono(interaction: discord.Interaction):
     
     embed = discord.Embed(
         title="📱 Evren City OS — Smartphone",
-        description="*Benvenuto nel tuo terminale personale. Gestisci la tua rubrica, effettua chiamate vocali e chatta in tempo reale.*",
+        description="*Benvenuto nel tuo terminale personale. Gestisci contatti, chatta su WhatsApp e naviga sui Social Network.*",
         color=discord.Color.from_rgb(40, 167, 69)
     )
     embed.add_field(name="📞 Il tuo Numero", value=f"`{phone_number}`", inline=False)
     embed.set_footer(text=f"Utente: {interaction.user.display_name}", icon_url=interaction.user.display_avatar.url)
 
-    await interaction.response.send_message(
-        embed=embed,
-        view=view,
-        ephemeral=True
-    )
-
+    await interaction.response.send_message(embed=embed, view=view, ephemeral=True)
 
 # --- RICONOSCIMENTO BIOMETRICO ---
 
