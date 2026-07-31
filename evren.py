@@ -172,8 +172,6 @@ async def riproduci_audio_canale(channel: discord.VoiceChannel, audio_url: str, 
             except Exception:
                 pass
 
-
-# --- COMANDO / FUNZIONE DI CHIAMATA VOCALE ---
 async def avvia_chiamata_vocale(interaction: discord.Interaction, numero_destinatario: str):
     guild = interaction.guild
     chiamante = interaction.user
@@ -196,11 +194,42 @@ async def avvia_chiamata_vocale(interaction: discord.Interaction, numero_destina
     destinatario = guild.get_member(int(target_discord_id))
     
     if not destinatario:
+        await interaction.followup.send("❌ L'utente chiamato non è reperibile nel server.", ephemeral=True)
+        return
+
     overwrites = {
         guild.default_role: discord.PermissionOverwrite(connect=False),
         chiamante: discord.PermissionOverwrite(connect=True, speak=True),
         destinatario: discord.PermissionOverwrite(connect=True, speak=True)
     }
+    
+    nome_canale = f"Chiamata ({chiamante.display_name}) -> ({destinatario.display_name})"
+    categoria = interaction.channel.category if hasattr(interaction.channel, 'category') else None
+    
+    voice_channel = await guild.create_voice_channel(name=nome_canale, category=categoria, overwrites=overwrites)
+    voice_link = voice_channel.jump_url
+
+    # Avvia lo squillo in background usando Wavelink e il link di YouTube
+    task_squillo = asyncio.create_task(riproduci_audio_canale(voice_channel, URL_SQUILLO, loop=True))
+
+    view = RispondiChiamataView(chiamante, destinatario, voice_channel, task_squillo)
+    
+    try:
+        await destinatario.send(
+            f"📱 **CHIAMATA IN ARRIVO**\nStai ricevendo una chiamata da **{chiamante.display_name}**.\nHai 2 minuti per rispondere:",
+            view=view
+        )
+    except Exception:
+        if not task_squillo.done():
+            task_squillo.cancel()
+        await voice_channel.delete()
+        await interaction.followup.send("❌ Impossibile inviare il DM al destinatario (potrebbe averli chiusi).", ephemeral=True)
+        return
+
+    await interaction.followup.send(
+        f"📞 Squillo in corso verso **{destinatario.display_name}**...\n🔊 **Entra nel canale vocale per attendere:** {voice_link}", 
+        ephemeral=True
+    )
 
     # =======================================================
 #  SECONDO MODULO: DETTAGLI FISICI E SALVATAGGIO
