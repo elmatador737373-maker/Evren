@@ -4298,6 +4298,13 @@ async def on_ready():
     await bot.tree.sync()
     bot.add_view(PannelloAnagrafeView())
     
+    nodes = [
+        wavelink.Node(
+            uri="https://lavalink.jirayu.net:443", password="youshallnotpass"
+        )
+    ]
+    await wavelink.Pool.connect(nodes=nodes, client=bot)
+
     print(f"✅ Bot online come {bot.user}")
 
 if __name__ == "__main__":
