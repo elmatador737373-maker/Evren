@@ -67,27 +67,26 @@ intents.guild_scheduled_events = True# Gestione degli eventi programmati del ser
 intents.auto_moderation_configuration = True # Configurazione AutoMod
 intents.auto_moderation_execution = True     # Esecuzione/Trigger AutoMod
 intents.polls = True                 # Gestione dei sondaggi nativi di Discord
-
-bot = commands.Bot(command_prefix="!", intents=intents)
-
+Bot = commands.Bot(command_prefix="!", intents=intents)
 
 # 1. Definiamo la funzione per il setup hook
 async def my_setup_hook():
     node = wavelink.Node(
-        uri="https://lavalink.jirayu.net:443",
-        password="youshallnotpass"
+        uri="https://lava-v4.ajieblogs.eu.org:443",
+        password="https://dsc.gg/ajidevserver"
     )
+
     try:
-        await wavelink.Pool.connect(nodes=[node], client=bot)
+        await wavelink.Pool.connect(nodes=[node], client=Bot)
         print("✅ [WAVELINK] Connessione al nodo avviata tramite setup_hook!")
     except Exception as e:
         print(f"❌ [WAVELINK] Errore di connessione nel setup_hook: {e}")
 
 # 2. Assegniamo la funzione al setup_hook del bot esistente
-bot.setup_hook = my_setup_hook
+Bot.setup_hook = my_setup_hook
 
 # 3. Evento separato per confermare quando il nodo è pronto nello stato CONNECTED
-@bot.event
+@Bot.event
 async def on_wavelink_node_ready(payload: wavelink.NodeReadyEventPayload) -> None:
     print(f"🎉 Wavelink Node pronto e connesso! URI: {payload.node.uri} | Session ID: {payload.session_id}")
 
