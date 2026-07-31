@@ -998,25 +998,37 @@ class WhatsAppMessageModal(ui.Modal, title="WhatsApp - Invia Messaggio"):
         testo = self.testo_messaggio.value.strip()
         
         try:
-            # Salva il messaggio nel database Supabase (tabella 'whatsapp_messages')
             supabase.table("whatsapp_messages").insert({
                 "sender_phone": self.user_phone,
                 "receiver_phone": self.target_phone,
                 "message": testo
             }).execute()
 
-            # Ricarica la chat per mostrare il nuovo messaggio
             await self.chat_view.aggiorna_embed_chat(interaction)
         except Exception as e:
             await interaction.response.send_message(f"❌ Errore nell'invio del messaggio: {e}", ephemeral=True)
 
 
+class WhatsAppChatView(ui.View):
+    def __init__(self, user_phone: str, target_phone: str, target_name: str):
+        super().__init__(timeout=300)
+        self.user_phone = user_phone
+        self.target_phone = target_phone
+        self.target_name = target_name
+
+    @ui.button(label="Invia Messaggio", style=discord.ButtonStyle.green, emoji="💬")
+    async def invia_messaggio(self, interaction: discord.Interaction, button: ui.Button):
+        modal = WhatsAppMessageModal(self.user_phone, self.target_phone, self.target_name, self)
+        await interaction.response.send_modal(modal)
+
+    @ui.button(label="Aggiorna Chat", style=discord.ButtonStyle.blurple, emoji="🔄")
+    async def aggiorna_chat(self, interaction: discord.Interaction, button: ui.Button):
+        await self.aggiorna_embed_chat(interaction)
+
     async def aggiorna_embed_chat(self, interaction: discord.Interaction):
-        # Pulisci i numeri per sicurezza nella ricerca o usa direttamente quelli salvati
         user_clean = "".join(filter(str.isdigit, self.user_phone))
         target_clean = "".join(filter(str.isdigit, self.target_phone))
 
-        # Prende tutti i messaggi della tabella e filtra via codice per evitare problemi di query complesse su stringhe formattate
         res = supabase.table("whatsapp_messages").select("*").order("created_at", desc=False).limit(50).execute()
         
         tutti_messaggi = res.data if res.data else []
@@ -1026,11 +1038,9 @@ class WhatsAppMessageModal(ui.Modal, title="WhatsApp - Invia Messaggio"):
             s_clean = "".join(filter(str.isdigit, m["sender_phone"]))
             r_clean = "".join(filter(str.isdigit, m["receiver_phone"]))
             
-            # Controlla se il messaggio appartiene a questa conversazione (in un senso o nell'altro)
             if (s_clean == user_clean and r_clean == target_clean) or (s_clean == target_clean and r_clean == user_clean):
                 messaggi.append(m)
 
-        # Prende solo gli ultimi 10 messaggi della conversazione
         messaggi = messaggi[-10:]
         
         descrizione = f"*Cronologia messaggi con **{self.target_name}** (`{self.target_phone}`)*\n\n"
@@ -1052,7 +1062,6 @@ class WhatsAppMessageModal(ui.Modal, title="WhatsApp - Invia Messaggio"):
             await interaction.edit_message(embed=embed, view=self)
         else:
             await interaction.response.edit_message(embed=embed, view=self)
-
 
 # ==========================================
 # 🌐 SOCIAL MEDIA INTEGRATI (EvrenGram / EvrenBird)
