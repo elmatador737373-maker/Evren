@@ -291,6 +291,75 @@ import datetime
 import discord
 from discord import app_commands
 
+import discord
+from discord import app_commands
+
+
+@bot.tree.command(
+    name="911", description="Invia una richiesta di emergenza alle autorità"
+)
+@app_commands.describe(
+    motivo="Specifica il motivo dell'emergenza (es. Incendio, Rapina, Incidente...)",
+    fdo="Seleziona quale corpo di emergenza richiedere",
+)
+@app_commands.choices(
+    fdo=[
+        app_commands.Choice(
+            name="🚨 Forze dell'Ordine", value="Forze dell'Ordine"
+        ),
+        app_commands.Choice(name="🚑 E.M.S. (Medici)", value="E.M.S."),
+        app_commands.Choice(name="🚒 Firefighter (Pompieri)", value="Firefighter"),
+    ]
+)
+async def emergenza_911(
+    interaction: discord.Interaction, motivo: str, fdo: str
+):
+  # 1. ID del canale delle emergenze
+  ID_CANALE_EMERGENZA = 123456789012345678  # <--- INSERISCI L'ID DEL CANALE QUI
+
+  # 2. Inserisci qui gli ID dei tre ruoli differenti da taggare in ogni chiamata
+  ID_RUOLO_FDO = 1253460150141059198  # ID Ruolo Forze dell'Ordine
+  ID_RUOLO_EMS = 987654321098765432  # ID Ruolo EMS / Medici
+  ID_RUOLO_FIRE = 112233445566778899  # ID Ruolo Firefighter / Pompieri
+
+  canale_emergenza = bot.get_channel(ID_CANALE_EMERGENZA)
+  if not canale_emergenza:
+    await interaction.response.send_message(
+        "❌ Canale delle emergenze non configurato correttamente dal bot.",
+        ephemeral=True,
+    )
+    return
+
+  await interaction.response.defer(thinking=True, ephemeral=True)
+
+  # 3. Tagga tutti e tre i ruoli contemporaneamente ad ogni chiamata
+  content_ping = (
+      f"<@&{ID_RUOLO_FDO}> & <@&{ID_RUOLO_EMS}> & <@&{ID_RUOLO_FIRE}>"
+      " **Emergenza®**"
+  )
+
+  # 4. Costruzione dell'Embed della chiamata
+  embed = discord.Embed(
+      title="🚨 911 ┃ Chiamata d'Emergenza 🚨",
+      description=(
+          f"{interaction.user.mention} **ha richiesto assistenza immediata!**\n\n"
+          f"🏢 **Corpo Richiesto:** `{fdo}`\n"
+          f"⚠️ **Motivo:** `{motivo}`\n\n"
+          "_La prima unità disponibile sarà subito da te_"
+      ),
+      color=discord.Color.from_rgb(220, 20, 60),
+  )
+  embed.set_footer(text="EvrenCity® Roleplay シ • OG Edition")
+
+  # 5. Invio del messaggio pubblico nel canale specifico
+  await canale_emergenza.send(content=content_ping, embed=embed)
+
+  # 6. Conferma privata all'utente
+  await interaction.followup.send(
+      "✅ **Chiamata d'emergenza inviata con successo!** Tutti i dipartimenti"
+      " sono stati allertati.",
+      ephemeral=True,
+  )
 
 @bot.tree.command(
     name="anonimo", description="Invia un messaggio criptato sulla rete segreta"
@@ -1882,6 +1951,49 @@ class PoliceCadSelectView(ui.View):
         if interaction.user.id == self.officer_id:
             await interaction.response.send_modal(CadSearchSerialModal(self.officer_id))
 
+@bot.tree.command(
+    name="cad_sheriff",
+    description=(
+        "[SHERIFF] Terminale operativo per ricerche anagrafiche, targhe e"
+        " matricole."
+    ),
+)
+async def cad_sheriff(interaction: discord.Interaction):
+  # Assicurati di definire RUOLO_SHERIFF_ID con l'ID numerico del ruolo dello Sheriff Department
+  if RUOLO_SHERIFF_ID:
+    sheriff_role = interaction.guild.get_role(RUOLO_SHERIFF_ID)
+    if sheriff_role and sheriff_role not in interaction.user.roles:
+      await interaction.response.send_message(
+          "❌ Riservato allo Sheriff Department!", ephemeral=True
+      )
+      return
+
+  res = (
+      supabase.table("documents")
+      .select("*")
+      .order("name", desc=False)
+      .execute()
+  )
+  if not res.data:
+    await interaction.response.send_message(
+        "❌ Nessun cittadino presente nel database.", ephemeral=True
+    )
+    return
+
+  # Nota: Se usi una View specifica per lo Sheriff, puoi sostituire PoliceCadSelectView con la classe dedicata
+  view = PoliceCadSelectView(res.data, interaction.user.id)
+  embed = discord.Embed(
+      title="🤠 CAD Sheriff Department - Centrale Operativa",
+      description=(
+          "Seleziona un **cittadino** dal menu a tendina oppure premi uno dei"
+          " bottoni sottostanti per cercare direttamente un veicolo tramite"
+          " **targa** o un'arma tramite **matricola**."
+      ),
+      color=discord.Color.from_rgb(
+          184, 134, 11
+      ),  # Colore oro/marrone tipico dello S.D.
+  )
+  await interaction.response.send_message(embed=embed, view=view, ephemeral=True)
 
 @bot.tree.command(name="cad_polizia", description="[POLIZIA] Terminale operativo per ricerche anagrafiche, targhe e matricole.")
 async def cad_polizia(interaction: discord.Interaction):
@@ -1906,8 +2018,7 @@ async def cad_polizia(interaction: discord.Interaction):
         color=discord.Color.dark_blue()
     )
     await interaction.response.send_message(embed=embed, view=view, ephemeral=True)
-
-
+    
 class FinePaySelectView(ui.View):
     def __init__(self, user_id: int, fines_list: list):
         super().__init__(timeout=120)
