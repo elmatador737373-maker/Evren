@@ -1210,7 +1210,6 @@ class RispondiChiamataView(ui.View):
             except Exception:
                 pass
 
-
 class EvrenPhoneView(ui.View):
     def __init__(self, user_id: str, phone_number: str):
         super().__init__(timeout=300)
@@ -1233,7 +1232,6 @@ class EvrenPhoneView(ui.View):
         self.add_item(btn_social)
 
         if contacts:
-            # Salviamo il numero pulito (solo cifre) nel value, mentre label e description restano leggibili
             options = [
                 discord.SelectOption(
                     label=c["name"], 
@@ -1272,7 +1270,7 @@ class EvrenPhoneView(ui.View):
 
         await interaction.response.send_message(embed=embed, view=social_view, ephemeral=True)
 
-        async def avvia_chiamata_callback(self, interaction: discord.Interaction):
+    async def avvia_chiamata_callback(self, interaction: discord.Interaction):
         numero = interaction.data["values"][0]
         await interaction.response.defer(ephemeral=True)
         await avvia_chiamata_vocale(interaction, numero)
