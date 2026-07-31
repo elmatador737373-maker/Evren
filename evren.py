@@ -1893,7 +1893,7 @@ from discord import app_commands
 # fin da ora con ID placeholder ed attivati in seguito semplicemente sostituendo i numeri.
 SERVER_CONFIGS = {
     # 🏢 SERVER 1 (Attivo)
-    1233353915559313478: {
+    1233353915559313478:
         "fines": 1519609832372437034,
         "arrests": 1520010488212361337,
         "reports": 1520010488212361337,
