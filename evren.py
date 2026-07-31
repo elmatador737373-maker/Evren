@@ -36,13 +36,59 @@ FFMPEG_PATH = None  # Lasciandolo a None, discord.py cercherà ffmpeg automatica
 
 supabase: Client = create_client(SUPABASE_URL, SUPABASE_KEY)
 
+
+# Crea un'istanza con tutti gli intents disabilitati di default
 intents = discord.Intents.default()
-intents.message_content = True
-intents.members = True
-intents.guilds = True  # <-- Fondamentale per far funzionare get_channel()
+
+# --- INTENTS DI BASE (Standard) ---
+intents.guilds = True                # Gestione server, canali, ruoli, emoji
+intents.members = True               # Accesso ai membri del server (⚠️ Richiede Privileged Intent)
+intents.bans = True                  # Monitoraggio dei ban nei server
+intents.emojis = True                # Monitoraggio delle emoji e sticker dei server
+intents.integrations = True          # Integrazioni (bot, widget, webhooks)
+intents.webhooks = True              # Monitoraggio dei webhook nei server
+intents.invites = True               # Monitoraggio degli inviti dei server
+intents.voice_states = True          # Accesso agli stati vocali (fondamentale per Wavelink/vocali)
+intents.presences = True             # Accesso agli status e attività degli utenti (⚠️ Richiede Privileged Intent)
+
+# --- INTENTS DEI MESSAGGI (Message Content) ---
+intents.messages = True              # Accesso agli eventi dei messaggi (creazione, modifica, eliminazione)
+intents.guild_messages = True        # Messaggi nei canali testuali dei server
+intents.guild_reactions = True       # Reazioni ai messaggi nei server
+intents.guild_typing = True          # Eventi di "digitazione" nei server
+intents.dm_messages = True           # Messaggi nei messaggi privati (DM)
+intents.dm_reactions = True          # Reazioni nei messaggi privati
+intents.dm_typing = True             # Eventi di digitazione nei messaggi privati
+
+# --- INTENTS MODERNI / SPECIALI (Polls & Message Content) ---
+intents.message_content = True       # Lettura del contenuto dei messaggi (⚠️ Richiede Privileged Intent)
+intents.guild_scheduled_events = True# Gestione degli eventi programmati del server
+intents.auto_moderation_configuration = True # Configurazione AutoMod
+intents.auto_moderation_execution = True     # Esecuzione/Trigger AutoMod
+intents.polls = True                 # Gestione dei sondaggi nativi di Discord
 
 bot = commands.Bot(command_prefix="!", intents=intents)
 
+
+# 1. Definiamo la funzione per il setup hook
+async def my_setup_hook():
+    node = wavelink.Node(
+        uri="https://lavalink.jirayu.net:443",
+        password="youshallnotpass"
+    )
+    try:
+        await wavelink.Pool.connect(nodes=[node], client=bot)
+        print("✅ [WAVELINK] Connessione al nodo avviata tramite setup_hook!")
+    except Exception as e:
+        print(f"❌ [WAVELINK] Errore di connessione nel setup_hook: {e}")
+
+# 2. Assegniamo la funzione al setup_hook del bot esistente
+bot.setup_hook = my_setup_hook
+
+# 3. Evento separato per confermare quando il nodo è pronto nello stato CONNECTED
+@bot.event
+async def on_wavelink_node_ready(payload: wavelink.NodeReadyEventPayload) -> None:
+    print(f"🎉 Wavelink Node pronto e connesso! URI: {payload.node.uri} | Session ID: {payload.session_id}")
 
 # --- SERVER FLASK PER KEEP-ALIVE ---
 
