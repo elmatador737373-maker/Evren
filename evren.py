@@ -163,6 +163,13 @@ async def riproduci_audio_canale(channel: discord.VoiceChannel, audio_file: str,
         if vc and vc.is_connected():
             await vc.disconnect()
 
+import discord
+from discord import ui
+
+# =======================================================
+#  VIEW PERSISTENTE PER IL PANNELLO ANAGRAFE
+# =======================================================
+
 # --- PRIMO MODULO: DATI ANAGRAFICI ---
 class CreaDocumentiStep1Modal(ui.Modal, title="🪪 ┃ ʀᴇɢɪsᴛʀᴏ (1/2: Anagrafica)"):
     def __init__(self):
@@ -179,16 +186,17 @@ class CreaDocumentiStep1Modal(ui.Modal, title="🪪 ┃ ʀᴇɢɪsᴛʀᴏ (1/2:
         self.add_item(self.luogo_nascita)
 
     async def on_submit(self, interaction: discord.Interaction):
-        # Passa al secondo modulo passando i dati temporaneamente tramite i valori
+        # Salva temporaneamente i dati del primo step
         nome_val = self.nome.value.strip()
         cognome_val = self.cognome.value.strip()
         data_val = self.data_nascita.value.strip()
         luogo_val = self.luogo_nascita.value.strip()
 
+        # Apre automaticamente il secondo modulo passando i dati raccolti
         await interaction.response.send_modal(CreaDocumentiStep2Modal(nome_val, cognome_val, data_val, luogo_val))
 
 
-# --- SECONDO MODULO: DETTAGLI FISICI E SALVATAGGIO ---
+# --- SECONDO MODULO: DETTAGLI FISICI E SALVATAGGIO FINALE ---
 class CreaDocumentiStep2Modal(ui.Modal, title="🪪 ┃ ʀᴇɢɪsᴛʀᴏ (2/2: Dati Fisici)"):
     def __init__(self, nome, cognome, data_nascita, luogo_nascita):
         super().__init__()
@@ -262,6 +270,85 @@ class CreaDocumentiStep2Modal(ui.Modal, title="🪪 ┃ ʀᴇɢɪsᴛʀᴏ (2/2:
                 f"❌ Si è verificato un errore durante il salvataggio dei dati: {e}",
                 ephemeral=True
             )
+
+
+# --- VIEW PERSISTENTE CON CONTROLLO PREVENTIVO ---
+class PannelloAnagrafeView(ui.View):
+    def __init__(self):
+        super().__init__(timeout=None)
+
+    @ui.button(
+        label="Compila Anagrafica",
+        style=discord.ButtonStyle.green,
+        emoji="🪪",
+        custom_id="anagrafe_apri_modal",
+    )
+    async def apri_modal(self, interaction: discord.Interaction, button: ui.Button):
+        user_id = str(interaction.user.id)
+
+        # Controllo preventivo: se l'utente ha già il documento, blocca l'apertura del form
+        existing = supabase.table("documents").select("discord_id").eq("discord_id", user_id).execute()
+
+        if existing.data:
+            await interaction.response.send_message(
+                "❌ **Hai già completato la tua registrazione anagrafica!**\n"
+                "Non è possibile creare un nuovo documento.",
+                ephemeral=True
+            )
+            return
+
+        # Se non esiste, apre il primo step del modulo
+        await interaction.response.send_modal(CreaDocumentiStep1Modal())
+
+
+# =======================================================
+#  COMANDO /PANNELLO_DOCUMENTI (PER GLI ADMIN)
+# =======================================================
+@bot.tree.command(
+    name="pannello_documenti",
+    description="Invia il pannello interattivo permanente per la creazione dei documenti"
+)
+@app_commands.default_permissions(administrator=True)
+async def pannello_documenti(interaction: discord.Interaction):
+    server_name = interaction.guild.name
+    server_icon = interaction.guild.icon.url if interaction.guild.icon else None
+
+    embed = discord.Embed(
+        title="🏛️ ┃ ᴜꜰꜰɪᴄɪᴏ ᴀɴᴀɢʀᴀꜰᴇ ᴄɪᴛᴛᴀᴅɪɴᴏ",
+        description=(
+            f"📋 **sᴘᴏʀᴛᴇʟʟᴏ ᴜꜰꜰɪᴄɪᴀʟᴇ ʀɪʟᴀsᴄɪᴏ ᴅᴏᴄᴜᴍᴇɴᴛɪ**\n"
+            f"# ✦ ɢᴇɴᴇʀᴀᴢɪᴏɴᴇ ɪᴅᴇɴᴛɪᴛÀ\n\n"
+            f"━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n\n"
+            f"📌 **ɢᴜɪᴅᴀ ʀᴀᴘɪᴅᴀ ᴀʟʟᴀ ᴄᴏᴍᴘɪʟᴀᴢɪᴏɴᴇ:**\n"
+            f"1️⃣ Clicca sul pulsante **Compila Anagrafica** qui sotto.\n"
+            f"2️⃣ Inserisci i tuoi dati anagrafici reali o RP nel modulo.\n"
+            f"3️⃣ Segui le istruzioni successive per allegare la foto tessera.\n"
+            f"4️⃣ Il sistema registrerà automaticamente il tuo codice fiscale.\n\n"
+            f"⚠️ *Nota bene: È consentito un solo documento attivo per cittadino.*\n\n"
+            f"━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+        ),
+        color=discord.Color.from_rgb(30, 144, 255)
+    )
+
+    if server_icon:
+        embed.set_author(name=f"ᴄᴏᴍᴜɴᴇ ᴅɪ {server_name.upper()}", icon_url=server_icon)
+    else:
+        embed.set_author(name=f"ᴀɴᴀɢʀᴀꜰᴇ ᴄɪᴛᴛᴀᴅɪɴᴀ")
+
+    embed.set_footer(
+        text=f"⚖️ Servizi Demografici Ufficiali | {server_name}™",
+        icon_url=server_icon
+    )
+
+    await interaction.channel.send(
+        embed=embed,
+        view=PannelloAnagrafeView()
+    )
+
+    await interaction.response.send_message(
+        "✅ **ᴘᴀɴɴᴇʟʟᴏ ɪɴᴠɪᴀᴛᴏ.** L'interfaccia anagrafica persistente è stata pubblicata con successo.",
+        ephemeral=True
+    )
 
 # --- VIEW CON BOTTONI REINDIRIZZAMENTO (LINK) ---
 
@@ -2884,159 +2971,6 @@ async def mie_fatture(interaction: discord.Interaction):
   
   # 3. Invio tramite followup
   await interaction.followup.send(embed=embed, file=file, view=view)
-
-# =======================================================
-#  VIEW PERSISTENTE PER IL PANNELLO ANAGRAFE
-# =======================================================
-# --- PRIMO MODULO: DATI ANAGISTRICI ---
-class CreaDocumentiStep1Modal(ui.Modal, title="🪪 ┃ ʀᴇɢɪsᴛʀᴏ (1/2: Anagrafica)"):
-    def __init__(self):
-        super().__init__()
-
-        self.nome = ui.TextInput(label="ɴᴏᴍᴇ", placeholder="Es. Mario", required=True, max_length=50)
-        self.cognome = ui.TextInput(label="ᴄᴏɢɴᴏᴍᴇ", placeholder="Es. Rossi", required=True, max_length=50)
-        self.data_nascita = ui.TextInput(label="ᴅᴀᴛᴀ ᴅɪ ɴᴀsᴄɪᴛᴀ", placeholder="Es. 15/05/1998", required=True, max_length=20)
-        self.luogo_nascita = ui.TextInput(label="ʟᴜᴏɢᴏ ᴅɪ ɴᴀsᴄɪᴛᴀ", placeholder="Es. Los Angeles", required=True, max_length=50)
-
-        self.add_item(self.nome)
-        self.add_item(self.cognome)
-        self.add_item(self.data_nascita)
-        self.add_item(self.luogo_nascita)
-
-    async def on_submit(self, interaction: discord.Interaction):
-        # Salva temporaneamente i dati del primo step
-        nome_val = self.nome.value.strip()
-        cognome_val = self.cognome.value.strip()
-        data_val = self.data_nascita.value.strip()
-        luogo_val = self.luogo_nascita.value.strip()
-
-        # Apre automaticamente il secondo modulo passando i dati raccolti
-        await interaction.response.send_modal(CreaDocumentiStep2Modal(nome_val, cognome_val, data_val, luogo_val))
-
-
-# --- SECONDO MODULO: DETTAGLI FISICI E SALVATAGGIO FINALE ---
-class CreaDocumentiStep2Modal(ui.Modal, title="🪪 ┃ ʀᴇɢɪsᴛʀᴏ (2/2: Dati Fisici)"):
-    def __init__(self, nome, cognome, data_nascita, luogo_nascita):
-        super().__init__()
-        self.nome = nome
-        self.cognome = cognome
-        self.data_nascita = data_nascita
-        self.luogo_nascita = luogo_nascita
-
-        self.colore_occhi = ui.TextInput(label="ᴄᴏʟᴏʀᴇ ᴏᴄᴄʜɪ", placeholder="Es. Marroni / Verdi", required=True, max_length=30)
-        self.colore_capelli = ui.TextInput(label="ᴄᴏʟᴏʀᴇ ᴄᴀᴘᴇʟʟɪ", placeholder="Es. Castani / Neri", required=True, max_length=30)
-        self.segni_particolari = ui.TextInput(label="sᴇɢɴɪ ᴘᴀʀᴛɪᴄᴏʟᴀʀɪ", placeholder="Es. Cicatrice o Nessuno", required=False, max_length=100)
-
-        self.add_item(self.colore_occhi)
-        self.add_item(self.colore_capelli)
-        self.add_item(self.segni_particolari)
-
-    async def on_submit(self, interaction: discord.Interaction):
-        occhi_val = self.colore_occhi.value.strip()
-        capelli_val = self.colore_capelli.value.strip()
-        segni_val = self.segni_particolari.value.strip() or "Nessuno"
-
-        user_id = str(interaction.user.id)
-
-        try:
-            existing = supabase.table("documents").select("discord_id").eq("discord_id", user_id).execute()
-
-            if existing.data:
-                supabase.table("documents").update({
-                    "name": self.nome,
-                    "surname": self.cognome,
-                    "birth_date": self.data_nascita,
-                    "birth_place": self.luogo_nascita,
-                    "eye_color": occhi_val,
-                    "hair_color": capelli_val,
-                    "distinct_marks": segni_val
-                }).eq("discord_id", user_id).execute()
-
-                await interaction.response.send_message(
-                    "🔄 **ᴅᴀᴛɪ ᴀɴᴀɢʀᴀꜰɪᴄɪ ᴀɢɢɪᴏʀɴᴀᴛɪ ᴄᴏɴ sᴜᴄᴄᴇss!**\n"
-                    "Puoi procedere a caricare o aggiornare la foto con `/carica_foto_documento`.",
-                    ephemeral=True
-                )
-            else:
-                cf_temporaneo = f"EVREN-{user_id[-6:]}"
-                doc_numero = f"DOC-{user_id[-5:]}"
-
-                data = {
-                    "discord_id": user_id,
-                    "name": self.nome,
-                    "surname": self.cognome,
-                    "birth_date": self.data_nascita,
-                    "birth_place": self.luogo_nascita,
-                    "eye_color": occhi_val,
-                    "hair_color": capelli_val,
-                    "distinct_marks": segni_val,
-                    "cf": cf_temporaneo,
-                    "doc_number": doc_numero,
-                    "photo_url": None
-                }
-
-                supabase.table("documents").insert(data).execute()
-
-                await interaction.response.send_message(
-                    "✅ **ᴅᴀᴛɪ ᴀɴᴀɢʀᴀꜰɪᴄɪ sᴀʟᴠᴀᴛɪ ᴄᴏɴ sᴜᴄᴄᴇss!**\n"
-                    "Ora utilizza il comando `/carica_foto_documento` allegando la tua foto per completare la carta d'identità.",
-                    ephemeral=True
-                )
-
-        except Exception as e:
-            await interaction.response.send_message(
-                f"❌ Si è verificato un errore durante il salvataggio dei dati: {e}",
-                ephemeral=True
-            )
-
-# =======================================================
-#  COMANDO /PANNELLO_DOCUMENTI (PER GLI ADMIN)
-# =======================================================
-@bot.tree.command(
-    name="pannello_documenti",
-    description="Invia il pannello interattivo permanente per la creazione dei documenti"
-)
-@app_commands.default_permissions(administrator=True)
-async def pannello_documenti(interaction: discord.Interaction):
-    server_name = interaction.guild.name
-    server_icon = interaction.guild.icon.url if interaction.guild.icon else None
-
-    embed = discord.Embed(
-        title="🏛️ ┃ ᴜꜰꜰɪᴄɪᴏ ᴀɴᴀɢʀᴀꜰᴇ ᴄɪᴛᴛᴀᴅɪɴᴏ",
-        description=(
-            f"📋 **sᴘᴏʀᴛᴇʟʟᴏ ᴜꜰꜰɪᴄɪᴀʟᴇ ʀɪʟᴀsᴄɪᴏ ᴅᴏᴄᴜᴍᴇɴᴛɪ**\n"
-            f"# ✦ ɢᴇɴᴇʀᴀᴢɪᴏɴᴇ ɪᴅᴇɴᴛɪᴛÀ\n\n"
-            f"━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n\n"
-            f"📌 **ɢᴜɪᴅᴀ ʀᴀᴘɪᴅᴀ ᴀʟʟᴀ ᴄᴏᴍᴘɪʟᴀᴢɪᴏɴᴇ:**\n"
-            f"1️⃣ Clicca sul pulsante **Compila Anagrafica** qui sotto.\n"
-            f"2️⃣ Inserisci i tuoi dati anagrafici reali o RP nel modulo.\n"
-            f"3️⃣ Segui le istruzioni successive per allegare la foto tessera.\n"
-            f"4️⃣ Il sistema registrerà automaticamente il tuo codice fiscale.\n\n"
-            f"⚠️ *Nota bene: È consentito un solo documento attivo per cittadino.*\n\n"
-            f"━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
-        ),
-        color=discord.Color.from_rgb(30, 144, 255)
-    )
-
-    if server_icon:
-        embed.set_author(name=f"ᴄᴏᴍᴜɴᴇ ᴅɪ {server_name.upper()}", icon_url=server_icon)
-    else:
-        embed.set_author(name=f"ᴀɴᴀɢʀᴀꜰᴇ ᴄɪᴛᴛᴀᴅɪɴᴀ")
-
-    embed.set_footer(
-        text=f"⚖️ Servizi Demografici Ufficiali | {server_name}™",
-        icon_url=server_icon
-    )
-
-    await interaction.channel.send(
-        embed=embed,
-        view=PannelloAnagrafeView()
-    )
-
-    await interaction.response.send_message(
-        "✅ **ᴘᴀɴɴᴇʟʟᴏ ɪɴᴠɪᴀᴛᴏ.** L'interfaccia anagrafica persistente è stata pubblicata con successo.",
-        ephemeral=True
-    )
 
 
 import io
