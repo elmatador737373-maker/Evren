@@ -4315,12 +4315,17 @@ async def on_ready():
     await bot.tree.sync()
     bot.add_view(PannelloAnagrafeView())
     
+    # Prova a usare un altro nodo pubblico (es. quelli della community di Wavelink)
     nodes = [
         wavelink.Node(
-            uri="https://lavalink.jirayu.net:443", password="youshallnotpass"
+            uri="https://lavalink.darrennathanael.com:443", password="youshallnotpass"
         )
     ]
-    await wavelink.Pool.connect(nodes=nodes, client=bot)
+    try:
+        await wavelink.Pool.connect(nodes=nodes, client=bot)
+        print("✅ Nodo Lavalink connesso con successo!")
+    except Exception as e:
+        print(f"❌ Impossibile connettersi al nodo Lavalink: {e}")
 
     print(f"✅ Bot online come {bot.user}")
 
