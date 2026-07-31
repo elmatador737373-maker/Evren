@@ -4358,20 +4358,6 @@ async def registra_casa(interaction: discord.Interaction, proprietario: discord.
 async def on_ready():
     await bot.tree.sync()
     bot.add_view(PannelloAnagrafeView())
-    
-    if not wavelink.Pool.nodes:
-        nodes = [
-            wavelink.Node(
-                uri="https://lavalink.jirayu.net:443",
-                password="youshallnotpass"
-            )
-        ]
-        try:
-            await wavelink.Pool.connect(nodes=nodes)
-            print("✅ Wavelink v4 connesso con successo al nodo!")
-        except Exception as e:
-            print(f"❌ Errore di connessione Wavelink v4: {e}")
-
     print(f"✅ Bot online come {bot.user}")
 
 if __name__ == "__main__":
