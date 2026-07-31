@@ -404,6 +404,33 @@ async def shop_item_autocomplete(interaction: discord.Interaction, current: str)
 import random
 import string
 
+import discord
+from discord import app_commands
+
+
+@bot.tree.command(
+    name="me", description="Esegui un'azione in roleplay (stile /me)"
+)
+@app_commands.describe(azione="Descrivi l'azione che stai compiendo")
+async def me(interaction: discord.Interaction, azione: str):
+  # Elimina l'interazione in modo che l'utente non veda il messaggio "Ephemeral" o il caricamento prolungato
+  await interaction.response.defer(thinking=True)
+  await interaction.delete_original_response()
+
+  # Costruisce l'embed identico allo stile dell'immagine
+  embed = discord.Embed(
+      description=f"🎬 **Azione** ❞...\n\n{interaction.user.mention} = {azione}",
+      color=discord.Color.from_rgb(
+          40, 40, 45
+      ),  # Sfumatura scura pulita in stile Discord
+  )
+
+  # Footer con il nome del server o del progetto roleplay
+  embed.set_footer(text="EvrenCity® Roleplay シ • OG Edition")
+
+  # Invia il messaggio direttamente nel canale in cui è stato eseguito il comando
+  await interaction.channel.send(embed=embed)
+
 @bot.tree.command(name="compra", description="Acquista un oggetto dallo shop verificando fondi e requisiti.")
 @app_commands.describe(item="Nome dell'oggetto da acquistare")
 @app_commands.autocomplete(item=shop_item_autocomplete)
