@@ -1630,7 +1630,7 @@ async def inventario(interaction: discord.Interaction):
             embed.add_field(name=f"📦 {name} x{q}", value=f"└ Cat: `{cat}` | Peso: `{w:.1f}kg`", inline=False)
         
         view = InventoryUseView(interaction.user.id, res.data)
-        await interaction.response.send_message(embed=embed, view=view, ephemeral=Falsd)
+        await interaction.response.send_message(embed=embed, view=view, ephemeral=False)
     else:
         embed.description += "\n\n*Il tuo inventario è vuoto.*"
         await interaction.response.send_message(embed=embed, ephemeral=False)
