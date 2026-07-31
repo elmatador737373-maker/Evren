@@ -2003,7 +2003,7 @@ class CreaDocumentiModal(ui.Modal, title="🪪 ┃ ʀᴇɢɪsᴛʀᴏ ᴀɴᴀɢ
         await interaction.response.send_message(
             "📝 **ᴅᴀᴛɪ ᴀɴᴀɢʀᴀꜰɪᴄɪ ʀᴇɢɪsᴛʀᴀᴛɪ.**\n"
             "Ora, per completare i documenti e generare la carta d'identità ufficiale con foto, "
-            "utilizza il comando `/carica_foto` allegando il tuo documento fotografico.",
+            "utilizza il comando `/carica_foto_documento` allegando il tuo documento fotografico.",
             ephemeral=True
         )
 
@@ -2012,13 +2012,20 @@ class CreaDocumentiModal(ui.Modal, title="🪪 ┃ ʀᴇɢɪsᴛʀᴏ ᴀɴᴀɢ
 #  VIEW PERSISTENTE PER IL PANNELLO ANAGRAFE
 # =======================================================
 class PannelloAnagrafeView(ui.View):
-    def __init__(self):
-        super().__init__(timeout=None)
 
-    @ui.button(label="Compila Anagrafica", style=discord.ButtonStyle.green, emoji="🪪", custom_id="anagrafe_apri_modal")
-    async def apri_modal(self, interaction: discord.Interaction, button: ui.Button):
-        await interaction.response.send_modal(CreaDocumentiModal())
+  def __init__(self):
+    super().__init__(timeout=None)  # timeout=None rende la view permanente
 
+  @ui.button(
+      label="Compila Anagrafica",
+      style=discord.ButtonStyle.green,
+      emoji="🪪",
+      custom_id="anagrafe_apri_modal",
+  )
+  async def apri_modal(
+      self, interaction: discord.Interaction, button: ui.Button
+  ):
+    await interaction.response.send_modal(CreaDocumentiModal())
 
 # =======================================================
 #  COMANDO /PANNELLO_DOCUMENTI (PER GLI ADMIN)
@@ -2200,6 +2207,8 @@ async def registra_casa(interaction: discord.Interaction, proprietario: discord.
 @bot.event
 async def on_ready():
     await bot.tree.sync()
+    bot.add_view(PannelloAnagrafeView())
+    
     print(f"✅ Bot online come {bot.user}")
 
 if __name__ == "__main__":
