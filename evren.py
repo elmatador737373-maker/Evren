@@ -2064,7 +2064,7 @@ async def cad_fbi_error(
         " matricole."
     ),
 )
-@app_commands.has_role(RUOLO_POLIZIA_ID)
+@app_commands.checks.has_role(RUOLO_POLIZIA_ID)
 async def cad_polizia(interaction: discord.Interaction):
   res = (
       supabase.table("documents")
