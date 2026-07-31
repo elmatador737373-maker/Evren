@@ -2070,34 +2070,73 @@ async def pannello_documenti(interaction: discord.Interaction):
     )
 
 
-@bot.tree.command(name="mostra_documento", description="Mostra la tua carta d'identità ufficiale in chat.")
-async def mostra_documento(interaction: discord.Interaction):
-    await interaction.response.defer()
-    
-    user_id = str(interaction.user.id)
-    response = supabase.table("documents").select("*").eq("discord_id", user_id).execute()
-    
-    if not response.data:
-        await interaction.followup.send("❌ Non possiedi ancora un documento registrato! Usa `/crea_documenti` per crearlo.", ephemeral=True)
-        return
-        
-    doc = response.data[0]
-    
-    file_documento = await genera_carta_identita(
-        nome=doc["name"],
-        cognome=doc["surname"],
-        birth_date=doc["birth_date"],
-        birth_place=doc["birth_place"],
-        cf=doc["cf"],
-        doc_number=doc["doc_number"],
-        photo_url=doc["photo_url"],
-        colore_occhi=doc["eye_color"],
-        colore_capelli=doc["hair_color"],
-        segni_particolari=doc["distinct_marks"]
-    )
-    
-    await interaction.followup.send(file=file_documento)
+import io
+from playwright.async_api import async_playwright
 
+
+async def renderizza_html_in_immagine(html_content: str) -> discord.File:
+  async with async_playwright() as p:
+    # Avvia Chromium in background
+    browser = await p.chromium.launch(
+        headless=True, args=["--no-sandbox", "--disable-setuid-sandbox"]
+    )
+    # Imposta la pagina con le dimensioni esatte della carta (780x500)
+    page = await browser.new_page(viewport={"width": 780, "height": 500})
+
+    # Carica l'HTML
+    await page.set_content(html_content)
+
+    # Cattura lo screenshot della carta come byte PNG
+    screenshot_bytes = await page.screenshot(type="png", full_page=False)
+    await browser.close()
+
+  # Converte i byte in un file utilizzabile da Discord
+  buffer = io.BytesIO(screenshot_bytes)
+  buffer.seek(0)
+  return discord.File(buffer, filename="carta_identita.png")
+
+
+@bot.tree.command(
+    name="mostra_documento",
+    description="Mostra la tua carta d'identità ufficiale in chat.",
+)
+async def mostra_documento(interaction: discord.Interaction):
+  await interaction.response.defer(ephemeral=True)
+
+  user_id = str(interaction.user.id)
+  response = (
+      supabase.table("documents").select("*").eq("discord_id", user_id).execute()
+  )
+
+  if not response.data:
+    await interaction.followup.send(
+        "❌ Non possiedi ancora un documento registrato! Usa `/crea_documenti`"
+        " per crearlo.",
+        ephemeral=True,
+    )
+    return
+
+  doc = response.data[0]
+
+  # 1. Ottiene il codice HTML tramite la tua funzione
+  html_content = await genera_carta_identita(
+      nome=doc["name"],
+      cognome=doc["surname"],
+      birth_date=doc["birth_date"],
+      birth_place=doc["birth_place"],
+      cf=doc["cf"],
+      doc_number=doc["doc_number"],
+      photo_url=doc["photo_url"],
+      colore_occhi=doc["eye_color"],
+      colore_capelli=doc["hair_color"],
+      segni_particolari=doc["distinct_marks"],
+  )
+
+  # 2. Converte l'HTML in un'immagine tramite Playwright
+  file_documento = await renderizza_html_in_immagine(html_content)
+
+  # 3. Invia il file immagine su Discord (rimuovi ephemeral=True se vuoi che sia visibile a tutti in chat pubblica)
+  await interaction.followup.send(file=file_documento)
 
 # --- COMANDI REGISTRAZIONE ISTITUZIONALE ---
 
