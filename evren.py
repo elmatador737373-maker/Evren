@@ -162,6 +162,80 @@ async def riproduci_audio_canale(channel: discord.VoiceChannel, audio_file: str,
         if vc and vc.is_connected():
             await vc.disconnect()
 
+class CreaDocumentiModal(ui.Modal, title="🪪 ┃ ʀᴇɢɪsᴛʀᴏ ᴀɴᴀɢʀᴀꜰɪᴄᴏ ᴄɪᴛᴛᴀᴅɪɴᴏ"):
+    def __init__(self):
+        super().__init__()
+
+        self.nome = ui.TextInput(label="ɴᴏᴍᴇ", placeholder="Es. Mario", required=True, max_length=50)
+        self.cognome = ui.TextInput(label="ᴄᴏɢɴᴏᴍᴇ", placeholder="Es. Rossi", required=True, max_length=50)
+        self.data_nascita = ui.TextInput(label="ᴅᴀᴛᴀ ᴅɪ ɴᴀsᴄɪᴛᴀ", placeholder="Es. 15/05/1998", required=True, max_length=20)
+        self.luogo_nascita = ui.TextInput(label="ʟᴜᴏɢᴏ ᴅɪ ɴᴀsᴄɪᴛᴀ", placeholder="Es. Los Angeles", required=True, max_length=50)
+        self.segni_particolari = ui.TextInput(label="sᴇɢɴɪ ᴘᴀʀᴛɪᴄᴏʟᴀʀɪ", placeholder="Es. Cicatrice sul sopracciglio o Nessuno", required=False, max_length=100)
+
+        self.add_item(self.nome)
+        self.add_item(self.cognome)
+        self.add_item(self.data_nascita)
+        self.add_item(self.luogo_nascita)
+        self.add_item(self.segni_particolari)
+
+    async def on_submit(self, interaction: discord.Interaction):
+        nome_val = self.nome.value.strip()
+        cognome_val = self.cognome.value.strip()
+        data_val = self.data_nascita.value.strip()
+        luogo_val = self.luogo_nascita.value.strip()
+        segni_val = self.segni_particolari.value.strip() or "Nessuno"
+
+        user_id = str(interaction.user.id)
+
+        try:
+            # 1. Verifica se l'utente possiede già una scheda anagrafica
+            existing = supabase.table("documents").select("discord_id").eq("discord_id", user_id).execute()
+
+            if existing.data:
+                # Se esiste già, aggiorniamo i dati anagrafici senza toccare il photo_url esistente
+                supabase.table("documents").update({
+                    "name": nome_val,
+                    "surname": cognome_val,
+                    "birth_date": data_val,
+                    "birth_place": luogo_val,
+                    "distinct_marks": segni_val
+                }).eq("discord_id", user_id).execute()
+
+                await interaction.response.send_message(
+                    "🔄 **ᴅᴀᴛɪ ᴀɴᴀɢʀᴀꜰɪᴄɪ ᴀɢɢɪᴏʀɴᴀᴛɪ ᴄᴏɴ sᴜᴄᴄᴇssᴏ!**\n"
+                    "Puoi procedere a caricare o aggiornare la foto con `/carica_foto_documento`.",
+                    ephemeral=True
+                )
+            else:
+                # Se non esiste, creiamo la nuova riga su Supabase generando identificativi temporanei per cf e doc_number (o lasciali se gestiti altrove)
+                cf_temporaneo = f"EVREN-{user_id[-6:]}"
+                doc_numero = f"DOC-{user_id[-5:]}"
+
+                data = {
+                    "discord_id": user_id,
+                    "name": nome_val,
+                    "surname": cognome_val,
+                    "birth_date": data_val,
+                    "birth_place": luogo_val,
+                    "distinct_marks": segni_val,
+                    "cf": cf_temporaneo,
+                    "doc_number": doc_numero,
+                    "photo_url": None  # Viene lasciato vuoto per essere riempito dopo
+                }
+
+                supabase.table("documents").insert(data).execute()
+
+                await interaction.response.send_message(
+                    "✅ **ᴅᴀᴛɪ ᴀɴᴀɢʀᴀꜰɪᴄɪ sᴀʟᴠᴀᴛɪ ᴄᴏɴ sᴜᴄᴄᴇssᴏ!**\n"
+                    "Ora utilizza il comando `/carica_foto_documento` allegando la tua foto per completare la carta d'identità.",
+                    ephemeral=True
+                )
+
+        except Exception as e:
+            await interaction.response.send_message(
+                f"❌ Si è verificato un errore durante il salvataggio dei dati: {e}",
+                ephemeral=True
+            )
 
 # --- VIEW CON BOTTONI REINDIRIZZAMENTO (LINK) ---
 
@@ -216,56 +290,51 @@ from discord import app_commands
 
 @bot.tree.command(
     name="carica_foto_documento",
-    description=(
-        "Carica la foto del tuo documento su ImgBB e la salva nel database"
-    ),
+    description="Carica la foto del tuo documento su ImgBB e la aggiorna nel database",
 )
 @app_commands.describe(documento="Seleziona la foto del documento da caricare")
 async def carica_foto_documento(
     interaction: discord.Interaction, documento: discord.Attachment
 ):
-  # Controllo che il file allegato sia un'immagine
-  if not documento.content_type or not documento.content_type.startswith(
-      "image/"
-  ):
-    await interaction.response.send_message(
-        "⚠️ Per favore, allega un file immagine valido.", ephemeral=True
-    )
-    return
+    # Controllo che il file allegato sia un'immagine
+    if not documento.content_type or not documento.content_type.startswith("image/"):
+        await interaction.response.send_message(
+            "⚠️ Per favore, allega un file immagine valido.", ephemeral=True
+        )
+        return
 
-  await interaction.response.defer(thinking=True, ephemeral=True)
+    await interaction.response.defer(thinking=True, ephemeral=True)
 
-  try:
-    # 1. Carica la foto su ImgBB usando la tua funzione
-    photo_url = await upload_to_imgbb(documento)
-    discord_id = str(interaction.user.id)
+    try:
+        discord_id = str(interaction.user.id)
 
-    # 2. Esegue l'upsert su Supabase (sfruttando la chiave primaria discord_id)
-    # Inserisce i valori di default per i campi obbligatori se l'utente non esiste ancora
-    data = {
-        "discord_id": discord_id,
-        "photo_url": photo_url,
-        "name": "Da inserire",
-        "surname": "Da inserire",
-        "birth_date": "Da inserire",
-        "cf": "Da inserire",
-        "doc_number": "Da inserire",
-    }
+        # 1. Verifica preventiva: l'utente ha compilato prima la modale?
+        existing = supabase.table("documents").select("discord_id").eq("discord_id", discord_id).execute()
+        
+        if not existing.data:
+            await interaction.followup.send(
+                "❌ **Nessuna anagrafica trovata!**\n"
+                "Prima di caricare la foto, devi compilare il modulo anagrafico tramite il pannello.",
+                ephemeral=True
+            )
+            return
 
-    # Effettua l'upsert sulla tabella 'documents' nello schema public
-    supabase.table("documents").upsert(data).execute()
+        # 2. Carica la foto su ImgBB usando la tua funzione
+        photo_url = await upload_to_imgbb(documento)
 
-    await interaction.followup.send(
-        f"✅ **Foto del documento caricata con successo!**\n🔗 **URL:**"
-        f" {photo_url}",
-        ephemeral=True,
-    )
+        # 3. Aggiorna unicamente il campo photo_url per quell'utente nel database
+        supabase.table("documents").update({"photo_url": photo_url}).eq("discord_id", discord_id).execute()
 
-  except Exception as e:
-    await interaction.followup.send(
-        f"❌ Si è verificato un errore durante il caricamento: {e}",
-        ephemeral=True,
-    )
+        await interaction.followup.send(
+            f"✅ **Foto del documento caricata e associata con successo!**\n🔗 **URL:** {photo_url}",
+            ephemeral=True,
+        )
+
+    except Exception as e:
+        await interaction.followup.send(
+            f"❌ Si è verificato un errore durante il caricamento: {e}",
+            ephemeral=True,
+        )
 
 # --- SHOP OS ---
 
@@ -1945,68 +2014,6 @@ from discord import app_commands, ui
 # =======================================================
 #  MODAL PER LA CREAZIONE DEI DOCUMENTI (Pannello)
 # =======================================================
-class CreaDocumentiModal(ui.Modal, title="🪪 ┃ ʀᴇɢɪsᴛʀᴏ ᴀɴᴀɢʀᴀꜰɪᴄᴏ ᴄɪᴛᴛᴀᴅɪɴᴏ"):
-    def __init__(self):
-        super().__init__()
-
-        self.nome = ui.TextInput(label="ɴᴏᴍᴇ", placeholder="Es. Mario", required=True, max_length=50)
-        self.cognome = ui.TextInput(label="ᴄᴏɢɴᴏᴍᴇ", placeholder="Es. Rossi", required=True, max_length=50)
-        self.data_nascita = ui.TextInput(label="ᴅᴀᴛᴀ ᴅɪ ɴᴀsᴄɪᴛᴀ", placeholder="Es. 15/05/1998", required=True, max_length=20)
-        self.luogo_nascita = ui.TextInput(label="ʟᴜᴏɢᴏ ᴅɪ ɴᴀsᴄɪᴛᴀ", placeholder="Es. Los Angeles", required=True, max_length=50)
-        self.segni_particolari = ui.TextInput(label="sᴇɢɴɪ ᴘᴀʀᴛɪᴄᴏʟᴀʀɪ", placeholder="Es. Cicatrice sul sopracciglio o Nessuno", required=False, max_length=100)
-
-        self.add_item(self.nome)
-        self.add_item(self.cognome)
-        self.add_item(self.data_nascita)
-        self.add_item(self.luogo_nascita)
-        self.add_item(self.segni_particolari)
-
-    async def on_submit(self, interaction: discord.Interaction):
-        # Passa i dati al secondo passaggio o gestiscili direttamente tramite una seconda modale / allegato foto.
-        # Per semplicità, qui reindirizziamo o salviamo provvisoriamente, oppure puoi combinare nome/cognome/ecc.
-        # Visto che serve anche la foto (discord.Attachment non si può mettere nei Modal standard di Discord), 
-        # la gestione migliore è chiedere prima i dati testuali via Modal e poi generare il documento 
-        # (oppure inviare un prompt successivo per la foto). 
-        # Per mantenere la coerenza con il tuo comando originale, salviamo i dati temporaneamente e chiediamo la foto.
-        
-        nome_val = self.nome.value.strip()
-        cognome_val = self.cognome.value.strip()
-        data_val = self.data_nascita.value.strip()
-        luogo_val = self.luogo_nascita.value.strip()
-        segni_val = self.segni_particolari.value.strip() or "Nessuno"
-
-        user_id = str(interaction.user.id)
-        existing = supabase.table("documents").select("*").eq("discord_id", user_id).execute()
-
-        if existing.data:
-            doc = existing.data[0]
-            await interaction.response.send_message(f"❌ **ᴅᴏᴄᴜᴍᴇɴᴛɪ ɢɪÀ ᴇsɪsᴛᴇɴᴛɪ!**\nCF: `{doc['cf']}`", ephemeral=True)
-            return
-
-        # Salviamo provvisoriamente in un dizionario temporaneo globale del bot (es. user_temp_docs[user_id] = {...})
-        # Oppure procediamo direttamente se preferisci un flusso unico. 
-        # Poiché la modale non accetta allegati (file), l'approccio ideale con View Persistente + Modal è questo:
-        global user_temp_docs
-        try:
-            user_temp_docs
-        except NameError:
-            user_temp_docs = {}
-
-        user_temp_docs[user_id] = {
-            "nome": nome_val,
-            "cognome": cognome_val,
-            "data_nascita": data_val,
-            "luogo_nascita": luogo_val,
-            "segni_particolari": segni_val
-        }
-
-        await interaction.response.send_message(
-            "📝 **ᴅᴀᴛɪ ᴀɴᴀɢʀᴀꜰɪᴄɪ ʀᴇɢɪsᴛʀᴀᴛɪ.**\n"
-            "Ora, per completare i documenti e generare la carta d'identità ufficiale con foto, "
-            "utilizza il comando `/carica_foto_documento` allegando il tuo documento fotografico.",
-            ephemeral=True
-        )
-
 
 # =======================================================
 #  VIEW PERSISTENTE PER IL PANNELLO ANAGRAFE
