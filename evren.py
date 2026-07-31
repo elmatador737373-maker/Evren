@@ -2019,7 +2019,7 @@ from discord import app_commands
         " matricole."
     ),
 )
-@app_commands.has_role(RUOLO_FBI_ID)
+@app_commands.checks.has_role(RUOLO_FBI_ID)
 async def cad_fbi(interaction: discord.Interaction):
   res = (
       supabase.table("documents")
