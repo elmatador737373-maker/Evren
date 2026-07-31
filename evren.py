@@ -1011,39 +1011,35 @@ class WhatsAppMessageModal(ui.Modal, title="WhatsApp - Invia Messaggio"):
             await interaction.response.send_message(f"❌ Errore nell'invio del messaggio: {e}", ephemeral=True)
 
 
-class WhatsAppChatView(ui.View):
-    def __init__(self, user_phone: str, target_phone: str, target_name: str):
-        super().__init__(timeout=300)
-        self.user_phone = user_phone
-        self.target_phone = target_phone
-        self.target_name = target_name
-
-    @ui.button(label="Invia Messaggio", style=discord.ButtonStyle.green, emoji="💬")
-    async def invia_messaggio(self, interaction: discord.Interaction, button: ui.Button):
-        modal = WhatsAppMessageModal(self.user_phone, self.target_phone, self.target_name, self)
-        await interaction.response.send_modal(modal)
-
-    @ui.button(label="Aggiorna Chat", style=discord.ButtonStyle.blurple, emoji="🔄")
-    async def aggiorna_chat(self, interaction: discord.Interaction, button: ui.Button):
-        await self.aggiorna_embed_chat(interaction)
-
     async def aggiorna_embed_chat(self, interaction: discord.Interaction):
-        # Recupera gli ultimi messaggi tra i due numeri dal DB ordinati per cronologia
-        res = supabase.table("whatsapp_messages") \
-            .select("*") \
-            .or_(f"and(sender_phone.eq.{self.user_phone},receiver_phone.eq.{self.target_phone}),and(sender_phone.eq.{self.target_phone},receiver_phone.eq.{self.user_phone})") \
-            .order("created_at", desc=False) \
-            .limit(10) \
-            .execute()
+        # Pulisci i numeri per sicurezza nella ricerca o usa direttamente quelli salvati
+        user_clean = "".join(filter(str.isdigit, self.user_phone))
+        target_clean = "".join(filter(str.isdigit, self.target_phone))
+
+        # Prende tutti i messaggi della tabella e filtra via codice per evitare problemi di query complesse su stringhe formattate
+        res = supabase.table("whatsapp_messages").select("*").order("created_at", desc=False).limit(50).execute()
         
-        messaggi = res.data if res.data else []
+        tutti_messaggi = res.data if res.data else []
+        messaggi = []
+
+        for m in tutti_messaggi:
+            s_clean = "".join(filter(str.isdigit, m["sender_phone"]))
+            r_clean = "".join(filter(str.isdigit, m["receiver_phone"]))
+            
+            # Controlla se il messaggio appartiene a questa conversazione (in un senso o nell'altro)
+            if (s_clean == user_clean and r_clean == target_clean) or (s_clean == target_clean and r_clean == user_clean):
+                messaggi.append(m)
+
+        # Prende solo gli ultimi 10 messaggi della conversazione
+        messaggi = messaggi[-10:]
         
         descrizione = f"*Cronologia messaggi con **{self.target_name}** (`{self.target_phone}`)*\n\n"
         if not messaggi:
             descrizione += "_Nessun messaggio in questa chat. Inizia a scrivere!_"
         else:
             for m in messaggi:
-                mittente = "Tu" if m["sender_phone"] == self.user_phone else self.target_name
+                m_sender_clean = "".join(filter(str.isdigit, m["sender_phone"]))
+                mittente = "Tu" if m_sender_clean == user_clean else self.target_name
                 descrizione += f"**{mittente}:** {m['message']}\n"
 
         embed = discord.Embed(
@@ -1274,11 +1270,23 @@ class EvrenPhoneView(ui.View):
         await avvia_chiamata_vocale(interaction, numero)
 
     async def apri_whatsapp_callback(self, interaction: discord.Interaction):
-        numero = interaction.data["values"][0]
-        res = supabase.table("contacts").select("name").eq("owner_id", self.user_id).eq("phone_number", numero).execute()
-        nome_destinatario = res.data[0]["name"] if res.data else numero
+        numero_selezionato = interaction.data["values"][0]
+        numero_pulito = "".join(filter(str.isdigit, numero_selezionato))
 
-        view = WhatsAppChatView(self.phone_number, numero, nome_destinatario)
+        # Cerca il contatto confrontando la versione pulita
+        res = supabase.table("contacts").select("phone_number, name").eq("owner_id", self.user_id).execute()
+        
+        nome_destinatario = numero_selezionato
+        target_phone = numero_selezionato
+        
+        if res.data:
+            for c in res.data:
+                if "".join(filter(str.isdigit, c["phone_number"])) == numero_pulito:
+                    nome_destinatario = c["name"]
+                    target_phone = c["phone_number"] # Usa il formato esatto del DB
+                    break
+
+        view = WhatsAppChatView(self.phone_number, target_phone, nome_destinatario)
         await view.aggiorna_embed_chat(interaction)
 
 
@@ -1286,13 +1294,24 @@ async def avvia_chiamata_vocale(interaction: discord.Interaction, numero_destina
     guild = interaction.guild
     chiamante = interaction.user
 
-    res = supabase.table("user_phones").select("discord_id").eq("phone_number", numero_destinatario).execute()
+    # Pulisce il numero cercato rimuovendo spazi, parentesi e trattini per fare un confronto sicuro
+    numero_pulito = "".join(filter(str.isdigit, numero_destinatario))
+
+    # Prende tutti i numeri registrati per confrontarli senza formattazione
+    res = supabase.table("user_phones").select("discord_id, phone_number").execute()
     
-    if not res.data or len(res.data) == 0:
+    target_discord_id = None
+    if res.data:
+        for row in res.data:
+            db_num_pulito = "".join(filter(str.isdigit, row["phone_number"]))
+            if db_num_pulito == numero_pulito:
+                target_discord_id = row["discord_id"]
+                break
+
+    if not target_discord_id:
         await interaction.followup.send("❌ Il numero digitato non è attivo o non appartiene a nessun cittadino registrato.", ephemeral=True)
         return
 
-    target_discord_id = res.data[0]["discord_id"]
     destinatario = guild.get_member(int(target_discord_id))
     
     if not destinatario:
