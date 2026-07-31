@@ -1887,10 +1887,14 @@ import discord
 from discord import app_commands
 
 # ==========================================
+import datetime
+import difflib
+import discord
+from discord import app_commands, ui
+
+# ==========================================
 # ⚙️ CONFIGURAZIONE CANALI E TAG PER SERVER
 # ==========================================
-# Puoi aggiungere tutti i server che desideri. Quelli futuri possono essere inseriti
-# fin da ora con ID placeholder ed attivati in seguito semplicemente sostituendo i numeri.
 SERVER_CONFIGS = {
     # 🏢 SERVER 1 (Attivo)
     1233353915559313478: {
@@ -1899,7 +1903,7 @@ SERVER_CONFIGS = {
         "reports": 1520010488212361337,
         "seized_vehicles": 1520010510828048395,
         "seized_items": 1520010510828048395,
-        "role_tag": "<@&1359569600198611104>",  # Tag specifico Server 1
+        "role_tag": "<@&1359569600198611104>",
     },
     # 🏢 SERVER 2 (Attivo)
     1499394373270507701: {
@@ -1908,17 +1912,8 @@ SERVER_CONFIGS = {
         "reports": 1499398731504685207,
         "seized_vehicles": 1499398820851744799,
         "seized_items": 1499398780481704046,
-        "role_tag": "<@&1363487988570521670>",  # Tag specifico Server 2
+        "role_tag": "<@&1363487988570521670>",
     },
-    # 🏢 SERVER 3 (Non ancora attivo / Futuro - Sostituisci gli ID quando sarà pronto)
-    # 333333333333333333: {
-    #     "fines": 333333333333333331,
-    #     "arrests": 333333333333333332,
-    #     "reports": 333333333333333333,
-    #     "seized_vehicles": 333333333333333334,
-    #     "seized_items": 333333333333333335,
-    #     "role_tag": "<@&333333333333333336>",  # Tag specifico Server 3 futuro
-    # },
 }
 
 
@@ -1936,15 +1931,10 @@ async def send_standardized_log(
     notes: str,
     photo_url: str = None,
 ):
-  """Costruisce il log formattato tramite EMBED secondo il template standard,
-
-  utilizzando il canale e il tag specifici del server di origine. Se il server
-  non è configurato, invia un avviso in console.
-  """
   if guild_id not in SERVER_CONFIGS:
     print(
-        f"⚠️ Attenzione: Il server con ID {guild_id} non è ancora attivo o non è"
-        " configurato in SERVER_CONFIGS."
+        f"⚠️ Attenzione: Il server con ID {guild_id} non è configurato in"
+        " SERVER_CONFIGS."
     )
     return
 
@@ -1957,7 +1947,6 @@ async def send_standardized_log(
 
   now_str = datetime.datetime.now().strftime("%d/%m/%Y %H:%M")
 
-  # Testo formattato internamente all'Embed rispettando i 5 campi dei Modal + template richiesto
   log_text = (
       f"# 𝐑𝐄𝐆𝐈𝐒𝐓𝐑𝐎\n"
       f"> • ɴᴏᴍᴇ: {name}\n\n"
@@ -1988,7 +1977,7 @@ async def send_standardized_log(
 
 
 # ==========================================
-# 🔍 MODALI DI RICERCA (TARGA, MATRICOLA, SMART)
+# 🔍 MODALI DI RICERCA
 # ==========================================
 
 
@@ -2197,7 +2186,6 @@ class SmartSearchCitizenModal(ui.Modal, title="🔎 Ricerca Intelligente Cittadi
 
 
 class BaseActionModal(ui.Modal):
-  """Classe base per gestire i 5 campi richiesti nei Modal di Azione."""
 
   field_1 = ui.TextInput(
       label="1. Nome", placeholder="Es. Mario", required=True
@@ -2222,6 +2210,7 @@ class BaseActionModal(ui.Modal):
 
   def __init__(
       self,
+      title: str,
       target_id: str,
       officer_name: str,
       bot: discord.Client,
@@ -2229,7 +2218,7 @@ class BaseActionModal(ui.Modal):
       default_det: str,
       default_pec: str,
   ):
-    super().__init__()
+    super().__init__(title=title)
     self.target_id = target_id
     self.officer_name = officer_name
     self.bot = bot
@@ -2266,70 +2255,70 @@ class FineModal(BaseActionModal):
 
   def __init__(self, target_id: str, officer_name: str, bot: discord.Client):
     super().__init__(
-        target_id,
-        officer_name,
-        bot,
+        title="🚨 Registra Multa",
+        target_id=target_id,
+        officer_name=officer_name,
+        bot=bot,
         log_type="fines",
         default_det="Nessuna",
         default_pec="Specificata nel verbale",
     )
-    self.title = "🚨 Registra Multa"
 
 
 class ArrestModal(BaseActionModal):
 
   def __init__(self, target_id: str, officer_name: str, bot: discord.Client):
     super().__init__(
-        target_id,
-        officer_name,
-        bot,
+        title="🔒 Registra Arresto",
+        target_id=target_id,
+        officer_name=officer_name,
+        bot=bot,
         log_type="arrests",
         default_det="Detenzione Carceraria",
         default_pec="Non Prevista / Cauzione",
     )
-    self.title = "🔒 Registra Arresto"
 
 
 class ReportModal(BaseActionModal):
 
   def __init__(self, target_id: str, officer_name: str, bot: discord.Client):
     super().__init__(
-        target_id,
-        officer_name,
-        bot,
+        title="📝 Registra Verbale",
+        target_id=target_id,
+        officer_name=officer_name,
+        bot=bot,
         log_type="reports",
         default_det="A discrezione del giudice",
         default_pec="A discrezione del giudice",
     )
-    self.title = "📝 Registra Verbale"
 
 
 class SeizeVehicleModal(BaseActionModal):
 
   def __init__(self, target_id: str, officer_name: str, bot: discord.Client):
     super().__init__(
-        target_id,
-        officer_name,
-        bot,
+        title="🚗 Sequestro Veicolo",
+        target_id=target_id,
+        officer_name=officer_name,
+        bot=bot,
         log_type="seized_vehicles",
         default_det="Sequestro Veicolare",
         default_pec="Sequestro Amministrativo",
     )
-    self.title = "🚗 Sequestro Veicolo"
 
 
 class SeizeItemModal(BaseActionModal):
 
   def __init__(self, target_id: str, officer_name: str, bot: discord.Client):
     super().__init__(
-        target_id,
-        officer_name,
-        bot,
+        title="📦 Sequestro Oggetto / Arma",
+        target_id=target_id,
+        officer_name=officer_name,
+        bot=bot,
         log_type="seized_items",
         default_det="Confisca Materiale",
         default_pec="Nessuna",
     )
-    self.title = "📦 Sequestro Oggetto / Arma"
 
 
 # ==========================================
@@ -2436,13 +2425,16 @@ class PoliceCadDetailView(ui.View):
     self.bot = bot
     self.target_id_str = citizen_doc.get("discord_id")
 
-  def _check_officer(self, interaction: discord.Interaction):
-    return interaction.user.id == self.officer_id
+  async def interaction_check(self, interaction: discord.Interaction) -> bool:
+    if interaction.user.id != self.officer_id:
+      await interaction.response.send_message(
+          "❌ Questo terminale CAD non è intestato a te!", ephemeral=True
+      )
+      return False
+    return True
 
   @ui.button(label="📋 Generalità", style=discord.ButtonStyle.primary, row=0)
   async def btn_gen(self, interaction: discord.Interaction, button: ui.Button):
-    if not self._check_officer(interaction):
-      return
     photo_url = self.doc.get("photo_url")
     embed = discord.Embed(
         title=(
@@ -2470,8 +2462,6 @@ class PoliceCadDetailView(ui.View):
 
   @ui.button(label="🚗 Proprietà", style=discord.ButtonStyle.success, row=0)
   async def btn_prop(self, interaction: discord.Interaction, button: ui.Button):
-    if not self._check_officer(interaction):
-      return
     v_res = (
         supabase.table("registered_vehicles")
         .select("*")
@@ -2533,8 +2523,6 @@ class PoliceCadDetailView(ui.View):
 
   @ui.button(label="📦 Oggetti Sequestrati", style=discord.ButtonStyle.secondary, row=0)
   async def btn_seized_items(self, interaction: discord.Interaction, button: ui.Button):
-    if not self._check_officer(interaction):
-      return
     i_res = (
         supabase.table("seized_items")
         .select("*")
@@ -2566,32 +2554,24 @@ class PoliceCadDetailView(ui.View):
 
   @ui.button(label="➕ Multa", style=discord.ButtonStyle.danger, row=1)
   async def add_fine(self, interaction: discord.Interaction, button: ui.Button):
-    if not self._check_officer(interaction):
-      return
     await interaction.response.send_modal(
         FineModal(self.target_id_str, interaction.user.display_name, self.bot)
     )
 
   @ui.button(label="➕ Arresto", style=discord.ButtonStyle.secondary, row=1)
   async def add_arrest(self, interaction: discord.Interaction, button: ui.Button):
-    if not self._check_officer(interaction):
-      return
     await interaction.response.send_modal(
         ArrestModal(self.target_id_str, interaction.user.display_name, self.bot)
     )
 
   @ui.button(label="➕ Verbale", style=discord.ButtonStyle.primary, row=1)
   async def add_report(self, interaction: discord.Interaction, button: ui.Button):
-    if not self._check_officer(interaction):
-      return
     await interaction.response.send_modal(
         ReportModal(self.target_id_str, interaction.user.display_name, self.bot)
     )
 
   @ui.button(label="🔒 Sequestra Veicolo", style=discord.ButtonStyle.danger, row=2)
   async def seize_veh(self, interaction: discord.Interaction, button: ui.Button):
-    if not self._check_officer(interaction):
-      return
     await interaction.response.send_modal(
         SeizeVehicleModal(
             self.target_id_str, interaction.user.display_name, self.bot
@@ -2600,8 +2580,6 @@ class PoliceCadDetailView(ui.View):
 
   @ui.button(label="📦 Sequestra Oggetto", style=discord.ButtonStyle.danger, row=2)
   async def seize_item(self, interaction: discord.Interaction, button: ui.Button):
-    if not self._check_officer(interaction):
-      return
     await interaction.response.send_modal(
         SeizeItemModal(
             self.target_id_str, interaction.user.display_name, self.bot
@@ -2610,8 +2588,6 @@ class PoliceCadDetailView(ui.View):
 
   @ui.button(label="🔓 Gestione Dissequestro", style=discord.ButtonStyle.success, row=2)
   async def manage_seizure(self, interaction: discord.Interaction, button: ui.Button):
-    if not self._check_officer(interaction):
-      return
     view = SeizureManagementView(self.target_id_str, self.officer_id, self.bot)
     await interaction.response.send_message(
         "Seleziona l'elemento da dissequestrare:", view=view, ephemeral=True
@@ -2642,6 +2618,9 @@ class CitizenSelectMenu(ui.Select):
 
   async def callback(self, interaction: discord.Interaction):
     if interaction.user.id != self.officer_id:
+      await interaction.response.send_message(
+          "❌ Questo terminale non è intestato a te!", ephemeral=True
+      )
       return
     selected_id = self.values[0]
     doc = next(
@@ -2673,16 +2652,23 @@ class PoliceCadSelectView(ui.View):
     self.bot = bot
     self.add_item(CitizenSelectMenu(citizens_list, officer_id, bot))
 
+  async def interaction_check(self, interaction: discord.Interaction) -> bool:
+    if interaction.user.id != self.officer_id:
+      await interaction.response.send_message(
+          "❌ Questo terminale non è intestato a te!", ephemeral=True
+      )
+      return False
+    return True
+
   @ui.button(
       label="🔍 Cerca Targa", style=discord.ButtonStyle.success, row=1
   )
   async def btn_search_plate(
       self, interaction: discord.Interaction, button: ui.Button
   ):
-    if interaction.user.id == self.officer_id:
-      await interaction.response.send_modal(
-          CadSearchPlateModal(self.officer_id, self.bot)
-      )
+    await interaction.response.send_modal(
+        CadSearchPlateModal(self.officer_id, self.bot)
+    )
 
   @ui.button(
       label="🔍 Cerca Matricola", style=discord.ButtonStyle.danger, row=1
@@ -2690,10 +2676,9 @@ class PoliceCadSelectView(ui.View):
   async def btn_search_serial(
       self, interaction: discord.Interaction, button: ui.Button
   ):
-    if interaction.user.id == self.officer_id:
-      await interaction.response.send_modal(
-          CadSearchSerialModal(self.officer_id, self.bot)
-      )
+    await interaction.response.send_modal(
+        CadSearchSerialModal(self.officer_id, self.bot)
+    )
 
   @ui.button(
       label="🔍 Ricerca Smart Cittadino",
@@ -2703,11 +2688,9 @@ class PoliceCadSelectView(ui.View):
   async def btn_smart_search(
       self, interaction: discord.Interaction, button: ui.Button
   ):
-    if interaction.user.id == self.officer_id:
-      await interaction.response.send_modal(
-          SmartSearchCitizenModal(self.citizens_list, self.officer_id, self.bot)
-      )
-
+    await interaction.response.send_modal(
+        SmartSearchCitizenModal(self.citizens_list, self.officer_id, self.bot)
+    )
 
 # ==========================================
 # 🚀 COMANDI SLASH (FBI & POLIZIA)
