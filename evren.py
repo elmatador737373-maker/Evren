@@ -38,6 +38,7 @@ supabase: Client = create_client(SUPABASE_URL, SUPABASE_KEY)
 intents = discord.Intents.default()
 intents.message_content = True
 intents.members = True
+intents.guilds = True  # <-- Fondamentale per far funzionare get_channel()
 
 bot = commands.Bot(command_prefix="!", intents=intents)
 
