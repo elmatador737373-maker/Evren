@@ -833,6 +833,52 @@ async def registra_fazione_error(interaction: discord.Interaction, error):
     else:
         await interaction.response.send_message(f"❌ Errore imprevisto: `{error}`", ephemeral=True)
 
+async def fazione_autocomplete(
+    interaction: discord.Interaction, current: str
+) -> list[app_commands.Choice[str]]:
+  try:
+    # Interroga la tabella per ottenere tutte le fazioni registrate
+    res = supabase.table("faction_roles").select("faction_name").execute()
+
+    if not res.data:
+      return []
+
+    # Estrae i nomi unici delle fazioni
+    fazioni = list(set(row["faction_name"] for row in res.data))
+
+    # Filtra le fazioni in base a ciò che l'utente sta digitando (current)
+    filtered = [f for f in fazioni if current.lower() in f.lower()]
+
+    # Restituisce le scelte formattate per Discord (massimo 25)
+    return [app_commands.Choice(name=f, value=f) for f in filtered[:25]]
+  except Exception:
+    return []
+
+# --- PORTAFOGLIO ED OGGETTI ---
+
+@bot.tree.command(name="portafoglio", description="Visualizza i contanti e lo stato del tuo portafoglio su Evren City OS.")
+async def portafoglio(interaction: discord.Interaction):
+    user_id = str(interaction.user.id)
+    
+    # Assicura che l'utente esista nel database
+    get_or_create_user(user_id, interaction.user.name)
+    
+    res = supabase.table("users").select("wallet").eq("discord_id", user_id).execute()
+    
+    contanti = 0
+    if res.data and len(res.data) > 0:
+        contanti = res.data[0].get("wallet", 0)
+
+    embed = discord.Embed(
+        title="💼 Portafoglio - Evren City OS",
+        description="Ecco il riepilogo del tuo denaro contante.",
+        color=discord.Color.green()
+    )
+    embed.add_field(name="💵 Contanti", value=f"**€ {contanti:,.2f}**", inline=False)
+    embed.set_footer(text="Evren City OS • Sistema Finanziario")
+
+    await interaction.response.send_message(embed=embed, ephemeral=True)
+
 @bot.tree.command(name="deposito_fazione", description="Accedi al deposito della tua fazione basato sul tuo ruolo.")
 @app_commands.describe(fazione="Nome della fazione registrata")
 @app_commands.autocomplete(fazione=fazione_autocomplete)
@@ -867,31 +913,6 @@ async def deposito_fazione(interaction: discord.Interaction, fazione: str):
     view = FactionVaultView(fazione)
     await interaction.response.send_message(embed=embed, view=view, ephemeral=True)
     
-# --- PORTAFOGLIO ED OGGETTI ---
-
-@bot.tree.command(name="portafoglio", description="Visualizza i contanti e lo stato del tuo portafoglio su Evren City OS.")
-async def portafoglio(interaction: discord.Interaction):
-    user_id = str(interaction.user.id)
-    
-    # Assicura che l'utente esista nel database
-    get_or_create_user(user_id, interaction.user.name)
-    
-    res = supabase.table("users").select("wallet").eq("discord_id", user_id).execute()
-    
-    contanti = 0
-    if res.data and len(res.data) > 0:
-        contanti = res.data[0].get("wallet", 0)
-
-    embed = discord.Embed(
-        title="💼 Portafoglio - Evren City OS",
-        description="Ecco il riepilogo del tuo denaro contante.",
-        color=discord.Color.green()
-    )
-    embed.add_field(name="💵 Contanti", value=f"**€ {contanti:,.2f}**", inline=False)
-    embed.set_footer(text="Evren City OS • Sistema Finanziario")
-
-    await interaction.response.send_message(embed=embed, ephemeral=True)
-
 @bot.tree.command(name="crea_item", description="[STAFF] Crea un nuovo oggetto con meccaniche specifiche.")
 @app_commands.choices(categoria=[
     app_commands.Choice(name="⚔️ Arma", value="arma"),
