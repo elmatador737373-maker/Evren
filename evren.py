@@ -69,26 +69,34 @@ intents.auto_moderation_execution = True     # Esecuzione/Trigger AutoMod
 intents.polls = True                 # Gestione dei sondaggi nativi di Discord
 bot = commands.Bot(command_prefix="!", intents=intents)
 
-# 1. Definiamo la funzione per il setup hook
+# ==========================================
+# CONFIGURAZIONE WAVELINK V4 E COMANDI DI TEST
+# ==========================================
+
+# 1. Funzione per connettere il nodo Wavelink all'avvio del bot
 async def my_setup_hook():
+    # Usiamo un nodo pubblico testato e attivo per Wavelink v4
     node = wavelink.Node(
-        uri="https://lava-v4.ajieblogs.eu.org:443",
-        password="https://dsc.gg/ajidevserver"
+        uri="https://lava.moe.best:443",
+        password="youshallnotpass"
     )
 
     try:
-        await wavelink.Pool.connect(nodes=[node], client=Bot)
-        print("✅ [WAVELINK] Connessione al nodo avviata tramite setup_hook!")
+        await wavelink.Pool.connect(nodes=[node], client=bot)
+        print("✅ [WAVELINK] Connessione al nodo avviata con successo!")
     except Exception as e:
-        print(f"❌ [WAVELINK] Errore di connessione nel setup_hook: {e}")
+        print(f"❌ [WAVELINK] Errore critico nel setup_hook: {e}")
 
-# 2. Assegniamo la funzione al setup_hook del bot esistente
+# Assegniamo il setup hook al bot
 bot.setup_hook = my_setup_hook
 
-# 3. Evento separato per confermare quando il nodo è pronto nello stato CONNECTED
+# 2. Evento che conferma l'avvenuta connessione del nodo
 @bot.event
 async def on_wavelink_node_ready(payload: wavelink.NodeReadyEventPayload) -> None:
     print(f"🎉 Wavelink Node pronto e connesso! URI: {payload.node.uri} | Session ID: {payload.session_id}")
+
+
+
 
 # --- SERVER FLASK PER KEEP-ALIVE ---
 
