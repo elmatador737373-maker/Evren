@@ -126,45 +126,83 @@ async def upload_to_imgbb(foto: discord.Attachment) -> str:
                 return res_json["data"]["url"]
             else:
                 raise Exception(f"Errore ImgBB status code: {response.status}")
+import asyncio
+import os
+import discord
+from discord import app_commands
+import wavelink
 
-# URL diretti dei tuoi file su GitHub
-URL_SQUILLO = "https://raw.githubusercontent.com/elmatador737373-maker/Evren/main/squillo.mp3"
-URL_RIFIUTO = "https://raw.githubusercontent.com/elmatador737373-maker/Evren/main/rifiuto.mp3"
+# --- LINK YOUTUBE PER L'AUDIO ---
+URL_SQUILLO = "https://youtu.be/56hYHf58hdc"
+URL_RIFIUTO = "https://youtu.be/_FhnSWY9-JI"
 
+
+# --- FUNZIONE AUDIO CON WAVELINK ---
 async def riproduci_audio_canale(channel: discord.VoiceChannel, audio_url: str, loop: bool = False):
-    vc = None
+    player = None
     try:
-        # Si connette al canale vocale creato
-        vc = await channel.connect()
+        print(f"🔊 [WAVELINK] Connessione al canale: {channel.name}")
+        
+        # Connette il player Wavelink al canale vocale
+        player = await channel.connect(cls=wavelink.Player)
+        
+        # Cerca la traccia su YouTube tramite Wavelink
+        tracks = await wavelink.Playable.search(audio_url)
+        if not tracks:
+            print("❌ [WAVELINK] Traccia non trovata.")
+            return
 
-        while vc and vc.is_connected():
-            fatto = asyncio.Event()
+        track = tracks[0]
+        await player.play(track)
+        await player.set_volume(70)
 
-            def after_play(error):
-                if error:
-                    print(f"Errore riproduzione audio: {error}")
-                vc.loop.call_soon_threadsafe(fatto.set)
-
-            # Legge lo stream audio direttamente dall'URL raw di GitHub
-            source = discord.FFmpegPCMAudio(audio_url)
-
-            if not vc.is_playing():
-                vc.play(source, after=after_play)
-                await fatto.wait()
-
-            if not loop:
-                break
-            
-            await asyncio.sleep(0.5)
+        # Gestisce il loop (es. per lo squillo in attesa)
+        while loop and player and player.connected:
+            if not player.playing:
+                await player.play(track)
+            await asyncio.sleep(1)
 
     except Exception as e:
-        print(f"❌ Errore audio: {e}")
+        print(f"❌ [WAVELINK ERRORE]: {e}")
     finally:
-        if vc and vc.is_connected():
+        if player and player.connected:
             try:
-                await vc.disconnect()
+                await player.disconnect()
+                print("🔌 [WAVELINK] Disconnesso dal canale.")
             except Exception:
                 pass
+
+
+# --- COMANDO / FUNZIONE DI CHIAMATA VOCALE ---
+async def avvia_chiamata_vocale(interaction: discord.Interaction, numero_destinatario: str):
+    guild = interaction.guild
+    chiamante = interaction.user
+
+    numero_pulito = "".join(filter(str.isdigit, numero_destinatario))
+
+    res = supabase.table("user_phones").select("discord_id, phone_number").execute()
+    
+    target_discord_id = None
+    if res.data:
+        for row in res.data:
+            if "".join(filter(str.isdigit, row["phone_number"])) == numero_pulito:
+                target_discord_id = row["discord_id"]
+                break
+
+    if not target_discord_id:
+        await interaction.followup.send("❌ Il numero digitato non è attivo o non appartiene a nessun cittadino registrato.", ephemeral=True)
+        return
+
+    destinatario = guild.get_member(int(target_discord_id))
+    
+    if not destinatario:
+        await interaction.followup.send("❌ L'utente chiamato non è reperibile nel server.", ephemeral=True)
+        return
+
+    overwrites = {
+        guild.default_role: discord.PermissionOverwrite(connect=False),
+        chiamante: discord.PermissionOverwrite(connect=True, speak=True),
+        destinatario: discord.Permission
 
     # =======================================================
 #  SECONDO MODULO: DETTAGLI FISICI E SALVATAGGIO
@@ -1289,65 +1327,6 @@ class EvrenPhoneView(ui.View):
         view = WhatsAppChatView(self.phone_number, target_phone, nome_destinatario)
         await view.aggiorna_embed_chat(interaction)
 
-
-async def avvia_chiamata_vocale(interaction: discord.Interaction, numero_destinatario: str):
-    guild = interaction.guild
-    chiamante = interaction.user
-
-    numero_pulito = "".join(filter(str.isdigit, numero_destinatario))
-
-    res = supabase.table("user_phones").select("discord_id, phone_number").execute()
-    
-    target_discord_id = None
-    if res.data:
-        for row in res.data:
-            if "".join(filter(str.isdigit, row["phone_number"])) == numero_pulito:
-                target_discord_id = row["discord_id"]
-                break
-
-    if not target_discord_id:
-        await interaction.followup.send("❌ Il numero digitato non è attivo o non appartiene a nessun cittadino registrato.", ephemeral=True)
-        return
-
-    destinatario = guild.get_member(int(target_discord_id))
-    
-    if not destinatario:
-        await interaction.followup.send("❌ L'utente chiamato non è reperibile nel server.", ephemeral=True)
-        return
-
-    overwrites = {
-        guild.default_role: discord.PermissionOverwrite(connect=False),
-        chiamante: discord.PermissionOverwrite(connect=True, speak=True),
-        destinatario: discord.PermissionOverwrite(connect=True, speak=True)
-    }
-    
-    nome_canale = f"Chiamata ({chiamante.display_name}) -> ({destinatario.display_name})"
-    categoria = interaction.channel.category if hasattr(interaction.channel, 'category') else None
-    
-    voice_channel = await guild.create_voice_channel(name=nome_canale, category=categoria, overwrites=overwrites)
-    voice_link = voice_channel.jump_url
-
-    # Task dello squillo in background (indentato correttamente)
-    task_squillo = asyncio.create_task(riproduci_audio_canale(voice_channel, URL_SQUILLO, loop=True))
-
-    view = RispondiChiamataView(chiamante, destinatario, voice_channel, task_squillo)
-    
-    try:
-        await destinatario.send(
-            f"📱 **CHIAMATA IN ARRIVO**\nStai ricevendo una chiamata da **{chiamante.display_name}**.\nHai 2 minuti per rispondere:",
-            view=view
-        )
-    except Exception:
-        if not task_squillo.done():
-            task_squillo.cancel()
-        await voice_channel.delete()
-        await interaction.followup.send("❌ Impossibile inviare il DM al destinatario (potrebbe averli chiusi).", ephemeral=True)
-        return
-
-    await interaction.followup.send(
-        f"📞 Squillo in corso verso **{destinatario.display_name}**...\n🔊 **Entra nel canale vocale per attendere:** {voice_link}", 
-        ephemeral=True
-    )
 
 
 
