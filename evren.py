@@ -170,12 +170,16 @@ class CreaDocumentiModal(ui.Modal, title="🪪 ┃ ʀᴇɢɪsᴛʀᴏ ᴀɴᴀɢ
         self.cognome = ui.TextInput(label="ᴄᴏɢɴᴏᴍᴇ", placeholder="Es. Rossi", required=True, max_length=50)
         self.data_nascita = ui.TextInput(label="ᴅᴀᴛᴀ ᴅɪ ɴᴀsᴄɪᴛᴀ", placeholder="Es. 15/05/1998", required=True, max_length=20)
         self.luogo_nascita = ui.TextInput(label="ʟᴜᴏɢᴏ ᴅɪ ɴᴀsᴄɪᴛᴀ", placeholder="Es. Los Angeles", required=True, max_length=50)
+        self.colore_occhi = ui.TextInput(label="ᴄᴏʟᴏʀᴇ ᴏᴄᴄʜɪ", placeholder="Es. Marroni / Verdi", required=True, max_length=30)
+        self.colore_capelli = ui.TextInput(label="ᴄᴏʟᴏʀᴇ ᴄᴀᴘᴇʟʟɪ", placeholder="Es. Castani / Neri", required=True, max_length=30)
         self.segni_particolari = ui.TextInput(label="sᴇɢɴɪ ᴘᴀʀᴛɪᴄᴏʟᴀʀɪ", placeholder="Es. Cicatrice sul sopracciglio o Nessuno", required=False, max_length=100)
 
         self.add_item(self.nome)
         self.add_item(self.cognome)
         self.add_item(self.data_nascita)
         self.add_item(self.luogo_nascita)
+        self.add_item(self.colore_occhi)
+        self.add_item(self.colore_capelli)
         self.add_item(self.segni_particolari)
 
     async def on_submit(self, interaction: discord.Interaction):
@@ -183,6 +187,8 @@ class CreaDocumentiModal(ui.Modal, title="🪪 ┃ ʀᴇɢɪsᴛʀᴏ ᴀɴᴀɢ
         cognome_val = self.cognome.value.strip()
         data_val = self.data_nascita.value.strip()
         luogo_val = self.luogo_nascita.value.strip()
+        occhi_val = self.colore_occhi.value.strip()
+        capelli_val = self.colore_capelli.value.strip()
         segni_val = self.segni_particolari.value.strip() or "Nessuno"
 
         user_id = str(interaction.user.id)
@@ -198,6 +204,8 @@ class CreaDocumentiModal(ui.Modal, title="🪪 ┃ ʀᴇɢɪsᴛʀᴏ ᴀɴᴀɢ
                     "surname": cognome_val,
                     "birth_date": data_val,
                     "birth_place": luogo_val,
+                    "eye_color": occhi_val,
+                    "hair_color": capelli_val,
                     "distinct_marks": segni_val
                 }).eq("discord_id", user_id).execute()
 
@@ -207,7 +215,7 @@ class CreaDocumentiModal(ui.Modal, title="🪪 ┃ ʀᴇɢɪsᴛʀᴏ ᴀɴᴀɢ
                     ephemeral=True
                 )
             else:
-                # Se non esiste, creiamo la nuova riga su Supabase generando identificativi temporanei per cf e doc_number (o lasciali se gestiti altrove)
+                # Se non esiste, creiamo la nuova riga su Supabase generando identificativi temporanei per cf e doc_number
                 cf_temporaneo = f"EVREN-{user_id[-6:]}"
                 doc_numero = f"DOC-{user_id[-5:]}"
 
@@ -217,6 +225,8 @@ class CreaDocumentiModal(ui.Modal, title="🪪 ┃ ʀᴇɢɪsᴛʀᴏ ᴀɴᴀɢ
                     "surname": cognome_val,
                     "birth_date": data_val,
                     "birth_place": luogo_val,
+                    "eye_color": occhi_val,
+                    "hair_color": capelli_val,
                     "distinct_marks": segni_val,
                     "cf": cf_temporaneo,
                     "doc_number": doc_numero,
@@ -236,6 +246,7 @@ class CreaDocumentiModal(ui.Modal, title="🪪 ┃ ʀᴇɢɪsᴛʀᴏ ᴀɴᴀɢ
                 f"❌ Si è verificato un errore durante il salvataggio dei dati: {e}",
                 ephemeral=True
             )
+
 
 # --- VIEW CON BOTTONI REINDIRIZZAMENTO (LINK) ---
 
