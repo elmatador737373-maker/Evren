@@ -2354,6 +2354,7 @@ async def genera_carta_identita(nome, cognome, birth_date, birth_place, cf, doc_
     """
     return html_content
 
+
     async with async_playwright() as p:
         browser = await p.chromium.launch(headless=True)
         page = await browser.new_page(viewport={"width": 780, "height": 500})
@@ -2366,12 +2367,393 @@ async def genera_carta_identita(nome, cognome, birth_date, birth_place, cf, doc_
     buffer.seek(0)
     return discord.File(buffer, filename="carta_identita.png")
 
+import datetime
 import discord
-from discord import app_commands, ui
+from discord import app_commands
 
-# =======================================================
-#  MODAL PER LA CREAZIONE DEI DOCUMENTI (Pannello)
-# =======================================================
+
+# --- FUNZIONE GENERAZIONE HTML FATTURA ---
+async def genera_fattura_html(
+    invoice_id,
+    azienda,
+    emittente,
+    destinatario,
+    importo,
+    causale,
+    data_emissione,
+    stato="DA PAGARE",
+):
+  colore_stato = "#dc2626" if stato.upper() == "DA PAGARE" else "#16a34a"
+
+  html_content = f"""
+    <!DOCTYPE html>
+    <html lang="it">
+    <head>
+        <meta charset="UTF-8">
+        <style>
+            body {{
+                margin: 0;
+                padding: 0;
+                width: 780px;
+                height: 480px;
+                background: #f8fafc;
+                font-family: 'Segoe UI', Arial, sans-serif;
+                border: 3px solid #0f172a;
+                box-sizing: border-box;
+                position: relative;
+                overflow: hidden;
+            }}
+            .header {{
+                background: linear-gradient(135deg, #0f172a 0%, #1e293b 100%);
+                color: white;
+                padding: 14px 24px;
+                display: flex;
+                justify-content: space-between;
+                align-items: center;
+                border-bottom: 4px solid #3b82f6;
+            }}
+            .header-left h1 {{
+                margin: 0;
+                font-size: 21px;
+                letter-spacing: 1.5px;
+                font-weight: 800;
+                text-transform: uppercase;
+            }}
+            .header-left span {{
+                font-size: 11px;
+                letter-spacing: 2px;
+                color: #94a3b8;
+                text-transform: uppercase;
+                font-weight: 600;
+            }}
+            .header-right {{
+                text-align: right;
+                font-size: 14px;
+                font-weight: bold;
+                letter-spacing: 1px;
+                color: {colore_stato};
+                background: rgba(255, 255, 255, 0.1);
+                padding: 6px 12px;
+                border-radius: 4px;
+                border: 2px solid {colore_stato};
+            }}
+            .body-content {{
+                padding: 22px 26px;
+                display: flex;
+                flex-direction: column;
+                gap: 15px;
+            }}
+            .info-grid {{
+                display: grid;
+                grid-template-columns: 1fr 1fr;
+                gap: 12px 18px;
+            }}
+            .field {{
+                display: flex;
+                flex-direction: column;
+                border-bottom: 2px solid #cbd5e1;
+                padding-bottom: 4px;
+            }}
+            .field.full {{
+                grid-column: span 2;
+            }}
+            .label {{
+                font-size: 11px;
+                text-transform: uppercase;
+                color: #475569;
+                font-weight: 700;
+                letter-spacing: 0.5px;
+            }}
+            .value {{
+                font-size: 16px;
+                font-weight: 700;
+                color: #0f172a;
+                margin-top: 2px;
+            }}
+            .amount-value {{
+                font-size: 20px;
+                font-weight: 800;
+                color: #1e3a8a;
+            }}
+            .footer {{
+                position: absolute;
+                bottom: 14px;
+                left: 26px;
+                right: 26px;
+                display: flex;
+                justify-content: space-between;
+                align-items: center;
+                font-size: 13px;
+                color: #1e293b;
+                border-top: 2px solid #cbd5e1;
+                padding: 10px 15px;
+                background: #e2e8f0;
+                border-radius: 4px;
+            }}
+        </style>
+    </head>
+    <body>
+        <div class="header">
+            <div class="header-left">
+                <h1>AZIENDA: {azienda.upper()}</h1>
+                <span>DOCUMENTO FISCALE UFFICIALE</span>
+            </div>
+            <div class="header-right">
+                <span>{stato.upper()}</span>
+            </div>
+        </div>
+        
+        <div class="body-content">
+            <div class="info-grid">
+                <div class="field">
+                    <span class="label">Emittente / Issuer</span>
+                    <span class="value">{emittente}</span>
+                </div>
+                <div class="field">
+                    <span class="label">Destinatario / Client</span>
+                    <span class="value">{destinatario}</span>
+                </div>
+                <div class="field full">
+                    <span class="label">Causale / Description</span>
+                    <span class="value">{causale}</span>
+                </div>
+                <div class="field">
+                    <span class="label">Importo Totale / Total Amount</span>
+                    <span class="amount-value">€ {importo:,.2f}</span>
+                </div>
+                <div class="field">
+                    <span class="label">Data Emissione / Date</span>
+                    <span class="value">{data_emissione}</span>
+                </div>
+            </div>
+        </div>
+
+        <div class="footer">
+            <span>ID Fattura: <b>#{invoice_id}</b></span>
+            <span>Sistema Fiscale EVN</span>
+        </div>
+    </body>
+    </html>
+    """
+  return html_content
+
+
+# --- COMANDO PER EMETTERE UNA FATTURA ---
+@bot.tree.command(
+    name="emetti_fattura", description="Emetti una nuova fattura aziendale."
+)
+@app_commands.describe(
+    azienda="Nome dell'azienda emittente",
+    utente="Il cittadino destinatario della fattura",
+    importo="Importo in denaro",
+    causale="Motivo della fattura",
+)
+async def emetti_fattura(
+    interaction: discord.Interaction,
+    azienda: str,
+    utente: discord.Member,
+    importo: float,
+    causale: str,
+):
+  data_oggi = datetime.datetime.now().strftime("%d/%m/%Y")
+  emittente_nome = interaction.user.display_name
+
+  # Inserimento nel database delle fatture
+  res = (
+      supabase.table("invoices")
+      .insert({
+          "discord_id": str(utente.id),
+          "destinatario": utente.display_name,
+          "emittente": emittente_nome,
+          "azienda": azienda,
+          "importo": importo,
+          "causale": causale,
+          "data": data_oggi,
+          "status": "Da Pagare",
+      })
+      .execute()
+  )
+
+  if not res.data:
+    await interaction.response.send_message(
+        "❌ Errore durante la creazione della fattura nel database.",
+        ephemeral=True,
+    )
+    return
+
+  await interaction.response.send_message(
+      f"✅ Fattura emessa con successo per {utente.mention} a nome dell'azienda"
+      f" **{azienda}**!",
+      ephemeral=True,
+  )
+
+
+# --- INTERFACCIA PER IL PAGAMENTO DELLE FATTURE ---
+class PagaFatturaSelect(discord.ui.Select):
+
+  def __init__(self, fatture):
+    options = []
+    for f in fatture:
+      if f["status"].lower() == "da pagare":
+        options.append(
+            discord.SelectOption(
+                label=f"Fattura #{f['id']} - € {f['importo']:,.2f}",
+                description=f"Azienda: {f['azienda']} | {f['causale'][:40]}",
+                value=str(f["id"]),
+                emoji="💳",
+            )
+        )
+
+    if not options:
+      options.append(
+          discord.SelectOption(
+              label="Nessuna fattura da pagare",
+              value="none",
+              description="Sei in regola con i pagamenti!",
+          )
+      )
+
+    super().__init__(
+        placeholder="Seleziona una fattura da pagare...",
+        min_values=1,
+        max_values=1,
+        options=options,
+    )
+
+  async def callback(self, interaction: discord.Interaction):
+    if self.values[0] == "none":
+      await interaction.response.send_message(
+          "Non hai fatture in sospeso da pagare.", ephemeral=True
+      )
+      return
+
+    invoice_id = int(self.values[0])
+    user_id_str = str(interaction.user.id)
+
+    # 1. Recupera i dati della fattura
+    inv_res = (
+        supabase.table("invoices")
+        .select("*")
+        .eq("id", invoice_id)
+        .execute()
+    )
+    if not inv_res.data:
+      await interaction.response.send_message(
+          "❌ Fattura non trovata.", ephemeral=True
+      )
+      return
+
+    fattura = inv_res.data[0]
+    importo_dovuto = fattura["importo"]
+
+    # 2. Controlla il saldo bancario/portafoglio dell'utente dalla tabella users
+    user_res = (
+        supabase.table("users").select("bank, wallet").eq("discord_id", user_id_str).execute()
+    )
+    if not user_res.data:
+      await interaction.response.send_message(
+          "❌ Non risulti registrato anagraficamente in città.", ephemeral=True
+      )
+      return
+
+    banca = user_res.data[0].get("bank", 0.0) or 0.0
+    portafoglio = user_res.data[0].get("wallet", 0.0) or 0.0
+
+    # Dà priorità al conto in banca, se insufficiente prova il portafoglio (o scala direttamente dalla banca)
+    if banca >= importo_dovuto:
+      nuovo_saldo = banca - importo_dovuto
+      supabase.table("users").update({"bank": nuovo_saldo}).eq(
+          "discord_id", user_id_str
+      ).execute()
+      metodo_pagamento = "Conto Bancario"
+    elif portafoglio >= importo_dovuto:
+      nuovo_saldo = portafoglio - importo_dovuto
+      supabase.table("users").update({"wallet": nuovo_saldo}).eq(
+          "discord_id", user_id_str
+      ).execute()
+      metodo_pagamento = "Contanti (Wallet)"
+    else:
+      await interaction.response.send_message(
+          f"❌ Fondi insufficienti! Ti servono **€ {importo_dovuto:,.2f}** (Banca:"
+          f" € {banca:,.2f} | Contanti: € {portafoglio:,.2f}).",
+          ephemeral=True,
+      )
+      return
+
+    # 3. Aggiorna lo stato della fattura a Pagata
+    supabase.table("invoices").update({"status": "Pagata"}).eq(
+        "id", invoice_id
+    ).execute()
+
+    # 4. Registra la transazione nella tabella transactions_log
+    supabase.table("transactions_log").insert({
+        "discord_id": user_id_str,
+        "type": "Pagamento Fattura",
+        "amount": -importo_dovuto,
+        "description": (
+            f"Pagamento fattura #{invoice_id} - Azienda: {fattura['azienda']}"
+        ),
+    }).execute()
+
+    await interaction.response.send_message(
+        f"✅ Fattura **#{invoice_id}** pagata con successo tramite"
+        f" **{metodo_pagamento}** per un importo di **€"
+        f" {importo_dovuto:,.2f}**!",
+        ephemeral=True,
+    )
+
+
+class FabbricaFattureView(discord.ui.View):
+
+  def __init__(self, fatture):
+    super().__init__(timeout=180)
+    self.add_item(PagaFatturaSelect(fatture))
+
+
+# --- COMANDO PER VEDERE E GESTIRE LE PROPRIE FATTURE ---
+@bot.tree.command(
+    name="mie_fatture", description="Visualizza e paga le tue fatture in sospeso."
+)
+async def mie_fatture(interaction: discord.Interaction):
+  res = (
+      supabase.table("invoices")
+      .select("*")
+      .eq("discord_id", str(interaction.user.id))
+      .order("id", desc=True)
+      .execute()
+  )
+
+  if not res.data:
+    await interaction.response.send_message(
+        "❌ Non hai alcuna fattura registrata a tuo carico.", ephemeral=True
+    )
+    return
+
+  fatture = res.data
+  ultima = fatture[0]
+
+  embed = discord.Embed(
+      title="📑 Gestione Fatture Personali",
+      description=(
+          "Visualizza il riepilogo delle tue fatture e seleziona quella da"
+          " pagare tramite il menu sottostante."
+      ),
+      color=discord.Color.from_rgb(15, 23, 42),
+  )
+  embed.add_field(
+      name=f"Ultima Fattura (#{ultima['id']})",
+      value=(
+          f"**Azienda:** {ultima['azienda']}\n**Emittente:**"
+          f" {ultima['emittente']}\n**Importo:** €"
+          f" {ultima['importo']:,.2f}\n**Causale:**"
+          f" {ultima['causale']}\n**Stato:** `{ultima['status']}`"
+      ),
+      inline=False,
+  )
+  embed.set_footer(text="Evren City OS • Sistema Fiscale")
+
+  view = FabbricaFattureView(fatture)
+  await interaction.response.send_message(embed=embed, view=view, ephemeral=True)
 
 # =======================================================
 #  VIEW PERSISTENTE PER IL PANNELLO ANAGRAFE
