@@ -351,7 +351,7 @@ async def emergenza_911(
 
   # 4. Costruzione dell'Embed della chiamata
   embed = discord.Embed(
-      title="🚨 911 ┃ Chiamata d'Emergenza 🚨",
+      title="<a:ice:1262031849257959434> 911 ┃ Chiamata d'Emergenza <a:Poli:1262031800029544478>",
       description=(
           f"{interaction.user.mention} **ha richiesto assistenza immediata!**\n\n"
           f"🏢 **Corpo Richiesto:** `{fdo}`\n"
