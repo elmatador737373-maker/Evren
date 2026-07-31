@@ -23,14 +23,14 @@ SUPABASE_KEY = os.getenv("SUPABASE_KEY")
 IMGBB_API_KEY = os.getenv("IMGBB_API_KEY")
 
 # --- CONFIGURAZIONE RUOLI SPECIFICI ---
-RUOLO_STAFF_ID = 123456789012345676           # Permesso per /crea_item
-RUOLO_BANCOMAT_ID = 123456789012345677        # Permesso per accedere al Bancomat (opzionale)
-RUOLO_ARMERIA_ID = 123456789012345678        # Permesso per registrare ed emettere armi
-RUOLO_MOTORIZZAZIONE_ID = 123456789012345679  # Permesso per registrare veicoli e patenti
-RUOLO_POLIZIA_ID = 1521205969269555351         # Permesso per CAD Polizia e Porto d'Armi
-RUOLO_IMMOBILIARE_ID = 123456789012345681     # Permesso per registrare le case/immobili
-RUOLO_RICHIESTO_ID = None
-RUOLO_SHERIFF_ID = None
+RUOLO_STAFF_ID = 1253460150141059198           # Permesso per /crea_item
+RUOLO_BANCOMAT_ID = 1374264699331543140        # Permesso per accedere al Bancomat (opzionale)
+RUOLO_ARMERIA_ID = 1253460200300478474        # Permesso per registrare ed emettere armi
+RUOLO_MOTORIZZAZIONE_ID = 1253460178305679433  # Permesso per registrare veicoli e patenti
+RUOLO_POLIZIA_ID = 1359569600198611104         # Permesso per CAD Polizia e Porto d'Armi
+RUOLO_IMMOBILIARE_ID = 1260308281302454533     # Permesso per registrare le case/immobili
+RUOLO_RICHIESTO_ID = 1390735819769380904
+RUOLO_FBI_ID = None
 FFMPEG_PATH = imageio_ffmpeg.get_ffmpeg_exe()
 
 supabase: Client = create_client(SUPABASE_URL, SUPABASE_KEY)
@@ -326,12 +326,12 @@ async def emergenza_911(
     interaction: discord.Interaction, motivo: str, fdo: str
 ):
   # 1. ID del canale delle emergenze
-  ID_CANALE_EMERGENZA = 123456789012345678  # <--- INSERISCI L'ID DEL CANALE QUI
+  ID_CANALE_EMERGENZA = 1519418659821584384  # <--- INSERISCI L'ID DEL CANALE QUI
 
   # 2. Inserisci qui gli ID dei tre ruoli differenti da taggare in ogni chiamata
-  ID_RUOLO_FDO = 1253460150141059198  # ID Ruolo Forze dell'Ordine
-  ID_RUOLO_EMS = 987654321098765432  # ID Ruolo EMS / Medici
-  ID_RUOLO_FIRE = 112233445566778899  # ID Ruolo Firefighter / Pompieri
+  ID_RUOLO_FDO = 1363487988570521670  # ID Ruolo Forze dell'Ordine
+  ID_RUOLO_EMS = 1254146971535544471  # ID Ruolo EMS / Medici
+  ID_RUOLO_FIRE = 1436420396726616210  # ID Ruolo Firefighter / Pompieri
 
   canale_emergenza = bot.get_channel(ID_CANALE_EMERGENZA)
   if not canale_emergenza:
@@ -1963,19 +1963,19 @@ class PoliceCadSelectView(ui.View):
             await interaction.response.send_modal(CadSearchSerialModal(self.officer_id))
 
 @bot.tree.command(
-    name="cad_sheriff",
+    name="cad_fbi",
     description=(
-        "[SHERIFF] Terminale operativo per ricerche anagrafiche, targhe e"
+        "[FBI] Terminale operativo federale per ricerche anagrafiche, targhe e"
         " matricole."
     ),
 )
-async def cad_sheriff(interaction: discord.Interaction):
-  # Assicurati di definire RUOLO_SHERIFF_ID con l'ID numerico del ruolo dello Sheriff Department
-  if RUOLO_SHERIFF_ID:
-    sheriff_role = interaction.guild.get_role(RUOLO_SHERIFF_ID)
-    if sheriff_role and sheriff_role not in interaction.user.roles:
+async def cad_fbi(interaction: discord.Interaction):
+  # Assicurati di definire RUOLO_FBI_ID con l'ID numerico del ruolo dell'FBI
+  if RUOLO_FBI_ID:
+    fbi_role = interaction.guild.get_role(RUOLO_FBI_ID)
+    if fbi_role and fbi_role not in interaction.user.roles:
       await interaction.response.send_message(
-          "❌ Riservato allo Sheriff Department!", ephemeral=True
+          "❌ Riservato agli agenti dell'FBI!", ephemeral=True
       )
       return
 
@@ -1991,18 +1991,18 @@ async def cad_sheriff(interaction: discord.Interaction):
     )
     return
 
-  # Nota: Se usi una View specifica per lo Sheriff, puoi sostituire PoliceCadSelectView con la classe dedicata
+  # Nota: Puoi sostituire la view con una classe dedicata all'FBI se necessario (es. FbiCadSelectView)
   view = PoliceCadSelectView(res.data, interaction.user.id)
   embed = discord.Embed(
-      title="🤠 CAD Sheriff Department - Centrale Operativa",
+      title="🕵️‍♂️ CAD FBI - Centrale Operativa Federale",
       description=(
           "Seleziona un **cittadino** dal menu a tendina oppure premi uno dei"
           " bottoni sottostanti per cercare direttamente un veicolo tramite"
           " **targa** o un'arma tramite **matricola**."
       ),
       color=discord.Color.from_rgb(
-          184, 134, 11
-      ),  # Colore oro/marrone tipico dello S.D.
+          20, 35, 60
+      ),  # Blu scuro/navy tipico dell'FBI
   )
   await interaction.response.send_message(embed=embed, view=view, ephemeral=True)
 
