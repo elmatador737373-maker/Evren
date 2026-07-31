@@ -131,53 +131,47 @@ async def riproduci_audio_canale(channel: discord.VoiceChannel, audio_file: str,
     vc = None
     try:
         if not os.path.exists(audio_file):
-            print(f"❌ File audio non trovato: {audio_file}")
+            print(f"❌ [AUDIO DEBUG] File audio non trovato sul disco: {audio_file}")
             return
 
-        # Connessione al canale vocale
+        print(f"🔊 [AUDIO DEBUG] Tentativo di connessione al canale: {channel.name}")
+        
         try:
             vc = await channel.connect()
-        except discord.ClientException:
-            # Se il bot è già connesso da qualche altra parte, recupera la connessione esistente
-            for v in channel.guild.voice_clients:
-                if v.channel == channel:
-                    vc = v
-                    break
-            if not vc:
-                return
+            print(f"✅ [AUDIO DEBUG] Connesso con successo al canale vocale!")
+        except Exception as e:
+            print(f"❌ [AUDIO DEBUG] Errore critico durante channel.connect(): {e}")
+            return
 
         while vc and vc.is_connected():
             fatto = asyncio.Event()
 
             def after_play(error):
                 if error:
-                    print(f"Errore nella riproduzione audio: {error}")
-                # Usiamo call_soon_threadsafe per impostare l'evento in modo sicuro dal thread audio di FFmpeg
+                    print(f"❌ [AUDIO DEBUG] Errore nella riproduzione audio: {error}")
                 vc.loop.call_soon_threadsafe(fatto.set)
 
-            kwargs = {"executable": FFMPEG_PATH} if 'FFMPEG_PATH' in globals() and FFMPEG_PATH else {}
-            
-            # Se la sorgente è in loop, creiamo una nuova istanza audio per ogni iterazione
-            source = discord.FFmpegPCMAudio(audio_file, **kwargs)
+            # Usa FFMPEG_PATH se definito, altrimenti usa "ffmpeg" di sistema
+            executable_path = FFMPEG_PATH if 'FFMPEG_PATH' in globals() and FFMPEG_PATH else "ffmpeg"
+            source = discord.FFmpegPCMAudio(audio_file, executable=executable_path)
 
             if not vc.is_playing():
+                print(f"▶️ [AUDIO DEBUG] Riproduzione in corso di: {audio_file}")
                 vc.play(source, after=after_play)
                 await fatto.wait()
 
             if not loop:
                 break
             
-            # Breve pausa prima di ripetere l'audio (se loop=True)
             await asyncio.sleep(0.5)
 
-    except discord.ClientException as ce:
-        print(f"Errore di connessione vocale: {ce}")
     except Exception as e:
-        print(f"Errore generico audio: {e}")
+        print(f"❌ [AUDIO DEBUG] Errore generico nella gestione audio: {e}")
     finally:
         if vc and vc.is_connected():
             try:
                 await vc.disconnect()
+                print(f"🔌 [AUDIO DEBUG] Disconnesso dal canale vocale.")
             except Exception:
                 pass
 
