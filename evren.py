@@ -2115,7 +2115,7 @@ async def renderizza_html_in_immagine(html_content: str) -> discord.File:
     description="Mostra la tua carta d'identità ufficiale in chat.",
 )
 async def mostra_documento(interaction: discord.Interaction):
-  await interaction.response.defer(ephemeral=True)
+  await interaction.response.defer(ephemeral=False)
 
   user_id = str(interaction.user.id)
   response = (
