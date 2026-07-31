@@ -2445,7 +2445,7 @@ async def mostra_documento(interaction: discord.Interaction):
 @bot.tree.command(name="registra_veicolo", description="[MOTORIZZAZIONE] Registra un veicolo con targa.")
 async def registra_veicolo(interaction: discord.Interaction, proprietario: discord.Member, modello: str, targa: str):
     if RUOLO_MOTORIZZAZIONE_ID and interaction.guild.get_role(RUOLO_MOTORIZZAZIONE_ID) not in interaction.user.roles:
-        await interaction.response.send_message("❌ Riservato alla Motorizzazione!", ephemeral=True)
+        await interaction.response.send_message("❌ Riservato alla Motorizzazione!", ephemeral=)
         return
 
     supabase.table("registered_vehicles").insert({"discord_id": str(proprietario.id), "model": modello, "plate": targa.upper()}).execute()
@@ -2456,7 +2456,7 @@ async def registra_veicolo(interaction: discord.Interaction, proprietario: disco
 @bot.tree.command(name="registra_patente", description="[MOTORIZZAZIONE] Rilascia una patente di guida.")
 async def registra_patente(interaction: discord.Interaction, cittadino: discord.Member, tipo_patente: str):
     if RUOLO_MOTORIZZAZIONE_ID and interaction.guild.get_role(RUOLO_MOTORIZZAZIONE_ID) not in interaction.user.roles:
-        await interaction.response.send_message("❌ Riservato alla Motorizzazione!", ephemeral=True)
+        await interaction.response.send_message("❌ Riservato alla Motorizzazione!", ephemeral=)
         return
 
     supabase.table("driver_licenses").insert({"discord_id": str(cittadino.id), "license_type": tipo_patente.upper(), "status": "Attiva"}).execute()
@@ -2467,12 +2467,12 @@ async def registra_patente(interaction: discord.Interaction, cittadino: discord.
 @bot.tree.command(name="registra_arma", description="[ARMERIA] Registra una matricola d'arma a un cittadino.")
 async def registra_arma(interaction: discord.Interaction, acquirente: discord.Member, matricola: str, modello: str):
     if RUOLO_ARMERIA_ID and interaction.guild.get_role(RUOLO_ARMERIA_ID) not in interaction.user.roles:
-        await interaction.response.send_message("❌ Riservato all'Armeria!", ephemeral=True)
+        await interaction.response.send_message("❌ Riservato all'Armeria!", ephemeral=)
         return
 
     supabase.table("registered_weapons").insert({"discord_id": str(acquirente.id), "model": modello, "serial_number": matricola}).execute()
     embed = discord.Embed(title="📜 Arma Registrata", description=f"• Intestatario: {acquirente.mention}\n• Modello: `{modello}`\n• Matricola: `{matricola}`", color=discord.Color.blue())
-    await interaction.response.send_message(embed=embed, ephemeral=True)
+    await interaction.response.send_message(embed=embed, ephemeral=)
 
 
 @bot.tree.command(name="registra_porto_darmi", description="[POLIZIA] Rilascia un porto d'armi.")
@@ -2483,18 +2483,18 @@ async def registra_porto_darmi(interaction: discord.Interaction, cittadino: disc
 
     supabase.table("gun_licenses").insert({"discord_id": str(cittadino.id), "license_type": tipo_licenza, "status": "Attivo"}).execute()
     embed = discord.Embed(title="🛡️ Porto d'Armi Registrato", description=f"• Intestatario: {cittadino.mention}\n• Licenza: `{tipo_licenza}`", color=discord.Color.dark_blue())
-    await interaction.response.send_message(embed=embed, ephemeral=True)
+    await interaction.response.send_message(embed=embed, ephemeral=)
 
 
 @bot.tree.command(name="registra_casa", description="[IMMOBILIARE] Registra un immobile.")
 async def registra_casa(interaction: discord.Interaction, proprietario: discord.Member, indirizzo: str, tipologia: str):
     if RUOLO_IMMOBILIARE_ID and interaction.guild.get_role(RUOLO_IMMOBILIARE_ID) not in interaction.user.roles:
-        await interaction.response.send_message("❌ Riservato all'Agenzia Immobiliare!", ephemeral=True)
+        await interaction.response.send_message("❌ Riservato all'Agenzia Immobiliare!", ephemeral=)
         return
 
     supabase.table("registered_properties").insert({"discord_id": str(proprietario.id), "address": indirizzo, "property_type": tipologia}).execute()
     embed = discord.Embed(title="🏠 Immobile Registrato", description=f"• Proprietario: {proprietario.mention}\n• Indirizzo: `{indirizzo}`\n• Categoria: `{tipologia}`", color=discord.Color.gold())
-    await interaction.response.send_message(embed=embed, ephemeral=True)
+    await interaction.response.send_message(embed=embed, ephemeral=)
 
 
 # --- EVENTO READY E AVVIO ---
