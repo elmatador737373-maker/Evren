@@ -2370,7 +2370,6 @@ async def genera_carta_identita(nome, cognome, birth_date, birth_place, cf, doc_
 import io
 from playwright.async_api import async_playwright
 
-# --- FUNZIONE GENERAZIONE HTML FATTURA ---
 async def genera_fattura_html(
     invoice_id,
     azienda,
@@ -2381,7 +2380,9 @@ async def genera_fattura_html(
     data_emissione,
     stato="DA PAGARE",
 ):
-  colore_stato = "#dc2626" if stato.upper() == "DA PAGARE" else "#16a34a"
+  colore_badge_bg = "#ffeeee" if stato.upper() == "DA PAGARE" else "#e6f4ea"
+  colore_badge_text = "#c5221f" if stato.upper() == "DA PAGARE" else "#137333"
+  colore_border = "#f28b82" if stato.upper() == "DA PAGARE" else "#81c995"
 
   html_content = f"""
     <!DOCTYPE html>
@@ -2391,150 +2392,204 @@ async def genera_fattura_html(
         <style>
             body {{
                 margin: 0;
-                padding: 0;
+                padding: 30px 40px;
                 width: 780px;
-                height: 480px;
-                background: #f8fafc;
-                font-family: 'Segoe UI', Arial, sans-serif;
-                border: 3px solid #0f172a;
+                height: 520px;
+                background: #ffffff;
+                font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif;
+                color: #202124;
                 box-sizing: border-box;
                 position: relative;
-                overflow: hidden;
+                border: 1px solid #dadce0;
             }}
-            .header {{
-                background: linear-gradient(135deg, #0f172a 0%, #1e293b 100%);
-                color: white;
-                padding: 14px 24px;
+            .invoice-header {{
                 display: flex;
                 justify-content: space-between;
-                align-items: center;
-                border-bottom: 4px solid #3b82f6;
+                align-items: flex-start;
+                border-bottom: 2px solid #202124;
+                padding-bottom: 15px;
+                margin-bottom: 20px;
             }}
-            .header-left h1 {{
+            .company-info h1 {{
                 margin: 0;
-                font-size: 21px;
-                letter-spacing: 1.5px;
-                font-weight: 800;
+                font-size: 22px;
+                font-weight: 700;
+                color: #202124;
+                letter-spacing: 0.5px;
                 text-transform: uppercase;
             }}
-            .header-left span {{
+            .company-info span {{
                 font-size: 11px;
-                letter-spacing: 2px;
-                color: #94a3b8;
+                color: #5f6368;
                 text-transform: uppercase;
+                letter-spacing: 1px;
                 font-weight: 600;
             }}
-            .header-right {{
+            .invoice-meta {{
                 text-align: right;
-                font-size: 14px;
-                font-weight: bold;
-                letter-spacing: 1px;
-                color: {colore_stato};
-                background: rgba(255, 255, 255, 0.1);
-                padding: 6px 12px;
-                border-radius: 4px;
-                border: 2px solid {colore_stato};
             }}
-            .body-content {{
-                padding: 22px 26px;
+            .invoice-meta h2 {{
+                margin: 0 0 5px 0;
+                font-size: 18px;
+                color: #1a73e8;
+            }}
+            .invoice-meta p {{
+                margin: 2px 0;
+                font-size: 12px;
+                color: #5f6368;
+            }}
+            .details-section {{
                 display: flex;
-                flex-direction: column;
-                gap: 15px;
+                justify-content: space-between;
+                margin-bottom: 25px;
+                font-size: 13px;
+                background: #f8f9fa;
+                padding: 12px 15px;
+                border-radius: 6px;
+                border: 1px solid #e8eaed;
             }}
-            .info-grid {{
-                display: grid;
-                grid-template-columns: 1fr 1fr;
-                gap: 12px 18px;
-            }}
-            .field {{
-                display: flex;
-                flex-direction: column;
-                border-bottom: 2px solid #cbd5e1;
-                padding-bottom: 4px;
-            }}
-            .field.full {{
-                grid-column: span 2;
-            }}
-            .label {{
+            .detail-block h4 {{
+                margin: 0 0 4px 0;
                 font-size: 11px;
                 text-transform: uppercase;
-                color: #475569;
-                font-weight: 700;
+                color: #5f6368;
                 letter-spacing: 0.5px;
             }}
-            .value {{
-                font-size: 16px;
+            .detail-block p {{
+                margin: 0;
+                font-weight: 600;
+                color: #202124;
+                font-size: 14px;
+            }}
+            .status-badge {{
+                display: inline-block;
+                padding: 4px 10px;
+                background-color: {colore_badge_bg};
+                color: {colore_badge_text};
+                border: 1px solid {colore_border};
+                border-radius: 4px;
+                font-size: 11px;
                 font-weight: 700;
-                color: #0f172a;
-                margin-top: 2px;
+                text-transform: uppercase;
+                letter-spacing: 0.5px;
             }}
-            .amount-value {{
-                font-size: 20px;
-                font-weight: 800;
-                color: #1e3a8a;
+            .invoice-table {{
+                width: 100%;
+                border-collapse: collapse;
+                margin-bottom: 20px;
             }}
-            .footer {{
+            .invoice-table th {{
+                background-color: #f1f3f4;
+                color: #3c4043;
+                font-size: 11px;
+                text-transform: uppercase;
+                text-align: left;
+                padding: 8px 12px;
+                border-bottom: 2px solid #bdc1c6;
+                letter-spacing: 0.5px;
+            }}
+            .invoice-table td {{
+                padding: 12px;
+                font-size: 13px;
+                border-bottom: 1px solid #e8eaed;
+                color: #202124;
+            }}
+            .invoice-table td.amount {{
+                text-align: right;
+                font-weight: 700;
+            }}
+            .invoice-footer {{
                 position: absolute;
-                bottom: 14px;
-                left: 26px;
-                right: 26px;
+                bottom: 25px;
+                left: 40px;
+                right: 40px;
                 display: flex;
                 justify-content: space-between;
                 align-items: center;
-                font-size: 13px;
-                color: #1e293b;
-                border-top: 2px solid #cbd5e1;
-                padding: 10px 15px;
-                background: #e2e8f0;
-                border-radius: 4px;
+                border-top: 1px solid #dadce0;
+                padding-top: 12px;
+                font-size: 11px;
+                color: #5f6368;
+            }}
+            .total-row {{
+                display: flex;
+                justify-content: flex-end;
+                align-items: center;
+                gap: 15px;
+                margin-top: 5px;
+                font-size: 15px;
+            }}
+            .total-row span.label {{
+                font-weight: 600;
+                color: #5f6368;
+                font-size: 12px;
+                text-transform: uppercase;
+            }}
+            .total-row span.value {{
+                font-weight: 700;
+                color: #1a73e8;
+                font-size: 18px;
             }}
         </style>
     </head>
     <body>
-        <div class="header">
-            <div class="header-left">
-                <h1>AZIENDA: {azienda.upper()}</h1>
-                <span>DOCUMENTO FISCALE UFFICIALE</span>
+        <div class="invoice-header">
+            <div class="company-info">
+                <h1>{azienda.upper()}</h1>
+                <span>Documento Fiscale Ufficiale</span>
             </div>
-            <div class="header-right">
-                <span>{stato.upper()}</span>
+            <div class="invoice-meta">
+                <h2>FATTURA #{invoice_id}</h2>
+                <p>Data: <b>{data_emissione}</b></p>
+                <div style="margin-top: 6px;">
+                    <span class="status-badge">{stato.upper()}</span>
+                </div>
             </div>
         </div>
         
-        <div class="body-content">
-            <div class="info-grid">
-                <div class="field">
-                    <span class="label">Emittente / Issuer</span>
-                    <span class="value">{emittente}</span>
-                </div>
-                <div class="field">
-                    <span class="label">Destinatario / Client</span>
-                    <span class="value">{destinatario}</span>
-                </div>
-                <div class="field full">
-                    <span class="label">Causale / Description</span>
-                    <span class="value">{causale}</span>
-                </div>
-                <div class="field">
-                    <span class="label">Importo Totale / Total Amount</span>
-                    <span class="amount-value">€ {importo:,.2f}</span>
-                </div>
-                <div class="field">
-                    <span class="label">Data Emissione / Date</span>
-                    <span class="value">{data_emissione}</span>
-                </div>
+        <div class="details-section">
+            <div class="detail-block">
+                <h4>Emittente</h4>
+                <p>{emittente}</p>
+            </div>
+            <div class="detail-block">
+                <h4>Destinatario / Cliente</h4>
+                <p>{destinatario}</p>
+            </div>
+            <div class="detail-block" style="text-align: right;">
+                <h4>Sistema Fiscale</h4>
+                <p>Evren City OS</p>
             </div>
         </div>
 
-        <div class="footer">
-            <span>ID Fattura: <b>#{invoice_id}</b></span>
-            <span>Sistema Fiscale EVN</span>
+        <table class="invoice-table">
+            <thead>
+                <tr>
+                    <th style="width: 70%;">Descrizione / Causale</th>
+                    <th style="width: 30%; text-align: right;">Importo</th>
+                </tr>
+            </thead>
+            <tbody>
+                <tr>
+                    <td>{causale}</td>
+                    <td class="amount">€ {importo:,.2f}</td>
+                </tr>
+            </tbody>
+        </table>
+
+        <div class="total-row">
+            <span class="label">Totale da pagare:</span>
+            <span class="value">€ {importo:,.2f}</span>
+        </div>
+
+        <div class="invoice-footer">
+            <span>Documento generato digitalmente tramite Evren City OS</span>
+            <span>Pagina 1 di 1</span>
         </div>
     </body>
     </html>
     """
   return html_content
-
 
 # --- FUNZIONE PER CONVERTIRE L'HTML IN IMMAGINE ---
 async def renderizza_fattura_immagine(fattura):
