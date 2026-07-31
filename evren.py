@@ -352,6 +352,41 @@ class CreaDocumentiStep2Modal(ui.Modal, title="🪪 ┃ ʀᴇɢɪsᴛʀᴏ (2/2:
                 ephemeral=True
             )
 
+@bot.tree.command(name="playtest", description="Testa la riproduzione di un brano audio")
+async def playtest(interaction: discord.Interaction, query: str = "https://www.youtube.com/watch?v=dQw4w9WgXcQ"):
+    # Verifica che l'utente sia in un canale vocale
+    if not interaction.user.voice or not interaction.user.voice.channel:
+        await interaction.response.send_message("❌ Devi prima entrare in un canale vocale!", ephemeral=True)
+        return
+
+    # Controlla se il nodo Wavelink è attivo
+    if not wavelink.Pool.nodes:
+        await interaction.response.send_message("❌ Nessun nodo Wavelink connesso in questo momento.", ephemeral=True)
+        return
+
+    await interaction.response.defer()
+    
+    vc: wavelink.Player = interaction.guild.voice_client
+
+    try:
+        # Se il bot non è connesso, entra nel canale dell'utente
+        if not vc:
+            vc = await interaction.user.voice.channel.connect(cls=wavelink.Player)
+        
+        # Ricerca il brano usando Wavelink v4
+        tracks = await wavelink.Playable.search(query)
+        if not tracks:
+            await interaction.followup.send("❌ Nessun brano trovato con questa ricerca.")
+            return
+
+        track = tracks[0] if isinstance(tracks, list) else tracks
+
+        # Avvia la riproduzione
+        await vc.play(track)
+        await interaction.followup.send(f"🎶 In riproduzione: **{track.title}**")
+
+    except Exception as e:
+        await interaction.followup.send(f"❌ Errore durante il test di riproduzione: {e}")
 
 # ==========================================
 # ⚙️ CONFIGURAZIONE GLOBALE
