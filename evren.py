@@ -2559,7 +2559,6 @@ async def renderizza_fattura_immagine(fattura):
   return io.BytesIO(screenshot_bytes)
 
 
-# --- COMANDO PER EMETTERE UNA FATTURA ---
 @bot.tree.command(
     name="emetti_fattura", description="Emetti una nuova fattura aziendale."
 )
@@ -2576,10 +2575,13 @@ async def emetti_fattura(
     importo: float,
     causale: str,
 ):
+  # 1. Rispondi subito a Discord per evitare lo scadere dei 3 secondi
+  await interaction.response.defer(ephemeral=False)
+
   data_oggi = datetime.datetime.now().strftime("%d/%m/%Y")
   emittente_nome = interaction.user.display_name
 
-  # Inserimento nel database delle fatture (restituisce anche l'ID generato)
+  # 2. Inserimento nel database
   res = (
       supabase.table("invoices")
       .insert({
@@ -2596,15 +2598,15 @@ async def emetti_fattura(
   )
 
   if not res.data:
-    await interaction.response.send_message(
+    await interaction.followup.send(
         "❌ Errore durante la creazione della fattura nel database.",
-        ephemeral=False,
+        ephemeral=True,
     )
     return
 
   nuova_fattura = res.data[0]
 
-  # Genera l'immagine HTML della fattura appena emessa
+  # 3. Generazione dell'immagine della fattura
   img_io = await renderizza_fattura_immagine(nuova_fattura)
   file = discord.File(img_io, filename=f"fattura_{nuova_fattura['id']}.png")
 
@@ -2616,8 +2618,27 @@ async def emetti_fattura(
   embed.set_image(url=f"attachment://fattura_{nuova_fattura['id']}.png")
   embed.set_footer(text="Evren City OS • Sistema Fiscale")
 
-  await interaction.response.send_message(embed=embed, file=file, ephemeral=False)
+  # 4. Invia l'anteprima nel canale pubblico
+  await interaction.followup.send(embed=embed, file=file)
 
+  # 5. Invia un messaggio privato (DM) al destinatario
+  try:
+    dm_embed = discord.Embed(
+        title="💳 Nuova Fattura Ricevuta",
+        description=(
+            f"Ti è stata emessa una nuova fattura a nome dell'azienda **{azienda}** "
+            f"per un importo di **€ {importo:,.2f}**.\n\n"
+            f"💬 **Causale:** {causale}\n\n"
+            f"Usa il comando </mie_fatture:0> in città per visualizzare l'anteprima "
+            f"dettagliata ed effettuare il pagamento."
+        ),
+        color=discord.Color.from_rgb(220, 38, 38),
+    )
+    dm_embed.set_footer(text="Evren City OS • Sistema Fiscale")
+    await utente.send(embed=dm_embed)
+  except discord.Forbidden:
+    # Gestisce il caso in cui l'utente ha i DM chiusi o ha bloccato il bot
+    pass
 
 # --- INTERFACCIA PER IL PAGAMENTO DELLE FATTURE ---
 class PagaFatturaSelect(discord.ui.Select):
@@ -2735,12 +2756,13 @@ class FabbricaFattureView(discord.ui.View):
     super().__init__(timeout=180)
     self.add_item(PagaFatturaSelect(fatture))
 
-
-# --- COMANDO PER VEDERE E GESTIRE LE PROPRIE FATTURE ---
 @bot.tree.command(
     name="mie_fatture", description="Visualizza e paga le tue fatture in sospeso."
 )
 async def mie_fatture(interaction: discord.Interaction):
+  # 1. Impedisce il timeout di Discord
+  await interaction.response.defer(ephemeral=False)
+
   res = (
       supabase.table("invoices")
       .select("*")
@@ -2750,7 +2772,7 @@ async def mie_fatture(interaction: discord.Interaction):
   )
 
   if not res.data:
-    await interaction.response.send_message(
+    await interaction.followup.send(
         "❌ Non hai alcuna fattura registrata a tuo carico.", ephemeral=True
     )
     return
@@ -2758,6 +2780,7 @@ async def mie_fatture(interaction: discord.Interaction):
   fatture = res.data
   ultima = fatture[0]
 
+  # 2. Generazione dell'immagine con Playwright
   img_io = await renderizza_fattura_immagine(ultima)
   file = discord.File(img_io, filename=f"fattura_{ultima['id']}.png")
 
@@ -2789,10 +2812,9 @@ async def mie_fatture(interaction: discord.Interaction):
   embed.set_footer(text="Evren City OS • Sistema Fiscale")
 
   view = FabbricaFattureView(fatture)
-  # Impostato su ephemeral=False per renderlo visibile a tutti
-  await interaction.response.send_message(
-      embed=embed, file=file, view=view, ephemeral=False
-  )
+  
+  # 3. Invio tramite followup
+  await interaction.followup.send(embed=embed, file=file, view=view)
 
 # =======================================================
 #  VIEW PERSISTENTE PER IL PANNELLO ANAGRAFE
