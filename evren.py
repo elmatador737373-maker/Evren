@@ -638,7 +638,7 @@ async def me(interaction: discord.Interaction, azione: str):
 
   # Costruisce l'embed identico allo stile dell'immagine
   embed = discord.Embed(
-      description=f"🎬 **Azione** ❞...\n\n{interaction.user.mention} = {azione}",
+      description=f"🎬 **Azione** <a:attesa:1349897098258284594>\n\n{interaction.user.mention} = {azione}",
       color=discord.Color.from_rgb(
           40, 40, 45
       ),  # Sfumatura scura pulita in stile Discord
