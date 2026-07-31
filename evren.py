@@ -127,36 +127,28 @@ async def upload_to_imgbb(foto: discord.Attachment) -> str:
             else:
                 raise Exception(f"Errore ImgBB status code: {response.status}")
 
-async def riproduci_audio_canale(channel: discord.VoiceChannel, audio_file: str, loop: bool = False):
+# URL diretti dei tuoi file su GitHub
+URL_SQUILLO = "https://raw.githubusercontent.com/elmatador737373-maker/Evren/main/squillo.mp3"
+URL_RIFIUTO = "https://raw.githubusercontent.com/elmatador737373-maker/Evren/main/rifiuto.mp3"
+
+async def riproduci_audio_canale(channel: discord.VoiceChannel, audio_url: str, loop: bool = False):
     vc = None
     try:
-        if not os.path.exists(audio_file):
-            print(f"❌ [AUDIO DEBUG] File audio non trovato sul disco: {audio_file}")
-            return
-
-        print(f"🔊 [AUDIO DEBUG] Tentativo di connessione al canale: {channel.name}")
-        
-        try:
-            vc = await channel.connect()
-            print(f"✅ [AUDIO DEBUG] Connesso con successo al canale vocale!")
-        except Exception as e:
-            print(f"❌ [AUDIO DEBUG] Errore critico durante channel.connect(): {e}")
-            return
+        # Si connette al canale vocale creato
+        vc = await channel.connect()
 
         while vc and vc.is_connected():
             fatto = asyncio.Event()
 
             def after_play(error):
                 if error:
-                    print(f"❌ [AUDIO DEBUG] Errore nella riproduzione audio: {error}")
+                    print(f"Errore riproduzione audio: {error}")
                 vc.loop.call_soon_threadsafe(fatto.set)
 
-            # Usa FFMPEG_PATH se definito, altrimenti usa "ffmpeg" di sistema
-            executable_path = FFMPEG_PATH if 'FFMPEG_PATH' in globals() and FFMPEG_PATH else "ffmpeg"
-            source = discord.FFmpegPCMAudio(audio_file, executable=executable_path)
+            # Legge lo stream audio direttamente dall'URL raw di GitHub
+            source = discord.FFmpegPCMAudio(audio_url)
 
             if not vc.is_playing():
-                print(f"▶️ [AUDIO DEBUG] Riproduzione in corso di: {audio_file}")
                 vc.play(source, after=after_play)
                 await fatto.wait()
 
@@ -166,12 +158,11 @@ async def riproduci_audio_canale(channel: discord.VoiceChannel, audio_file: str,
             await asyncio.sleep(0.5)
 
     except Exception as e:
-        print(f"❌ [AUDIO DEBUG] Errore generico nella gestione audio: {e}")
+        print(f"❌ Errore audio: {e}")
     finally:
         if vc and vc.is_connected():
             try:
                 await vc.disconnect()
-                print(f"🔌 [AUDIO DEBUG] Disconnesso dal canale vocale.")
             except Exception:
                 pass
 
@@ -1336,7 +1327,8 @@ async def avvia_chiamata_vocale(interaction: discord.Interaction, numero_destina
     voice_channel = await guild.create_voice_channel(name=nome_canale, category=categoria, overwrites=overwrites)
     voice_link = voice_channel.jump_url
 
-    task_squillo = asyncio.create_task(riproduci_audio_canale(voice_channel, "squillo.mp3", loop=True))
+    # Task dello squillo in background (indentato correttamente)
+    task_squillo = asyncio.create_task(riproduci_audio_canale(voice_channel, URL_SQUILLO, loop=True))
 
     view = RispondiChiamataView(chiamante, destinatario, voice_channel, task_squillo)
     
@@ -1356,6 +1348,7 @@ async def avvia_chiamata_vocale(interaction: discord.Interaction, numero_destina
         f"📞 Squillo in corso verso **{destinatario.display_name}**...\n🔊 **Entra nel canale vocale per attendere:** {voice_link}", 
         ephemeral=True
     )
+
 
 
 @bot.tree.command(name="telefono", description="Apre lo schermo del tuo smartphone di Evren City OS.")
