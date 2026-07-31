@@ -1801,320 +1801,839 @@ async def bancomat(interaction: discord.Interaction):
     embed = discord.Embed(title="💳 Tastierino Bancomat", description="Inserisci il tuo PIN:\n\n**PIN:** `____`", color=discord.Color.blue())
     await interaction.response.send_message(embed=embed, view=view, ephemeral=True)
 
+import datetime
+import difflib
+import discord
+from discord import app_commands
 
-# --- POLIZIA CAD COMPLETO ---
+# ==========================================
+# ⚙️ CONFIGURAZIONE CANALI E TAG PER SERVER
+# ==========================================
+# Puoi aggiungere tutti i server che desideri. Quelli futuri possono essere inseriti
+# fin da ora con ID placeholder ed attivati in seguito semplicemente sostituendo i numeri.
+SERVER_CONFIGS = {
+    # 🏢 SERVER 1 (Attivo)
+    1233353915559313478: {
+        "fines": 1519609832372437034,
+        "arrests": 1520010488212361337,
+        "reports": 1520010488212361337,
+        "seized_vehicles": 1520010510828048395,
+        "seized_items": 1520010510828048395,
+        "role_tag": "<@&1359569600198611104>",  # Tag specifico Server 1
+    },
+    # 🏢 SERVER 2 (Attivo)
+    1499394373270507701: {
+        "fines": 1499398731504685207,
+        "arrests": 1499398686067658897,
+        "reports": 1499398731504685207,
+        "seized_vehicles": 1499398820851744799,
+        "seized_items": 1499398780481704046,
+        "role_tag": "<@&1499394715634761789>",  # Tag specifico Server 2
+    },
+    # 🏢 SERVER 3 (Non ancora attivo / Futuro - Sostituisci gli ID quando sarà pronto)
+#    333333333333333333: {
+#        "fines": 333333333333333331,
+ #       "arrests": 333333333333333332,
+ #       "reports": 333333333333333333,
+  #      "seized_vehicles": 333333333333333334,
+   #     "seized_items": 333333333333333335,
+  #      "role_tag": "<@&333333333333333336>",  # Tag specifico Server 3 futuro
+#    },
+#}
+
+
+async def send_standardized_log(
+    bot: discord.Client,
+    guild_id: int,
+    log_type: str,
+    name: str,
+    surname: str,
+    birth_date: str,
+    articles: str,
+    penalty_det: str,
+    penalty_pec: str,
+    operators: str,
+    notes: str,
+    photo_url: str = None,
+):
+  """Costruisce il log formattato tramite EMBED secondo il template standard,
+
+  utilizzando il canale e il tag specifici del server di origine. Se il server
+  non è configurato, invia un avviso in console.
+  """
+  if guild_id not in SERVER_CONFIGS:
+    print(
+        f"⚠️ Attenzione: Il server con ID {guild_id} non è ancora attivo o non è"
+        " configurato in SERVER_CONFIGS."
+    )
+    return
+
+  config = SERVER_CONFIGS[guild_id]
+  channel_id = config.get(log_type)
+  role_tag = config.get("role_tag", "")
+
+  if not channel_id:
+    return
+
+  now_str = datetime.datetime.now().strftime("%d/%m/%Y %H:%M")
+
+  # Testo formattato internamente all'Embed rispettando i 5 campi dei Modal + template richiesto
+  log_text = (
+      f"# 𝐑𝐄𝐆𝐈𝐒𝐓𝐑𝐎\n"
+      f"> • ɴᴏᴍᴇ: {name}\n\n"
+      f"> • ᴄᴏɢɴᴏᴍᴇ: {surname}\n\n"
+      f"> • ᴅᴀᴛᴀ ᴅɪ ɴᴀsᴄɪᴛᴀ: {birth_date}\n\n"
+      f"> • ᴀʀᴛɪᴄᴏʟᴏ/ɪ ᴄᴏɴᴛᴇsᴛᴀᴛᴏ/ɪ: {articles}\n\n"
+      f"> • ᴘᴇɴᴀ ᴅᴇᴛᴇɴᴛɪᴠᴀ: {penalty_det}\n\n"
+      f"> • sᴀɴᴢɪᴏɴᴇ ᴘᴇᴄᴜɴɪᴀʀɪᴀ: {penalty_pec}\n\n"
+      f"> • ᴅᴀᴛᴀ / ᴏʀᴀ: {now_str}\n\n"
+      f"> • ᴏᴘᴇʀᴀᴛᴏʀᴇ/ɪ: {operators}\n\n"
+      f"> • ɴᴏᴛᴇ [ sᴇ ᴘʀᴇsᴇɴᴛɪ ]: {notes if notes else 'Nessuna'}\n\n"
+      f"> • ᴀʟʟᴇɢᴀ ꜰᴏᴛᴏ\n\n"
+      f"{role_tag}"
+  )
+
+  embed = discord.Embed(
+      description=log_text, color=discord.Color.from_rgb(30, 40, 60)
+  )
+  if photo_url:
+    embed.set_image(url=photo_url)
+
+  try:
+    channel = bot.get_channel(channel_id)
+    if channel:
+      await channel.send(embed=embed)
+  except Exception as e:
+    print(f"Errore invio log embed [{log_type}] al canale {channel_id}: {e}")
+
+
+# ==========================================
+# 🔍 MODALI DI RICERCA (TARGA, MATRICOLA, SMART)
+# ==========================================
+
 
 class CadSearchPlateModal(ui.Modal, title="🔍 Ricerca Veicolo per Targa"):
-    plate_input = ui.TextInput(label="Inserisci la Targa", placeholder="Es. AB123CD", required=True)
+  plate_input = ui.TextInput(
+      label="Inserisci la Targa", placeholder="Es. AB123CD", required=True
+  )
 
-    def __init__(self, officer_id: int):
-        super().__init__()
-        self.officer_id = officer_id
+  def __init__(self, officer_id: int, bot: discord.Client):
+    super().__init__()
+    self.officer_id = officer_id
+    self.bot = bot
 
-    async def on_submit(self, interaction: discord.Interaction):
-        plate_search = self.plate_input.value.strip().upper()
-        res = supabase.table("registered_vehicles").select("*").eq("plate", plate_search).execute()
+  async def on_submit(self, interaction: discord.Interaction):
+    plate_search = self.plate_input.value.strip().upper()
+    res = (
+        supabase.table("registered_vehicles")
+        .select("*")
+        .eq("plate", plate_search)
+        .execute()
+    )
 
-        if not res.data:
-            await interaction.response.send_message(f"❌ Nessun veicolo trovato con targa `{plate_search}`.", ephemeral=True)
-            return
+    if not res.data:
+      await interaction.response.send_message(
+          f"❌ Nessun veicolo trovato con targa `{plate_search}`.",
+          ephemeral=True,
+      )
+      return
 
-        vehicle = res.data[0]
-        owner_id = vehicle.get("discord_id")
+    vehicle = res.data[0]
+    owner_id = vehicle.get("discord_id")
 
-        doc_res = supabase.table("documents").select("*").eq("discord_id", owner_id).execute()
-        owner_name = f"{doc_res.data[0]['name']} {doc_res.data[0]['surname']}" if doc_res.data else "Sconosciuto (Senza Documenti)"
+    seized_res = (
+        supabase.table("seized_vehicles")
+        .select("*")
+        .eq("plate", plate_search)
+        .eq("status", "Sequestrato")
+        .execute()
+    )
 
-        embed = discord.Embed(
-            title=f"🚔 CAD - Risultato Ricerca Targa: {plate_search}",
-            color=discord.Color.dark_green()
-        )
-        embed.add_field(name="🚗 Modello Veicolo", value=f"`{vehicle.get('model')}`", inline=True)
-        embed.add_field(name="🏷️ Targa", value=f"`{vehicle.get('plate')}`", inline=True)
-        embed.add_field(name="👤 Intestatario RP", value=f"`{owner_name}`", inline=False)
-        embed.add_field(name="🌐 Account Discord", value=f"<@{owner_id}>", inline=False)
+    if seized_res.data:
+      vehicle_status = (
+          "🚨 **SEQUESTRATO** (Motivo:"
+          f" `{seized_res.data[0].get('reason')}`)"
+      )
+      embed_color = discord.Color.red()
+    else:
+      vehicle_status = "🟢 **REGOLARE / IN CIRCOLAZIONE**"
+      embed_color = discord.Color.dark_green()
 
-        await interaction.response.send_message(embed=embed, ephemeral=True)
+    doc_res = (
+        supabase.table("documents").select("*").eq("discord_id", owner_id).execute()
+    )
+    owner_name = (
+        f"{doc_res.data[0]['name']} {doc_res.data[0]['surname']}"
+        if doc_res.data
+        else "Sconosciuto (Senza Documenti)"
+    )
+
+    embed = discord.Embed(
+        title=f"🚔 CAD - Risultato Ricerca Targa: {plate_search}",
+        color=embed_color,
+    )
+    embed.add_field(
+        name="🚗 Modello Veicolo", value=f"`{vehicle.get('model')}`", inline=True
+    )
+    embed.add_field(name="🏷️ Targa", value=f"`{plate_search}`", inline=True)
+    embed.add_field(name="📌 Stato Veicolo", value=vehicle_status, inline=False)
+    embed.add_field(
+        name="👤 Intestatario RP", value=f"`{owner_name}`", inline=False
+    )
+    embed.add_field(
+        name="🌐 Account Discord", value=f"<@{owner_id}>", inline=False
+    )
+
+    await interaction.response.send_message(embed=embed, ephemeral=True)
 
 
 class CadSearchSerialModal(ui.Modal, title="🔍 Ricerca Arma per Matricola"):
-    serial_input = ui.TextInput(label="Inserisci la Matricola", placeholder="Es. WPN-9921", required=True)
+  serial_input = ui.TextInput(
+      label="Inserisci la Matricola", placeholder="Es. WPN-9921", required=True
+  )
 
-    def __init__(self, officer_id: int):
-        super().__init__()
-        self.officer_id = officer_id
+  def __init__(self, officer_id: int, bot: discord.Client):
+    super().__init__()
+    self.officer_id = officer_id
+    self.bot = bot
 
-    async def on_submit(self, interaction: discord.Interaction):
-        serial_search = self.serial_input.value.strip()
-        res = supabase.table("registered_weapons").select("*").eq("serial_number", serial_search).execute()
+  async def on_submit(self, interaction: discord.Interaction):
+    serial_search = self.serial_input.value.strip()
+    res = (
+        supabase.table("registered_weapons")
+        .select("*")
+        .eq("serial_number", serial_search)
+        .execute()
+    )
 
-        if not res.data:
-            await interaction.response.send_message(f"❌ Nessuna arma registrata con matricola `{serial_search}`.", ephemeral=True)
-            return
+    if not res.data:
+      await interaction.response.send_message(
+          f"❌ Nessuna arma registrata con matricola `{serial_search}`.",
+          ephemeral=True,
+      )
+      return
 
-        weapon = res.data[0]
-        owner_id = weapon.get("discord_id")
+    weapon = res.data[0]
+    owner_id = weapon.get("discord_id")
 
-        doc_res = supabase.table("documents").select("*").eq("discord_id", owner_id).execute()
-        owner_name = f"{doc_res.data[0]['name']} {doc_res.data[0]['surname']}" if doc_res.data else "Sconosciuto (Senza Documenti)"
+    doc_res = (
+        supabase.table("documents").select("*").eq("discord_id", owner_id).execute()
+    )
+    owner_name = (
+        f"{doc_res.data[0]['name']} {doc_res.data[0]['surname']}"
+        if doc_res.data
+        else "Sconosciuto (Senza Documenti)"
+    )
 
-        embed = discord.Embed(
-            title=f"🚔 CAD - Risultato Ricerca Matricola: {serial_search}",
-            color=discord.Color.red()
-        )
-        embed.add_field(name="⚔️ Modello Arma", value=f"`{weapon.get('model')}`", inline=True)
-        embed.add_field(name="🔢 Matricola", value=f"`{weapon.get('serial_number')}`", inline=True)
-        embed.add_field(name="👤 Intestatario RP", value=f"`{owner_name}`", inline=False)
-        embed.add_field(name="🌐 Account Discord", value=f"<@{owner_id}>", inline=False)
+    embed = discord.Embed(
+        title=f"🚔 CAD - Risultato Ricerca Matricola: {serial_search}",
+        color=discord.Color.red(),
+    )
+    embed.add_field(
+        name="⚔️ Modello Arma", value=f"`{weapon.get('model')}`", inline=True
+    )
+    embed.add_field(name="🔢 Matricola", value=f"`{serial_search}`", inline=True)
+    embed.add_field(
+        name="👤 Intestatario RP", value=f"`{owner_name}`", inline=False
+    )
+    embed.add_field(
+        name="🌐 Account Discord", value=f"<@{owner_id}>", inline=False
+    )
 
-        await interaction.response.send_message(embed=embed, ephemeral=True)
-
-
-class FineModal(ui.Modal, title="🚨 Rilascia Multa"):
-    reason_input = ui.TextInput(label="Motivazione Sanzione", placeholder="Es. Eccesso di velocità", required=True)
-    amount_input = ui.TextInput(label="Importo Multa ($)", placeholder="Es. 500", required=True)
-
-    def __init__(self, target_id: str, officer_name: str):
-        super().__init__()
-        self.target_id = target_id
-        self.officer_name = officer_name
-
-    async def on_submit(self, interaction: discord.Interaction):
-        try:
-            val = float(self.amount_input.value.strip())
-            if val <= 0: raise ValueError()
-        except ValueError:
-            await interaction.response.send_message("❌ Inserisci un importo valido!", ephemeral=True)
-            return
-
-        supabase.table("police_fines").insert({
-            "discord_id": self.target_id,
-            "officer_name": self.officer_name,
-            "reason": self.reason_input.value.strip(),
-            "amount": round(val, 2),
-            "status": "Da Pagare"
-        }).execute()
-
-        embed = discord.Embed(
-            title="📄 Multa Registrata",
-            description=f"• **Cittadino:** <@{self.target_id}>\n• **Importo:** `${val:,.2f}`\n• **Causale:** `{self.reason_input.value.strip()}`\n• **Agente:** `{self.officer_name}`",
-            color=discord.Color.red()
-        )
-        await interaction.response.send_message(embed=embed, ephemeral=True)
+    await interaction.response.send_message(embed=embed, ephemeral=True)
 
 
-class ArrestModal(ui.Modal, title="🔒 Registra Arresto"):
-    reason_input = ui.TextInput(label="Capo d'Imputazione", placeholder="Es. Rapina a mano armata", required=True)
-    months_input = ui.TextInput(label="Mesi di Reclusione (Minuti RP)", placeholder="Es. 30", required=True)
-    bail_input = ui.TextInput(label="Cauzione ($) (Opzionale)", placeholder="0 se non prevista", required=False)
+class SmartSearchCitizenModal(ui.Modal, title="🔎 Ricerca Intelligente Cittadino"):
+  name_input = ui.TextInput(
+      label="Nome e/o Cognome",
+      placeholder="Es. Mario Rossi o solo Mar",
+      required=True,
+  )
 
-    def __init__(self, target_id: str, officer_name: str):
-        super().__init__()
-        self.target_id = target_id
-        self.officer_name = officer_name
+  def __init__(self, citizens_list: list, officer_id: int, bot: discord.Client):
+    super().__init__()
+    self.citizens_list = citizens_list
+    self.officer_id = officer_id
+    self.bot = bot
 
-    async def on_submit(self, interaction: discord.Interaction):
-        try:
-            months = int(self.months_input.value.strip())
-            bail = float(self.bail_input.value.strip()) if self.bail_input.value.strip() else 0.0
-        except ValueError:
-            await interaction.response.send_message("❌ Inserisci valori numerici validi!", ephemeral=True)
-            return
+  async def on_submit(self, interaction: discord.Interaction):
+    query = self.name_input.value.strip().lower()
+    matches = []
+    full_names = {}
 
-        supabase.table("police_arrests").insert({
-            "discord_id": self.target_id,
-            "officer_name": self.officer_name,
-            "reason": self.reason_input.value.strip(),
-            "months": months,
-            "bail": bail
-        }).execute()
+    for c in self.citizens_list:
+      full_name = f"{c.get('name')} {c.get('surname')}".lower()
+      full_names[full_name] = c
+      if query in full_name:
+        matches.append(c)
 
-        embed = discord.Embed(
-            title="🚔 Arresto Registrato",
-            description=f"• **Detenuto:** <@{self.target_id}>\n• **Pena:** `{months} Mesi/Minuti`\n• **Cauzione:** `${bail:,.2f}`\n• **Motivo:** `{self.reason_input.value.strip()}`",
-            color=discord.Color.dark_purple()
-        )
-        await interaction.response.send_message(embed=embed, ephemeral=True)
+    if not matches:
+      closest = difflib.get_close_matches(
+          query, full_names.keys(), n=3, cutoff=0.4
+      )
+      matches = [full_names[match] for match in closest if match in full_names]
+
+    if not matches:
+      await interaction.response.send_message(
+          f"❌ Nessun cittadino trovato corrispondente a `{query}`.",
+          ephemeral=True,
+      )
+      return
+
+    if len(matches) == 1:
+      doc = matches[0]
+      view = PoliceCadDetailView(doc, self.officer_id, self.bot)
+      embed = discord.Embed(
+          title=(
+              "🚔 Terminale Polizia - Risultato:"
+              f" {doc.get('name')} {doc.get('surname')}"
+          ),
+          description=(
+              "Usa i pulsanti per consultare la scheda o gestire atti/sequestri:"
+          ),
+          color=discord.Color.blue(),
+      )
+      await interaction.response.send_message(
+          embed=embed, view=view, ephemeral=True
+      )
+    else:
+      view = PoliceCadSelectView(matches, self.officer_id, self.bot)
+      embed = discord.Embed(
+          title="🔍 Risultati Ricerca Intelligente",
+          description=(
+              "Trovati più cittadini simili. Seleziona quello corretto dal menu"
+              " sottostante:"
+          ),
+          color=discord.Color.gold(),
+      )
+      await interaction.response.send_message(
+          embed=embed, view=view, ephemeral=True
+      )
 
 
-class ReportModal(ui.Modal, title="📝 Verbale / Rapporto Giudiziario"):
-    title_input = ui.TextInput(label="Titolo Rapporto", placeholder="Es. Perquisizione e Sequestro", required=True)
-    desc_input = ui.TextInput(label="Dettagli del Verbale", style=discord.TextStyle.paragraph, placeholder="Descrivi i fatti...", required=True)
+# ==========================================
+# 📝 MODALI DI AZIONE CON 5 CAMPI
+# ==========================================
 
-    def __init__(self, target_id: str, officer_name: str):
-        super().__init__()
-        self.target_id = target_id
-        self.officer_name = officer_name
 
-    async def on_submit(self, interaction: discord.Interaction):
-        supabase.table("police_reports").insert({
-            "discord_id": self.target_id,
-            "officer_name": self.officer_name,
-            "title": self.title_input.value.strip(),
-            "description": self.desc_input.value.strip()
-        }).execute()
+class BaseActionModal(ui.Modal):
+  """Classe base per gestire i 5 campi richiesti nei Modal di Azione."""
 
-        embed = discord.Embed(
-            title="📋 Verbale Archiviato",
-            description=f"• **Soggetto:** <@{self.target_id}>\n• **Titolo:** `{self.title_input.value.strip()}`\n• **Agente:** `{self.officer_name}`",
-            color=discord.Color.blue()
-        )
-        await interaction.response.send_message(embed=embed, ephemeral=True)
+  field_1 = ui.TextInput(
+      label="1. Nome", placeholder="Es. Mario", required=True
+  )
+  field_2 = ui.TextInput(
+      label="2. Cognome", placeholder="Es. Rossi", required=True
+  )
+  field_3 = ui.TextInput(
+      label="3. Data di Nascita", placeholder="Es. 12/05/1995", required=True
+  )
+  field_4 = ui.TextInput(
+      label="4. Articoli / Motivazione",
+      placeholder="Es. Art. 123 - Eccesso di velocità",
+      required=True,
+  )
+  field_5 = ui.TextInput(
+      label="5. Note / Dettagli Aggiuntivi",
+      placeholder="Eventuali note o link foto",
+      required=False,
+      style=discord.TextStyle.paragraph,
+  )
+
+  def __init__(
+      self,
+      target_id: str,
+      officer_name: str,
+      bot: discord.Client,
+      log_type: str,
+      default_det: str,
+      default_pec: str,
+  ):
+    super().__init__()
+    self.target_id = target_id
+    self.officer_name = officer_name
+    self.bot = bot
+    self.log_type = log_type
+    self.default_det = default_det
+    self.default_pec = default_pec
+
+  async def on_submit(self, interaction: discord.Interaction):
+    name = self.field_1.value.strip()
+    surname = self.field_2.value.strip()
+    birth_date = self.field_3.value.strip()
+    articles = self.field_4.value.strip()
+    notes = self.field_5.value.strip()
+
+    await send_standardized_log(
+        bot=self.bot,
+        guild_id=interaction.guild_id,
+        log_type=self.log_type,
+        name=name,
+        surname=surname,
+        birth_date=birth_date,
+        articles=articles,
+        penalty_det=self.default_det,
+        penalty_pec=self.default_pec,
+        operators=self.officer_name,
+        notes=notes,
+    )
+    await interaction.response.send_message(
+        "✅ Azione registrata e log embed inviati con successo!", ephemeral=True
+    )
+
+
+class FineModal(BaseActionModal):
+
+  def __init__(self, target_id: str, officer_name: str, bot: discord.Client):
+    super().__init__(
+        target_id,
+        officer_name,
+        bot,
+        log_type="fines",
+        default_det="Nessuna",
+        default_pec="Specificata nel verbale",
+    )
+    self.title = "🚨 Registra Multa"
+
+
+class ArrestModal(BaseActionModal):
+
+  def __init__(self, target_id: str, officer_name: str, bot: discord.Client):
+    super().__init__(
+        target_id,
+        officer_name,
+        bot,
+        log_type="arrests",
+        default_det="Detenzione Carceraria",
+        default_pec="Non Prevista / Cauzione",
+    )
+    self.title = "🔒 Registra Arresto"
+
+
+class ReportModal(BaseActionModal):
+
+  def __init__(self, target_id: str, officer_name: str, bot: discord.Client):
+    super().__init__(
+        target_id,
+        officer_name,
+        bot,
+        log_type="reports",
+        default_det="A discrezione del giudice",
+        default_pec="A discrezione del giudice",
+    )
+    self.title = "📝 Registra Verbale"
+
+
+class SeizeVehicleModal(BaseActionModal):
+
+  def __init__(self, target_id: str, officer_name: str, bot: discord.Client):
+    super().__init__(
+        target_id,
+        officer_name,
+        bot,
+        log_type="seized_vehicles",
+        default_det="Sequestro Veicolare",
+        default_pec="Sequestro Amministrativo",
+    )
+    self.title = "🚗 Sequestro Veicolo"
+
+
+class SeizeItemModal(BaseActionModal):
+
+  def __init__(self, target_id: str, officer_name: str, bot: discord.Client):
+    super().__init__(
+        target_id,
+        officer_name,
+        bot,
+        log_type="seized_items",
+        default_det="Confisca Materiale",
+        default_pec="Nessuna",
+    )
+    self.title = "📦 Sequestro Oggetto / Arma"
+
+
+# ==========================================
+# 🔓 GESTIONE DISSEQUESTRO
+# ==========================================
+
+
+class SeizedVehicleSelect(ui.Select):
+
+  def __init__(self, options, bot):
+    super().__init__(
+        placeholder="Seleziona veicolo da dissequestrare...", options=options
+    )
+    self.bot = bot
+
+  async def callback(self, interaction: discord.Interaction):
+    v_id = int(self.values[0].split("_")[1])
+    supabase.table("seized_vehicles").update({"status": "Dissequestrato"}).eq(
+        "id", v_id
+    ).execute()
+    await interaction.response.send_message(
+        "🔓 Veicolo dissequestrato con successo!", ephemeral=True
+    )
+
+
+class SeizedItemSelect(ui.Select):
+
+  def __init__(self, options, bot):
+    super().__init__(
+        placeholder="Seleziona oggetto da dissequestrare...", options=options
+    )
+    self.bot = bot
+
+  async def callback(self, interaction: discord.Interaction):
+    i_id = int(self.values[0].split("_")[1])
+    supabase.table("seized_items").update({"status": "Dissequestrato"}).eq(
+        "id", i_id
+    ).execute()
+    await interaction.response.send_message(
+        "🔓 Oggetto dissequestrato con successo!", ephemeral=True
+    )
+
+
+class SeizureManagementView(ui.View):
+
+  def __init__(self, target_id: str, officer_id: int, bot: discord.Client):
+    super().__init__(timeout=180)
+    self.target_id = target_id
+    self.officer_id = officer_id
+    self.bot = bot
+    self.update_components()
+
+  def update_components(self):
+    self.clear_items()
+    v_res = (
+        supabase.table("seized_vehicles")
+        .select("*")
+        .eq("discord_id", self.target_id)
+        .eq("status", "Sequestrato")
+        .execute()
+    )
+    i_res = (
+        supabase.table("seized_items")
+        .select("*")
+        .eq("discord_id", self.target_id)
+        .eq("status", "Sequestrato")
+        .execute()
+    )
+
+    if v_res.data:
+      options = [
+          discord.SelectOption(
+              label=f"Veicolo: {v['model']} ({v['plate']})",
+              value=f"veh_{v['id']}",
+              description=f"Motivo: {v['reason'][:50]}",
+          )
+          for v in v_res.data[:25]
+      ]
+      self.add_item(SeizedVehicleSelect(options, self.bot))
+
+    if i_res.data:
+      options = [
+          discord.SelectOption(
+              label=f"Oggetto: {v['item_name']} (Qtà: {v['quantity']})",
+              value=f"item_{v['id']}",
+              description=f"Motivo: {v['reason'][:50]}",
+          )
+          for v in i_res.data[:25]
+      ]
+      self.add_item(SeizedItemSelect(options, self.bot))
+
+
+# ==========================================
+# 🖥️ VISTE E MENU PRINCIPALI DEL CAD
+# ==========================================
 
 
 class PoliceCadDetailView(ui.View):
-    def __init__(self, citizen_doc: dict, officer_id: int):
-        super().__init__(timeout=180)
-        self.doc = citizen_doc
-        self.officer_id = officer_id
-        self.target_id_str = citizen_doc.get("discord_id")
 
-    def _check_officer(self, interaction: discord.Interaction):
-        return interaction.user.id == self.officer_id
+  def __init__(self, citizen_doc: dict, officer_id: int, bot: discord.Client):
+    super().__init__(timeout=180)
+    self.doc = citizen_doc
+    self.officer_id = officer_id
+    self.bot = bot
+    self.target_id_str = citizen_doc.get("discord_id")
 
-    @ui.button(label="📋 Generalità", style=discord.ButtonStyle.primary, row=0)
-    async def btn_gen(self, interaction: discord.Interaction, button: ui.Button):
-        if not self._check_officer(interaction): return
-        
-        photo_url = self.doc.get('photo_url')
+  def _check_officer(self, interaction: discord.Interaction):
+    return interaction.user.id == self.officer_id
 
-        embed = discord.Embed(
-            title=f"🚔 Scheda Anagrafica: {self.doc.get('name')} {self.doc.get('surname')}",
-            description=(
-                f"• **Nome & Cognome:** `{self.doc.get('name')} {self.doc.get('surname')}`\n"
-                f"• **Data di Nascita:** `{self.doc.get('birth_date', 'N/D')} a {self.doc.get('birth_place', 'N/D')}`\n"
-                f"• **Codice Fiscale:** `{self.doc.get('cf', 'N/D')}`\n"
-                f"• **N° Documento:** `{self.doc.get('doc_number', 'N/D')}`\n\n"
-                f"### 🧬 Caratteristiche Fisiche:\n"
-                f"• **Occhi:** `{self.doc.get('eye_color', 'N/D')}`\n"
-                f"• **Capelli:** `{self.doc.get('hair_color', 'N/D')}`\n"
-                f"• **Segni Particolari:** `{self.doc.get('distinct_marks', 'Nessuno')}`\n\n"
-                f"• **Discord User:** `<@{self.target_id_str}>`"
-            ),
-            color=discord.Color.dark_blue()
+  @ui.button(label="📋 Generalità", style=discord.ButtonStyle.primary, row=0)
+  async def btn_gen(self, interaction: discord.Interaction, button: ui.Button):
+    if not self._check_officer(interaction):
+      return
+    photo_url = self.doc.get("photo_url")
+    embed = discord.Embed(
+        title=(
+            "🚔 Scheda Anagrafica: "
+            f"{self.doc.get('name')} {self.doc.get('surname')}"
+        ),
+        description=(
+            "• **Nome & Cognome:**"
+            f" `{self.doc.get('name')} {self.doc.get('surname')}`\n• **Data di"
+            " Nascita:**"
+            f" `{self.doc.get('birth_date', 'N/D')} a"
+            f" {self.doc.get('birth_place', 'N/D')}`\n• **Codice Fiscale:**"
+            f" `{self.doc.get('cf', 'N/D')}`\n• **N° Documento:**"
+            f" `{self.doc.get('doc_number', 'N/D')}`\n\n### 🧬 Caratteristiche"
+            f" Fisiche:\n• **Occhi:** `{self.doc.get('eye_color', 'N/D')}`\n•"
+            f" **Capelli:** `{self.doc.get('hair_color', 'N/D')}`\n• **Segni"
+            f" Particolari:** `{self.doc.get('distinct_marks', 'Nessuno')}`\n\n•"
+            f" **Discord User:** `<@{self.target_id_str}>`"
+        ),
+        color=discord.Color.dark_blue(),
+    )
+    if photo_url:
+      embed.set_thumbnail(url=photo_url)
+    await interaction.response.edit_message(embed=embed, view=self)
+
+  @ui.button(label="🚗 Proprietà", style=discord.ButtonStyle.success, row=0)
+  async def btn_prop(self, interaction: discord.Interaction, button: ui.Button):
+    if not self._check_officer(interaction):
+      return
+    v_res = (
+        supabase.table("registered_vehicles")
+        .select("*")
+        .eq("discord_id", self.target_id_str)
+        .execute()
+    )
+    h_res = (
+        supabase.table("registered_properties")
+        .select("*")
+        .eq("discord_id", self.target_id_str)
+        .execute()
+    )
+    s_v_res = (
+        supabase.table("seized_vehicles")
+        .select("*")
+        .eq("discord_id", self.target_id_str)
+        .eq("status", "Sequestrato")
+        .execute()
+    )
+
+    v_text = (
+        "\n".join(
+            [f"• **{v['model']}** - Targa: `{v['plate']}`" for v in v_res.data]
         )
-        
-        if photo_url:
-            embed.set_thumbnail(url=photo_url)
-
-        await interaction.response.edit_message(embed=embed, view=self)
-
-    @ui.button(label="🚗 Proprietà", style=discord.ButtonStyle.success, row=0)
-    async def btn_prop(self, interaction: discord.Interaction, button: ui.Button):
-        if not self._check_officer(interaction): return
-        v_res = supabase.table("registered_vehicles").select("*").eq("discord_id", self.target_id_str).execute()
-        h_res = supabase.table("registered_properties").select("*").eq("discord_id", self.target_id_str).execute()
-
-        v_text = "\n".join([f"• **{v['model']}** - Targa: `{v['plate']}`" for v in v_res.data]) if v_res.data else "*Nessun veicolo.*"
-        h_text = "\n".join([f"• **{h['address']}** ({h['property_type']})" for h in h_res.data]) if h_res.data else "*Nessun immobile.*"
-
-        embed = discord.Embed(
-            title=f"🚘 Veicoli & Case - {self.doc.get('name')} {self.doc.get('surname')}",
-            description=f"### 🚗 Veicoli:\n{v_text}\n\n### 🏠 Immobili:\n{h_text}",
-            color=discord.Color.dark_green()
+        if v_res.data
+        else "*Nessun veicolo.*"
+    )
+    h_text = (
+        "\n".join(
+            [f"• **{h['address']}** ({h['property_type']})" for h in h_res.data]
         )
-        await interaction.response.edit_message(embed=embed, view=self)
-
-    @ui.button(label="🔫 Licenze", style=discord.ButtonStyle.secondary, row=0)
-    async def btn_weapons(self, interaction: discord.Interaction, button: ui.Button):
-        if not self._check_officer(interaction): return
-        g_res = supabase.table("registered_weapons").select("*").eq("discord_id", self.target_id_str).execute()
-        l_res = supabase.table("gun_licenses").select("*").eq("discord_id", self.target_id_str).execute()
-        d_res = supabase.table("driver_licenses").select("*").eq("discord_id", self.target_id_str).execute()
-
-        g_text = "\n".join([f"• **{w['model']}** - Mat: `{w['serial_number']}`" for w in g_res.data]) if g_res.data else "*Nessuna arma.*"
-        l_text = "\n".join([f"• **{l['license_type']}** (`{l['status']}`)" for l in l_res.data]) if l_res.data else "*Nessun porto d'armi.*"
-        d_text = "\n".join([f"• Patente **{d['license_type']}** (`{d['status']}`)" for d in d_res.data]) if d_res.data else "*Nessuna patente.*"
-
-        embed = discord.Embed(
-            title=f"🛡️ Licenze e Armi - {self.doc.get('name')} {self.doc.get('surname')}",
-            description=f"### 🔫 Armi Registrate:\n{g_text}\n\n### 📜 Porto d'Armi:\n{l_text}\n\n### 💳 Patenti:\n{d_text}",
-            color=discord.Color.red()
+        if h_res.data
+        else "*Nessun immobile.*"
+    )
+    s_v_text = (
+        "\n".join(
+            [
+                f"• 🚨 **{v['model']}** (Targa: `{v['plate']}`) - Motivo:"
+                f" `{v['reason']}`"
+                for v in s_v_res.data
+            ]
         )
-        await interaction.response.edit_message(embed=embed, view=self)
+        if s_v_res.data
+        else "*Nessun veicolo sequestrato.*"
+    )
 
-    @ui.button(label="⚖️ Fedina & Multe", style=discord.ButtonStyle.danger, row=0)
-    async def btn_records(self, interaction: discord.Interaction, button: ui.Button):
-        if not self._check_officer(interaction): return
+    embed = discord.Embed(
+        title=(
+            "🚘 Veicoli & Case - "
+            f"{self.doc.get('name')} {self.doc.get('surname')}"
+        ),
+        description=(
+            f"### 🚗 Veicoli Registrati:\n{v_text}\n\n### 🚨 Veicoli"
+            f" Sequestrati:\n{s_v_text}\n\n### 🏠 Immobili:\n{h_text}"
+        ),
+        color=discord.Color.dark_green(),
+    )
+    await interaction.response.edit_message(embed=embed, view=self)
 
-        fines_res = supabase.table("police_fines").select("*").eq("discord_id", self.target_id_str).execute()
-        arrests_res = supabase.table("police_arrests").select("*").eq("discord_id", self.target_id_str).execute()
-        reports_res = supabase.table("police_reports").select("*").eq("discord_id", self.target_id_str).execute()
-
-        f_text = "\n".join([f"• ID #{f['id']} - **${f['amount']:,.2f}** | `{f['reason']}` | Status: **{f['status']}**" for f in fines_res.data]) if fines_res.data else "*Nessuna sanzione.*"
-        a_text = "\n".join([f"• **{a['months']} Mesi** | Motivo: `{a['reason']}` | Agente: `{a['officer_name']}`" for a in arrests_res.data]) if arrests_res.data else "*Nessun arresto a carico.*"
-        r_text = "\n".join([f"• **{r['title']}**: {r['description']} (Agente: `{r['officer_name']}`)" for r in reports_res.data]) if reports_res.data else "*Nessun verbale.*"
-
-        embed = discord.Embed(
-            title=f"⚖️ Casellario Giudiziario - {self.doc.get('name')} {self.doc.get('surname')}",
-            description=f"### 💶 Sanzioni & Multe:\n{f_text}\n\n### ⛓️ Storico Arresti:\n{a_text}\n\n### 📝 Verbali & Rapporti:\n{r_text}",
-            color=discord.Color.orange()
+  @ui.button(label="📦 Oggetti Sequestrati", style=discord.ButtonStyle.secondary, row=0)
+  async def btn_seized_items(self, interaction: discord.Interaction, button: ui.Button):
+    if not self._check_officer(interaction):
+      return
+    i_res = (
+        supabase.table("seized_items")
+        .select("*")
+        .eq("discord_id", self.target_id_str)
+        .eq("status", "Sequestrato")
+        .execute()
+    )
+    i_text = (
+        "\n".join(
+            [
+                f"• **{i['item_name']}** (Qtà: `{i['quantity']}`) - Motivo:"
+                f" `{i['reason']}`"
+                for i in i_res.data
+            ]
         )
-        await interaction.response.edit_message(embed=embed, view=self)
+        if i_res.data
+        else "*Nessun oggetto sequestrato.*"
+    )
 
-    @ui.button(label="➕ Multa", style=discord.ButtonStyle.danger, row=1)
-    async def add_fine(self, interaction: discord.Interaction, button: ui.Button):
-        if not self._check_officer(interaction): return
-        await interaction.response.send_modal(FineModal(self.target_id_str, interaction.user.display_name))
+    embed = discord.Embed(
+        title=(
+            "📦 Deposito Oggetti Sequestrati - "
+            f"{self.doc.get('name')} {self.doc.get('surname')}"
+        ),
+        description=f"### 📦 Oggetti in Custodia:\n{i_text}",
+        color=discord.Color.dark_orange(),
+    )
+    await interaction.response.edit_message(embed=embed, view=self)
 
-    @ui.button(label="➕ Arresto", style=discord.ButtonStyle.secondary, row=1)
-    async def add_arrest(self, interaction: discord.Interaction, button: ui.Button):
-        if not self._check_officer(interaction): return
-        await interaction.response.send_modal(ArrestModal(self.target_id_str, interaction.user.display_name))
+  @ui.button(label="➕ Multa", style=discord.ButtonStyle.danger, row=1)
+  async def add_fine(self, interaction: discord.Interaction, button: ui.Button):
+    if not self._check_officer(interaction):
+      return
+    await interaction.response.send_modal(
+        FineModal(self.target_id_str, interaction.user.display_name, self.bot)
+    )
 
-    @ui.button(label="➕ Verbale", style=discord.ButtonStyle.primary, row=1)
-    async def add_report(self, interaction: discord.Interaction, button: ui.Button):
-        if not self._check_officer(interaction): return
-        await interaction.response.send_modal(ReportModal(self.target_id_str, interaction.user.display_name))
+  @ui.button(label="➕ Arresto", style=discord.ButtonStyle.secondary, row=1)
+  async def add_arrest(self, interaction: discord.Interaction, button: ui.Button):
+    if not self._check_officer(interaction):
+      return
+    await interaction.response.send_modal(
+        ArrestModal(self.target_id_str, interaction.user.display_name, self.bot)
+    )
+
+  @ui.button(label="➕ Verbale", style=discord.ButtonStyle.primary, row=1)
+  async def add_report(self, interaction: discord.Interaction, button: ui.Button):
+    if not self._check_officer(interaction):
+      return
+    await interaction.response.send_modal(
+        ReportModal(self.target_id_str, interaction.user.display_name, self.bot)
+    )
+
+  @ui.button(label="🔒 Sequestra Veicolo", style=discord.ButtonStyle.danger, row=2)
+  async def seize_veh(self, interaction: discord.Interaction, button: ui.Button):
+    if not self._check_officer(interaction):
+      return
+    await interaction.response.send_modal(
+        SeizeVehicleModal(
+            self.target_id_str, interaction.user.display_name, self.bot
+        )
+    )
+
+  @ui.button(label="📦 Sequestra Oggetto", style=discord.ButtonStyle.danger, row=2)
+  async def seize_item(self, interaction: discord.Interaction, button: ui.Button):
+    if not self._check_officer(interaction):
+      return
+    await interaction.response.send_modal(
+        SeizeItemModal(
+            self.target_id_str, interaction.user.display_name, self.bot
+        )
+    )
+
+  @ui.button(label="🔓 Gestione Dissequestro", style=discord.ButtonStyle.success, row=2)
+  async def manage_seizure(self, interaction: discord.Interaction, button: ui.Button):
+    if not self._check_officer(interaction):
+      return
+    view = SeizureManagementView(self.target_id_str, self.officer_id, self.bot)
+    await interaction.response.send_message(
+        "Seleziona l'elemento da dissequestrare:", view=view, ephemeral=True
+    )
 
 
 class CitizenSelectMenu(ui.Select):
-    def __init__(self, citizens_list: list, officer_id: int):
-        options = []
-        for c in citizens_list[:25]:
-            options.append(discord.SelectOption(
-                label=f"{c.get('name')} {c.get('surname')}",
-                value=c.get("discord_id"),
-                description=f"CF: {c.get('cf')} | Doc: {c.get('doc_number')}"
-            ))
-        super().__init__(placeholder="Seleziona cittadino per Nome & Cognome...", min_values=1, max_values=1, options=options)
-        self.citizens_list = citizens_list
-        self.officer_id = officer_id
 
-    async def callback(self, interaction: discord.Interaction):
-        if interaction.user.id != self.officer_id: return
-        selected_id = self.values[0]
-        doc = next((c for c in self.citizens_list if c.get("discord_id") == selected_id), None)
+  def __init__(self, citizens_list: list, officer_id: int, bot: discord.Client):
+    options = []
+    for c in citizens_list[:25]:
+      options.append(
+          discord.SelectOption(
+              label=f"{c.get('name')} {c.get('surname')}",
+              value=c.get("discord_id"),
+              description=f"CF: {c.get('cf')} | Doc: {c.get('doc_number')}",
+          )
+      )
+    super().__init__(
+        placeholder="Seleziona cittadino...",
+        min_values=1,
+        max_values=1,
+        options=options,
+    )
+    self.citizens_list = citizens_list
+    self.officer_id = officer_id
+    self.bot = bot
 
-        if doc:
-            view = PoliceCadDetailView(doc, self.officer_id)
-            embed = discord.Embed(
-                title=f"🚔 Terminale Polizia - {doc.get('name')} {doc.get('surname')}",
-                description="Usa i pulsanti per consultare la scheda o registrare nuovi atti:",
-                color=discord.Color.blue()
-            )
-            await interaction.response.edit_message(embed=embed, view=view)
+  async def callback(self, interaction: discord.Interaction):
+    if interaction.user.id != self.officer_id:
+      return
+    selected_id = self.values[0]
+    doc = next(
+        (c for c in self.citizens_list if c.get("discord_id") == selected_id),
+        None,
+    )
+    if doc:
+      view = PoliceCadDetailView(doc, self.officer_id, self.bot)
+      embed = discord.Embed(
+          title=(
+              "🚔 Terminale Polizia - "
+              f"{doc.get('name')} {doc.get('surname')}"
+          ),
+          description=(
+              "Usa i pulsanti per consultare la scheda o registrare nuovi"
+              " atti:"
+          ),
+          color=discord.Color.blue(),
+      )
+      await interaction.response.edit_message(embed=embed, view=view)
 
 
 class PoliceCadSelectView(ui.View):
-    def __init__(self, citizens_list: list, officer_id: int):
-        super().__init__(timeout=120)
-        self.officer_id = officer_id
-        self.add_item(CitizenSelectMenu(citizens_list, officer_id))
 
-    @ui.button(label="🔍 Cerca Targa", style=discord.ButtonStyle.success, row=1)
-    async def btn_search_plate(self, interaction: discord.Interaction, button: ui.Button):
-        if interaction.user.id == self.officer_id:
-            await interaction.response.send_modal(CadSearchPlateModal(self.officer_id))
+  def __init__(self, citizens_list: list, officer_id: int, bot: discord.Client):
+    super().__init__(timeout=120)
+    self.officer_id = officer_id
+    self.citizens_list = citizens_list
+    self.bot = bot
+    self.add_item(CitizenSelectMenu(citizens_list, officer_id, bot))
 
-    @ui.button(label="🔍 Cerca Matricola Arma", style=discord.ButtonStyle.danger, row=1)
-    async def btn_search_serial(self, interaction: discord.Interaction, button: ui.Button):
-        if interaction.user.id == self.officer_id:
-            await interaction.response.send_modal(CadSearchSerialModal(self.officer_id))
-from discord import app_commands
+  @ui.button(
+      label="🔍 Cerca Targa", style=discord.ButtonStyle.success, row=1
+  )
+  async def btn_search_plate(
+      self, interaction: discord.Interaction, button: ui.Button
+  ):
+    if interaction.user.id == self.officer_id:
+      await interaction.response.send_modal(
+          CadSearchPlateModal(self.officer_id, self.bot)
+      )
+
+  @ui.button(
+      label="🔍 Cerca Matricola", style=discord.ButtonStyle.danger, row=1
+  )
+  async def btn_search_serial(
+      self, interaction: discord.Interaction, button: ui.Button
+  ):
+    if interaction.user.id == self.officer_id:
+      await interaction.response.send_modal(
+          CadSearchSerialModal(self.officer_id, self.bot)
+      )
+
+  @ui.button(
+      label="🔍 Ricerca Smart Cittadino",
+      style=discord.ButtonStyle.primary,
+      row=2,
+  )
+  async def btn_smart_search(
+      self, interaction: discord.Interaction, button: ui.Button
+  ):
+    if interaction.user.id == self.officer_id:
+      await interaction.response.send_modal(
+          SmartSearchCitizenModal(self.citizens_list, self.officer_id, self.bot)
+      )
 
 
-# --- COMANDO FBI ---
+# ==========================================
+# 🚀 COMANDI SLASH (FBI & POLIZIA)
+# ==========================================
+
+
 @bot.tree.command(
     name="cad_fbi",
     description=(
@@ -2136,13 +2655,12 @@ async def cad_fbi(interaction: discord.Interaction):
     )
     return
 
-  view = PoliceCadSelectView(res.data, interaction.user.id)
+  view = PoliceCadSelectView(res.data, interaction.user.id, bot)
   embed = discord.Embed(
       title="🕵️‍♂️ CAD FBI - Centrale Operativa Federale",
       description=(
-          "Seleziona un **cittadino** dal menu a tendina oppure premi uno dei"
-          " bottoni sottostanti per cercare direttamente un veicolo tramite"
-          " **targa** o un'arma tramite **matricola**."
+          "Seleziona un **cittadino** dal menu a tendina oppure premi i bottoni"
+          " sottostanti per ricerche avanzate."
       ),
       color=discord.Color.from_rgb(20, 35, 60),
   )
@@ -2159,7 +2677,6 @@ async def cad_fbi_error(
     )
 
 
-# --- COMANDO POLIZIA ---
 @bot.tree.command(
     name="cad_polizia",
     description=(
@@ -2181,13 +2698,12 @@ async def cad_polizia(interaction: discord.Interaction):
     )
     return
 
-  view = PoliceCadSelectView(res.data, interaction.user.id)
+  view = PoliceCadSelectView(res.data, interaction.user.id, bot)
   embed = discord.Embed(
       title="🚔 CAD Polizia di Stato - Centrale Operativa",
       description=(
-          "Seleziona un **cittadino** dal menu a tendina oppure premi uno dei"
-          " bottoni sottostanti per cercare direttamente un veicolo tramite"
-          " **targa** o un'arma tramite **matricola**."
+          "Seleziona un **cittadino** dal menu a tendina oppure premi i bottoni"
+          " sottostanti per ricerche avanzate."
       ),
       color=discord.Color.dark_blue(),
   )
