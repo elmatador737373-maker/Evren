@@ -136,17 +136,12 @@ import wavelink
 URL_SQUILLO = "https://youtu.be/56hYHf58hdc"
 URL_RIFIUTO = "https://youtu.be/_FhnSWY9-JI"
 
-
-# --- FUNZIONE AUDIO CON WAVELINK ---
 async def riproduci_audio_canale(channel: discord.VoiceChannel, audio_url: str, loop: bool = False):
     player = None
     try:
         print(f"🔊 [WAVELINK] Connessione al canale: {channel.name}")
-        
-        # Connette il player Wavelink al canale vocale
         player = await channel.connect(cls=wavelink.Player)
         
-        # Cerca la traccia su YouTube tramite Wavelink
         tracks = await wavelink.Playable.search(audio_url)
         if not tracks:
             print("❌ [WAVELINK] Traccia non trovata.")
@@ -156,7 +151,6 @@ async def riproduci_audio_canale(channel: discord.VoiceChannel, audio_url: str, 
         await player.play(track)
         await player.set_volume(70)
 
-        # Gestisce il loop (es. per lo squillo in attesa)
         while loop and player and player.connected:
             if not player.playing:
                 await player.play(track)
