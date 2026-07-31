@@ -1828,7 +1828,7 @@ SERVER_CONFIGS = {
         "reports": 1499398731504685207,
         "seized_vehicles": 1499398820851744799,
         "seized_items": 1499398780481704046,
-        "role_tag": "<@&1499394715634761789>",  # Tag specifico Server 2
+        "role_tag": "<@&1363487988570521670>",  # Tag specifico Server 2
     },
     # 🏢 SERVER 3 (Non ancora attivo / Futuro - Sostituisci gli ID quando sarà pronto)
 #    333333333333333333: {
