@@ -139,12 +139,25 @@ URL_RIFIUTO = "https://youtu.be/_FhnSWY9-JI"
 async def riproduci_audio_canale(channel: discord.VoiceChannel, audio_url: str, loop: bool = False):
     player = None
     try:
-        print(f"🔊 [WAVELINK] Connessione al canale: {channel.name}")
-        player = await channel.connect(cls=wavelink.Player)
+        print(f"🔊 [WAVELINK] Tentativo di connessione al canale: {channel.name}")
+        
+        # Mandiamo un messaggio testuale nel canale vocale (se Discord lo permette per i canali vocali)
+        try:
+            await channel.send("🔊 *Connessione audio in corso...*")
+        except Exception:
+            pass
+
+        # Timeout di sicurezza di 10 secondi per evitare il blocco eterno
+        player = await asyncio.wait_for(channel.connect(cls=wavelink.Player), timeout=10.0)
+        print(f"✅ [WAVELINK] Connesso con successo al canale!")
         
         tracks = await wavelink.Playable.search(audio_url)
         if not tracks:
             print("❌ [WAVELINK] Traccia non trovata.")
+            try:
+                await channel.send("❌ **Errore Wavelink:** Traccia audio non trovata.")
+            except Exception:
+                pass
             return
 
         track = tracks[0]
@@ -156,8 +169,18 @@ async def riproduci_audio_canale(channel: discord.VoiceChannel, audio_url: str, 
                 await player.play(track)
             await asyncio.sleep(1)
 
+    except asyncio.TimeoutError:
+        print("❌ [WAVELINK ERRORE]: Timeout! Il nodo Lavalink non ha risposto in tempo.")
+        try:
+            await channel.send("❌ **Errore:** Timeout del nodo Lavalink (il server musicale esterno non risponde).")
+        except Exception:
+            pass
     except Exception as e:
         print(f"❌ [WAVELINK ERRORE]: {e}")
+        try:
+            await channel.send(f"❌ **Errore Wavelink:** `{e}`")
+        except Exception:
+            pass
     finally:
         if player and player.connected:
             try:
