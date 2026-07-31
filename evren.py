@@ -163,40 +163,9 @@ async def riproduci_audio_canale(channel: discord.VoiceChannel, audio_file: str,
         if vc and vc.is_connected():
             await vc.disconnect()
 
-import discord
-from discord import ui
-
+    # =======================================================
+#  SECONDO MODULO: DETTAGLI FISICI E SALVATAGGIO
 # =======================================================
-#  VIEW PERSISTENTE PER IL PANNELLO ANAGRAFE
-# =======================================================
-
-# --- PRIMO MODULO: DATI ANAGRAFICI ---
-class CreaDocumentiStep1Modal(ui.Modal, title="🪪 ┃ ʀᴇɢɪsᴛʀᴏ (1/2: Anagrafica)"):
-    def __init__(self):
-        super().__init__()
-
-        self.nome = ui.TextInput(label="ɴᴏᴍᴇ", placeholder="Es. Mario", required=True, max_length=50)
-        self.cognome = ui.TextInput(label="ᴄᴏɢɴᴏᴍᴇ", placeholder="Es. Rossi", required=True, max_length=50)
-        self.data_nascita = ui.TextInput(label="ᴅᴀᴛᴀ ᴅɪ ɴᴀsᴄɪᴛᴀ", placeholder="Es. 15/05/1998", required=True, max_length=20)
-        self.luogo_nascita = ui.TextInput(label="ʟᴜᴏɢᴏ ᴅɪ ɴᴀsᴄɪᴛᴀ", placeholder="Es. Los Angeles", required=True, max_length=50)
-
-        self.add_item(self.nome)
-        self.add_item(self.cognome)
-        self.add_item(self.data_nascita)
-        self.add_item(self.luogo_nascita)
-
-    async def on_submit(self, interaction: discord.Interaction):
-        # Salva temporaneamente i dati del primo step
-        nome_val = self.nome.value.strip()
-        cognome_val = self.cognome.value.strip()
-        data_val = self.data_nascita.value.strip()
-        luogo_val = self.luogo_nascita.value.strip()
-
-        # Apre automaticamente il secondo modulo passando i dati raccolti
-        await interaction.response.send_modal(CreaDocumentiStep2Modal(nome_val, cognome_val, data_val, luogo_val))
-
-
-# --- SECONDO MODULO: DETTAGLI FISICI E SALVATAGGIO FINALE ---
 class CreaDocumentiStep2Modal(ui.Modal, title="🪪 ┃ ʀᴇɢɪsᴛʀᴏ (2/2: Dati Fisici)"):
     def __init__(self, nome, cognome, data_nascita, luogo_nascita):
         super().__init__()
@@ -221,49 +190,30 @@ class CreaDocumentiStep2Modal(ui.Modal, title="🪪 ┃ ʀᴇɢɪsᴛʀᴏ (2/2:
         user_id = str(interaction.user.id)
 
         try:
-            existing = supabase.table("documents").select("discord_id").eq("discord_id", user_id).execute()
+            cf_temporaneo = f"EVREN-{user_id[-6:]}"
+            doc_numero = f"DOC-{user_id[-5:]}"
 
-            if existing.data:
-                supabase.table("documents").update({
-                    "name": self.nome,
-                    "surname": self.cognome,
-                    "birth_date": self.data_nascita,
-                    "birth_place": self.luogo_nascita,
-                    "eye_color": occhi_val,
-                    "hair_color": capelli_val,
-                    "distinct_marks": segni_val
-                }).eq("discord_id", user_id).execute()
+            data = {
+                "discord_id": user_id,
+                "name": self.nome,
+                "surname": self.cognome,
+                "birth_date": self.data_nascita,
+                "birth_place": self.luogo_nascita,
+                "eye_color": occhi_val,
+                "hair_color": capelli_val,
+                "distinct_marks": segni_val,
+                "cf": cf_temporaneo,
+                "doc_number": doc_numero,
+                "photo_url": None
+            }
 
-                await interaction.response.send_message(
-                    "🔄 **ᴅᴀᴛɪ ᴀɴᴀɢʀᴀꜰɪᴄɪ ᴀɢɢɪᴏʀɴᴀᴛɪ ᴄᴏɴ sᴜᴄᴄᴇss!**\n"
-                    "Puoi procedere a caricare o aggiornare la foto con `/carica_foto_documento`.",
-                    ephemeral=True
-                )
-            else:
-                cf_temporaneo = f"EVREN-{user_id[-6:]}"
-                doc_numero = f"DOC-{user_id[-5:]}"
+            supabase.table("documents").insert(data).execute()
 
-                data = {
-                    "discord_id": user_id,
-                    "name": self.nome,
-                    "surname": self.cognome,
-                    "birth_date": self.data_nascita,
-                    "birth_place": self.luogo_nascita,
-                    "eye_color": occhi_val,
-                    "hair_color": capelli_val,
-                    "distinct_marks": segni_val,
-                    "cf": cf_temporaneo,
-                    "doc_number": doc_numero,
-                    "photo_url": None
-                }
-
-                supabase.table("documents").insert(data).execute()
-
-                await interaction.response.send_message(
-                    "✅ **ᴅᴀᴛɪ ᴀɴᴀɢʀᴀꜰɪᴄɪ sᴀʟᴠᴀᴛɪ ᴄᴏɴ sᴜᴄᴄᴇss!**\n"
-                    "Ora utilizza il comando `/carica_foto_documento` allegando la tua foto per completare la carta d'identità.",
-                    ephemeral=True
-                )
+            await interaction.response.send_message(
+                "✅ **ᴅᴀᴛɪ ᴀɴᴀɢʀᴀꜰɪᴄɪ sᴀʟᴠᴀᴛɪ ᴄᴏɴ sᴜᴄᴄᴇss!**\n"
+                "Ora utilizza il comando `/carica_foto_documento` allegando la tua foto per completare la carta d'identità.",
+                ephemeral=True
+            )
 
         except Exception as e:
             await interaction.response.send_message(
@@ -272,7 +222,60 @@ class CreaDocumentiStep2Modal(ui.Modal, title="🪪 ┃ ʀᴇɢɪsᴛʀᴏ (2/2:
             )
 
 
-# --- VIEW PERSISTENTE CON CONTROLLO PREVENTIVO ---
+# =======================================================
+#  VIEW CON IL PULSANTE PER APRIRE IL SECONDO MODULO
+# =======================================================
+class ApriStep2View(ui.View):
+    def __init__(self, nome, cognome, data_nascita, luogo_nascita):
+        super().__init__(timeout=180)  # Il pulsante scade dopo 3 minuti
+        self.nome = nome
+        self.cognome = cognome
+        self.data_nascita = data_nascita
+        self.luogo_nascita = luogo_nascita
+
+    @ui.button(label="Continua con i Dati Fisici (2/2)", style=discord.ButtonStyle.primary, emoji="➡️")
+    async def apri_secondo_modulo(self, interaction: discord.Interaction, button: ui.Button):
+        await interaction.response.send_modal(
+            CreaDocumentiStep2Modal(self.nome, self.cognome, self.data_nascita, self.luogo_nascita)
+        )
+
+
+# =======================================================
+#  PRIMO MODULO: DATI ANAGRAFICI
+# =======================================================
+class CreaDocumentiStep1Modal(ui.Modal, title="🪪 ┃ ʀᴇɢɪsᴛʀᴏ (1/2: Anagrafica)"):
+    def __init__(self):
+        super().__init__()
+
+        self.nome = ui.TextInput(label="ɴᴏᴍᴇ", placeholder="Es. Mario", required=True, max_length=50)
+        self.cognome = ui.TextInput(label="ᴄᴏɢɴᴏᴍᴇ", placeholder="Es. Rossi", required=True, max_length=50)
+        self.data_nascita = ui.TextInput(label="ᴅᴀᴛᴀ ᴅɪ ɴᴀsᴄɪᴛᴀ", placeholder="Es. 15/05/1998", required=True, max_length=20)
+        self.luogo_nascita = ui.TextInput(label="ʟᴜᴏɢᴏ ᴅɪ ɴᴀsᴄɪᴛᴀ", placeholder="Es. Los Angeles", required=True, max_length=50)
+
+        self.add_item(self.nome)
+        self.add_item(self.cognome)
+        self.add_item(self.data_nascita)
+        self.add_item(self.luogo_nascita)
+
+    async def on_submit(self, interaction: discord.Interaction):
+        nome_val = self.nome.value.strip()
+        cognome_val = self.cognome.value.strip()
+        data_val = self.data_nascita.value.strip()
+        luogo_val = self.luogo_nascita.value.strip()
+
+        # Invia un messaggio effimero con il pulsante per procedere al secondo modulo
+        view = ApriStep2View(nome_val, cognome_val, data_val, luogo_val)
+        await interaction.response.send_message(
+            "📌 **Primo step completato con successo!**\n"
+            "Clicca sul pulsante sottostante per inserire i dati fisici e completare la registrazione.",
+            view=view,
+            ephemeral=True
+        )
+
+
+# =======================================================
+#  VIEW PERSISTENTE PER IL PANNELLO ANAGRAFE
+# =======================================================
 class PannelloAnagrafeView(ui.View):
     def __init__(self):
         super().__init__(timeout=None)
@@ -286,7 +289,7 @@ class PannelloAnagrafeView(ui.View):
     async def apri_modal(self, interaction: discord.Interaction, button: ui.Button):
         user_id = str(interaction.user.id)
 
-        # Controllo preventivo: se l'utente ha già il documento, blocca l'apertura del form
+        # Controllo preventivo: blocca se l'utente ha già un documento registrato
         existing = supabase.table("documents").select("discord_id").eq("discord_id", user_id).execute()
 
         if existing.data:
@@ -297,9 +300,8 @@ class PannelloAnagrafeView(ui.View):
             )
             return
 
-        # Se non esiste, apre il primo step del modulo
+        # Apre il primo modulo
         await interaction.response.send_modal(CreaDocumentiStep1Modal())
-
 
 # =======================================================
 #  COMANDO /PANNELLO_DOCUMENTI (PER GLI ADMIN)
