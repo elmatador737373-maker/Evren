@@ -163,7 +163,8 @@ async def riproduci_audio_canale(channel: discord.VoiceChannel, audio_file: str,
         if vc and vc.is_connected():
             await vc.disconnect()
 
-class CreaDocumentiModal(ui.Modal, title="🪪 ┃ ʀᴇɢɪsᴛʀᴏ ᴀɴᴀɢʀᴀꜰɪᴄᴏ ᴄɪᴛᴛᴀᴅɪɴᴏ"):
+# --- PRIMO MODULO: DATI ANAGRAFICI ---
+class CreaDocumentiStep1Modal(ui.Modal, title="🪪 ┃ ʀᴇɢɪsᴛʀᴏ (1/2: Anagrafica)"):
     def __init__(self):
         super().__init__()
 
@@ -171,23 +172,40 @@ class CreaDocumentiModal(ui.Modal, title="🪪 ┃ ʀᴇɢɪsᴛʀᴏ ᴀɴᴀɢ
         self.cognome = ui.TextInput(label="ᴄᴏɢɴᴏᴍᴇ", placeholder="Es. Rossi", required=True, max_length=50)
         self.data_nascita = ui.TextInput(label="ᴅᴀᴛᴀ ᴅɪ ɴᴀsᴄɪᴛᴀ", placeholder="Es. 15/05/1998", required=True, max_length=20)
         self.luogo_nascita = ui.TextInput(label="ʟᴜᴏɢᴏ ᴅɪ ɴᴀsᴄɪᴛᴀ", placeholder="Es. Los Angeles", required=True, max_length=50)
-        self.colore_occhi = ui.TextInput(label="ᴄᴏʟᴏʀᴇ ᴏᴄᴄʜɪ", placeholder="Es. Marroni / Verdi", required=True, max_length=30)
-        self.colore_capelli = ui.TextInput(label="ᴄᴏʟᴏʀᴇ ᴄᴀᴘᴇʟʟɪ", placeholder="Es. Castani / Neri", required=True, max_length=30)
-        self.segni_particolari = ui.TextInput(label="sᴇɢɴɪ ᴘᴀʀᴛɪᴄᴏʟᴀʀɪ", placeholder="Es. Cicatrice sul sopracciglio o Nessuno", required=False, max_length=100)
 
         self.add_item(self.nome)
         self.add_item(self.cognome)
         self.add_item(self.data_nascita)
         self.add_item(self.luogo_nascita)
+
+    async def on_submit(self, interaction: discord.Interaction):
+        # Passa al secondo modulo passando i dati temporaneamente tramite i valori
+        nome_val = self.nome.value.strip()
+        cognome_val = self.cognome.value.strip()
+        data_val = self.data_nascita.value.strip()
+        luogo_val = self.luogo_nascita.value.strip()
+
+        await interaction.response.send_modal(CreaDocumentiStep2Modal(nome_val, cognome_val, data_val, luogo_val))
+
+
+# --- SECONDO MODULO: DETTAGLI FISICI E SALVATAGGIO ---
+class CreaDocumentiStep2Modal(ui.Modal, title="🪪 ┃ ʀᴇɢɪsᴛʀᴏ (2/2: Dati Fisici)"):
+    def __init__(self, nome, cognome, data_nascita, luogo_nascita):
+        super().__init__()
+        self.nome = nome
+        self.cognome = cognome
+        self.data_nascita = data_nascita
+        self.luogo_nascita = luogo_nascita
+
+        self.colore_occhi = ui.TextInput(label="ᴄᴏʟᴏʀᴇ ᴏᴄᴄʜɪ", placeholder="Es. Marroni / Verdi", required=True, max_length=30)
+        self.colore_capelli = ui.TextInput(label="ᴄᴏʟᴏʀᴇ ᴄᴀᴘᴇʟʟɪ", placeholder="Es. Castani / Neri", required=True, max_length=30)
+        self.segni_particolari = ui.TextInput(label="sᴇɢɴɪ ᴘᴀʀᴛɪᴄᴏʟᴀʀɪ", placeholder="Es. Cicatrice o Nessuno", required=False, max_length=100)
+
         self.add_item(self.colore_occhi)
         self.add_item(self.colore_capelli)
         self.add_item(self.segni_particolari)
 
     async def on_submit(self, interaction: discord.Interaction):
-        nome_val = self.nome.value.strip()
-        cognome_val = self.cognome.value.strip()
-        data_val = self.data_nascita.value.strip()
-        luogo_val = self.luogo_nascita.value.strip()
         occhi_val = self.colore_occhi.value.strip()
         capelli_val = self.colore_capelli.value.strip()
         segni_val = self.segni_particolari.value.strip() or "Nessuno"
@@ -195,49 +213,46 @@ class CreaDocumentiModal(ui.Modal, title="🪪 ┃ ʀᴇɢɪsᴛʀᴏ ᴀɴᴀɢ
         user_id = str(interaction.user.id)
 
         try:
-            # 1. Verifica se l'utente possiede già una scheda anagrafica
             existing = supabase.table("documents").select("discord_id").eq("discord_id", user_id).execute()
 
             if existing.data:
-                # Se esiste già, aggiorniamo i dati anagrafici senza toccare il photo_url esistente
                 supabase.table("documents").update({
-                    "name": nome_val,
-                    "surname": cognome_val,
-                    "birth_date": data_val,
-                    "birth_place": luogo_val,
+                    "name": self.nome,
+                    "surname": self.cognome,
+                    "birth_date": self.data_nascita,
+                    "birth_place": self.luogo_nascita,
                     "eye_color": occhi_val,
                     "hair_color": capelli_val,
                     "distinct_marks": segni_val
                 }).eq("discord_id", user_id).execute()
 
                 await interaction.response.send_message(
-                    "🔄 **ᴅᴀᴛɪ ᴀɴᴀɢʀᴀꜰɪᴄɪ ᴀɢɢɪᴏʀɴᴀᴛɪ ᴄᴏɴ sᴜᴄᴄᴇssᴏ!**\n"
+                    "🔄 **ᴅᴀᴛɪ ᴀɴᴀɢʀᴀꜰɪᴄɪ ᴀɢɢɪᴏʀɴᴀᴛɪ ᴄᴏɴ sᴜᴄᴄᴇss!**\n"
                     "Puoi procedere a caricare o aggiornare la foto con `/carica_foto_documento`.",
                     ephemeral=True
                 )
             else:
-                # Se non esiste, creiamo la nuova riga su Supabase generando identificativi temporanei per cf e doc_number
                 cf_temporaneo = f"EVREN-{user_id[-6:]}"
                 doc_numero = f"DOC-{user_id[-5:]}"
 
                 data = {
                     "discord_id": user_id,
-                    "name": nome_val,
-                    "surname": cognome_val,
-                    "birth_date": data_val,
-                    "birth_place": luogo_val,
+                    "name": self.nome,
+                    "surname": self.cognome,
+                    "birth_date": self.data_nascita,
+                    "birth_place": self.luogo_nascita,
                     "eye_color": occhi_val,
                     "hair_color": capelli_val,
                     "distinct_marks": segni_val,
                     "cf": cf_temporaneo,
                     "doc_number": doc_numero,
-                    "photo_url": None  # Viene lasciato vuoto per essere riempito dopo
+                    "photo_url": None
                 }
 
                 supabase.table("documents").insert(data).execute()
 
                 await interaction.response.send_message(
-                    "✅ **ᴅᴀᴛɪ ᴀɴᴀɢʀᴀꜰɪᴄɪ sᴀʟᴠᴀᴛɪ ᴄᴏɴ sᴜᴄᴄᴇssᴏ!**\n"
+                    "✅ **ᴅᴀᴛɪ ᴀɴᴀɢʀᴀꜰɪᴄɪ sᴀʟᴠᴀᴛɪ ᴄᴏɴ sᴜᴄᴄᴇss!**\n"
                     "Ora utilizza il comando `/carica_foto_documento` allegando la tua foto per completare la carta d'identità.",
                     ephemeral=True
                 )
@@ -247,7 +262,6 @@ class CreaDocumentiModal(ui.Modal, title="🪪 ┃ ʀᴇɢɪsᴛʀᴏ ᴀɴᴀɢ
                 f"❌ Si è verificato un errore durante il salvataggio dei dati: {e}",
                 ephemeral=True
             )
-
 
 # --- VIEW CON BOTTONI REINDIRIZZAMENTO (LINK) ---
 
@@ -2874,21 +2888,106 @@ async def mie_fatture(interaction: discord.Interaction):
 # =======================================================
 #  VIEW PERSISTENTE PER IL PANNELLO ANAGRAFE
 # =======================================================
-class PannelloAnagrafeView(ui.View):
+# --- PRIMO MODULO: DATI ANAGISTRICI ---
+class CreaDocumentiStep1Modal(ui.Modal, title="🪪 ┃ ʀᴇɢɪsᴛʀᴏ (1/2: Anagrafica)"):
+    def __init__(self):
+        super().__init__()
 
-  def __init__(self):
-    super().__init__(timeout=None)  # timeout=None rende la view permanente
+        self.nome = ui.TextInput(label="ɴᴏᴍᴇ", placeholder="Es. Mario", required=True, max_length=50)
+        self.cognome = ui.TextInput(label="ᴄᴏɢɴᴏᴍᴇ", placeholder="Es. Rossi", required=True, max_length=50)
+        self.data_nascita = ui.TextInput(label="ᴅᴀᴛᴀ ᴅɪ ɴᴀsᴄɪᴛᴀ", placeholder="Es. 15/05/1998", required=True, max_length=20)
+        self.luogo_nascita = ui.TextInput(label="ʟᴜᴏɢᴏ ᴅɪ ɴᴀsᴄɪᴛᴀ", placeholder="Es. Los Angeles", required=True, max_length=50)
 
-  @ui.button(
-      label="Compila Anagrafica",
-      style=discord.ButtonStyle.green,
-      emoji="🪪",
-      custom_id="anagrafe_apri_modal",
-  )
-  async def apri_modal(
-      self, interaction: discord.Interaction, button: ui.Button
-  ):
-    await interaction.response.send_modal(CreaDocumentiModal())
+        self.add_item(self.nome)
+        self.add_item(self.cognome)
+        self.add_item(self.data_nascita)
+        self.add_item(self.luogo_nascita)
+
+    async def on_submit(self, interaction: discord.Interaction):
+        # Salva temporaneamente i dati del primo step
+        nome_val = self.nome.value.strip()
+        cognome_val = self.cognome.value.strip()
+        data_val = self.data_nascita.value.strip()
+        luogo_val = self.luogo_nascita.value.strip()
+
+        # Apre automaticamente il secondo modulo passando i dati raccolti
+        await interaction.response.send_modal(CreaDocumentiStep2Modal(nome_val, cognome_val, data_val, luogo_val))
+
+
+# --- SECONDO MODULO: DETTAGLI FISICI E SALVATAGGIO FINALE ---
+class CreaDocumentiStep2Modal(ui.Modal, title="🪪 ┃ ʀᴇɢɪsᴛʀᴏ (2/2: Dati Fisici)"):
+    def __init__(self, nome, cognome, data_nascita, luogo_nascita):
+        super().__init__()
+        self.nome = nome
+        self.cognome = cognome
+        self.data_nascita = data_nascita
+        self.luogo_nascita = luogo_nascita
+
+        self.colore_occhi = ui.TextInput(label="ᴄᴏʟᴏʀᴇ ᴏᴄᴄʜɪ", placeholder="Es. Marroni / Verdi", required=True, max_length=30)
+        self.colore_capelli = ui.TextInput(label="ᴄᴏʟᴏʀᴇ ᴄᴀᴘᴇʟʟɪ", placeholder="Es. Castani / Neri", required=True, max_length=30)
+        self.segni_particolari = ui.TextInput(label="sᴇɢɴɪ ᴘᴀʀᴛɪᴄᴏʟᴀʀɪ", placeholder="Es. Cicatrice o Nessuno", required=False, max_length=100)
+
+        self.add_item(self.colore_occhi)
+        self.add_item(self.colore_capelli)
+        self.add_item(self.segni_particolari)
+
+    async def on_submit(self, interaction: discord.Interaction):
+        occhi_val = self.colore_occhi.value.strip()
+        capelli_val = self.colore_capelli.value.strip()
+        segni_val = self.segni_particolari.value.strip() or "Nessuno"
+
+        user_id = str(interaction.user.id)
+
+        try:
+            existing = supabase.table("documents").select("discord_id").eq("discord_id", user_id).execute()
+
+            if existing.data:
+                supabase.table("documents").update({
+                    "name": self.nome,
+                    "surname": self.cognome,
+                    "birth_date": self.data_nascita,
+                    "birth_place": self.luogo_nascita,
+                    "eye_color": occhi_val,
+                    "hair_color": capelli_val,
+                    "distinct_marks": segni_val
+                }).eq("discord_id", user_id).execute()
+
+                await interaction.response.send_message(
+                    "🔄 **ᴅᴀᴛɪ ᴀɴᴀɢʀᴀꜰɪᴄɪ ᴀɢɢɪᴏʀɴᴀᴛɪ ᴄᴏɴ sᴜᴄᴄᴇss!**\n"
+                    "Puoi procedere a caricare o aggiornare la foto con `/carica_foto_documento`.",
+                    ephemeral=True
+                )
+            else:
+                cf_temporaneo = f"EVREN-{user_id[-6:]}"
+                doc_numero = f"DOC-{user_id[-5:]}"
+
+                data = {
+                    "discord_id": user_id,
+                    "name": self.nome,
+                    "surname": self.cognome,
+                    "birth_date": self.data_nascita,
+                    "birth_place": self.luogo_nascita,
+                    "eye_color": occhi_val,
+                    "hair_color": capelli_val,
+                    "distinct_marks": segni_val,
+                    "cf": cf_temporaneo,
+                    "doc_number": doc_numero,
+                    "photo_url": None
+                }
+
+                supabase.table("documents").insert(data).execute()
+
+                await interaction.response.send_message(
+                    "✅ **ᴅᴀᴛɪ ᴀɴᴀɢʀᴀꜰɪᴄɪ sᴀʟᴠᴀᴛɪ ᴄᴏɴ sᴜᴄᴄᴇss!**\n"
+                    "Ora utilizza il comando `/carica_foto_documento` allegando la tua foto per completare la carta d'identità.",
+                    ephemeral=True
+                )
+
+        except Exception as e:
+            await interaction.response.send_message(
+                f"❌ Si è verificato un errore durante il salvataggio dei dati: {e}",
+                ephemeral=True
+            )
 
 # =======================================================
 #  COMANDO /PANNELLO_DOCUMENTI (PER GLI ADMIN)
