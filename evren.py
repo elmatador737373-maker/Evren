@@ -1386,18 +1386,399 @@ async def portafoglio(interaction: discord.Interaction):
 
     await interaction.response.send_message(embed=embed, ephemeral=True)
 
+import discord
+from difflib import get_close_matches
+
+
+# --- MODALS PER I INPUT UTENTE ---
+class DepositCashModal(discord.ui.Modal, title="Deposita Denaro in Cassa"):
+
+  amount = discord.ui.TextInput(
+      label="Importo da depositare (€)",
+      placeholder="Es. 5000",
+      required=True,
+  )
+
+  def __init__(self, fazione: str):
+    super().__init__()
+    self.fazione = fazione
+
+  async def on_submit(self, interaction: discord.Interaction):
+    try:
+      valore = float(self.amount.value)
+      if valore <= 0:
+        raise ValueError()
+    except ValueError:
+      await interaction.response.send_message(
+          "❌ Inserisci un importo valido.", ephemeral=True
+      )
+      return
+
+    discord_id = str(interaction.user.id)
+
+    user_res = (
+        supabase.table("users")
+        .select("wallet")
+        .eq("discord_id", discord_id)
+        .execute()
+    )
+    if not user_res.data or user_res.data[0]["wallet"] < valore:
+      await interaction.response.send_message(
+          "❌ Non hai abbastanza denaro nel portafoglio.", ephemeral=True
+      )
+      return
+
+    nuovo_wallet = user_res.data[0]["wallet"] - valore
+    supabase.table("users").update({"wallet": nuovo_wallet}).eq(
+        "discord_id", discord_id
+    ).execute()
+
+    vault_res = (
+        supabase.table("faction_vaults")
+        .select("cash_balance")
+        .ilike("faction_name", self.fazione)
+        .execute()
+    )
+    vecchio_saldo = (
+        vault_res.data[0]["cash_balance"] if vault_res.data else 0.0
+    )
+    nuovo_saldo = vecchio_saldo + valore
+    supabase.table("faction_vaults").upsert(
+        {"faction_name": self.fazione, "cash_balance": nuovo_saldo},
+        on_conflict="faction_name",
+    ).execute()
+
+    await interaction.response.send_message(
+        f"✅ Hai depositato **€ {valore:,.2f}** nella cassa della fazione"
+        f" **{self.fazione}**.",
+        ephemeral=True,
+    )
+
+
+class WithdrawCashModal(discord.ui.Modal, title="Preleva Denaro dalla Cassa"):
+
+  amount = discord.ui.TextInput(
+      label="Importo da prelevare (€)",
+      placeholder="Es. 5000",
+      required=True,
+  )
+
+  def __init__(self, fazione: str):
+    super().__init__()
+    self.fazione = fazione
+
+  async def on_submit(self, interaction: discord.Interaction):
+    try:
+      valore = float(self.amount.value)
+      if valore <= 0:
+        raise ValueError()
+    except ValueError:
+      await interaction.response.send_message(
+          "❌ Inserisci un importo valido.", ephemeral=True
+      )
+      return
+
+    vault_res = (
+        supabase.table("faction_vaults")
+        .select("cash_balance")
+        .ilike("faction_name", self.fazione)
+        .execute()
+    )
+    if not vault_res.data or vault_res.data[0]["cash_balance"] < valore:
+      await interaction.response.send_message(
+          "❌ La fazione non ha abbastanza fondi in cassa.", ephemeral=True
+      )
+      return
+
+    vecchio_saldo = vault_res.data[0]["cash_balance"]
+    nuovo_saldo = vecchio_saldo - valore
+
+    supabase.table("faction_vaults").update(
+        {"cash_balance": nuovo_saldo}
+    ).ilike("faction_name", self.fazione).execute()
+
+    discord_id = str(interaction.user.id)
+    user_res = (
+        supabase.table("users")
+        .select("wallet")
+        .eq("discord_id", discord_id)
+        .execute()
+    )
+    wallet_attuale = user_res.data[0]["wallet"] if user_res.data else 0.0
+    supabase.table("users").update({"wallet": wallet_attuale + valore}).eq(
+        "discord_id", discord_id
+    ).execute()
+
+    await interaction.response.send_message(
+        f"✅ Hai prelevato **€ {valore:,.2f}** dalla cassa della fazione"
+        f" **{self.fazione}**.",
+        ephemeral=True,
+    )
+
+
+class DepositItemModal(discord.ui.Modal, title="Deposita Oggetto"):
+
+  item_name = discord.ui.TextInput(
+      label="Nome dell'oggetto", placeholder="Es. Pistola", required=True
+  )
+  quantity = discord.ui.TextInput(
+      label="Quantità", placeholder="1", required=True, default="1"
+  )
+
+  def __init__(self, fazione: str):
+    super().__init__()
+    self.fazione = fazione
+
+  async def on_submit(self, interaction: discord.Interaction):
+    q_str = self.quantity.value
+    input_item = self.item_name.value.strip()
+
+    try:
+      quantita = int(q_str)
+      if quantita <= 0:
+        raise ValueError()
+    except ValueError:
+      await interaction.response.send_message(
+          "❌ Quantità non valida.", ephemeral=True
+      )
+      return
+
+    discord_id = str(interaction.user.id)
+
+    user_items = (
+        supabase.table("inventory")
+        .select("*")
+        .eq("discord_id", discord_id)
+        .execute()
+    )
+    if not user_items.data:
+      await interaction.response.send_message(
+          "❌ Il tuo inventario è vuoto.", ephemeral=True
+      )
+      return
+
+    nomi_disponibili = [row["item_name"] for row in user_items.data]
+    simili = get_close_matches(
+        input_item, nomi_disponibili, n=1, cutoff=0.4
+    )
+
+    if not simili:
+      await interaction.response.send_message(
+          f"❌ Non possiedi alcun oggetto simile a **{input_item}**.",
+          ephemeral=True,
+      )
+      return
+
+    nome_effettivo = simili[0]
+    item_data = next(
+        r for r in user_items.data if r["item_name"].lower() == nome_effettivo.lower()
+    )
+
+    if item_data["quantity"] < quantita:
+      await interaction.response.send_message(
+          f"❌ Ne possiedi solo {item_data['quantity']}x di **{nome_effettivo}**.",
+          ephemeral=True,
+      )
+      return
+
+    nuova_q_utente = item_data["quantity"] - quantita
+    if nuova_q_utente <= 0:
+      supabase.table("inventory").delete().eq("id", item_data["id"]).execute()
+    else:
+      supabase.table("inventory").update({"quantity": nuova_q_utente}).eq(
+          "id", item_data["id"]
+      ).execute()
+
+    f_inv = (
+        supabase.table("faction_inventory")
+        .select("*")
+        .ilike("faction_name", self.fazione)
+        .ilike("item_name", nome_effettivo)
+        .execute()
+    )
+    if f_inv.data:
+      q_esistente = f_inv.data[0]["quantity"]
+      supabase.table("faction_inventory").update(
+          {"quantity": q_esistente + quantita}
+      ).eq("id", f_inv.data[0]["id"]).execute()
+    else:
+      supabase.table("faction_inventory").insert({
+          "faction_name": self.fazione,
+          "item_name": item_data["item_name"],
+          "category": item_data["category"],
+          "weight": item_data["weight"],
+          "quantity": quantita,
+      }).execute()
+
+    msg = f"✅ Hai depositato **{quantita}x {item_data['item_name']}**"
+    if input_item.lower() != nome_effettivo.lower():
+      msg += f" *(cercando '{input_item}', trovato '{nome_effettivo}')*"
+    await interaction.response.send_message(msg, ephemeral=True)
+
+
+class WithdrawItemModal(discord.ui.Modal, title="Preleva Oggetto"):
+
+  item_name = discord.ui.TextInput(
+      label="Nome dell'oggetto", placeholder="Es. Pistola", required=True
+  )
+  quantity = discord.ui.TextInput(
+      label="Quantità", placeholder="1", required=True, default="1"
+  )
+
+  def __init__(self, fazione: str):
+    super().__init__()
+    self.fazione = fazione
+
+  async def on_submit(self, interaction: discord.Interaction):
+    q_str = self.quantity.value
+    input_item = self.item_name.value.strip()
+
+    try:
+      quantita = int(q_str)
+      if quantita <= 0:
+        raise ValueError()
+    except ValueError:
+      await interaction.response.send_message(
+          "❌ Quantità non valida.", ephemeral=True
+      )
+      return
+
+    faction_items = (
+        supabase.table("faction_inventory")
+        .select("*")
+        .ilike("faction_name", self.fazione)
+        .execute()
+    )
+    if not faction_items.data:
+      await interaction.response.send_message(
+          "❌ Il deposito della fazione è vuoto.", ephemeral=True
+      )
+      return
+
+    nomi_disponibili = [row["item_name"] for row in faction_items.data]
+    simili = get_close_matches(
+        input_item, nomi_disponibili, n=1, cutoff=0.4
+    )
+
+    if not simili:
+      await interaction.response.send_message(
+          f"❌ Nessun oggetto simile a **{input_item}** nel deposito della"
+          " fazione.",
+          ephemeral=True,
+      )
+      return
+
+    nome_effettivo = simili[0]
+    f_item = next(
+        r for r in faction_items.data if r["item_name"].lower() == nome_effettivo.lower()
+    )
+
+    if f_item["quantity"] < quantita:
+      await interaction.response.send_message(
+          f"❌ La fazione possiede solo {f_item['quantity']}x di"
+          f" **{nome_effettivo}**.",
+          ephemeral=True,
+      )
+      return
+
+    nuova_q_fazione = f_item["quantity"] - quantita
+    if nuova_q_fazione <= 0:
+      supabase.table("faction_inventory").delete().eq(
+          "id", f_item["id"]
+      ).execute()
+    else:
+      supabase.table("faction_inventory").update(
+          {"quantity": nuova_q_fazione}
+      ).eq("id", f_item["id"]).execute()
+
+    discord_id = str(interaction.user.id)
+    u_inv = (
+        supabase.table("inventory")
+        .select("*")
+        .eq("discord_id", discord_id)
+        .ilike("item_name", nome_effettivo)
+        .execute()
+    )
+    if u_inv.data:
+      q_u_esistente = u_inv.data[0]["quantity"]
+      supabase.table("inventory").update(
+          {"quantity": q_u_esistente + quantita}
+      ).eq("id", u_inv.data[0]["id"]).execute()
+    else:
+      supabase.table("inventory").insert({
+          "discord_id": discord_id,
+          "item_name": f_item["item_name"],
+          "category": f_item["category"],
+          "weight": f_item["weight"],
+          "quantity": quantita,
+      }).execute()
+
+    msg = f"✅ Hai prelevato **{quantita}x {f_item['item_name']}**"
+    if input_item.lower() != nome_effettivo.lower():
+      msg += f" *(cercando '{input_item}', trovato '{nome_effettivo}')*"
+    await interaction.response.send_message(msg, ephemeral=True)
+
+
+class FactionVaultView(discord.ui.View):
+
+  def __init__(self, fazione: str):
+    super().__init__(timeout=None)
+    self.fazione = fazione
+
+  @discord.ui.button(
+      label="Deposita Soldi",
+      style=discord.ButtonStyle.green,
+      emoji="💰",
+      row=0,
+  )
+  async def deposit_cash(
+      self, interaction: discord.Interaction, button: discord.ui.Button
+  ):
+    await interaction.response.send_modal(DepositCashModal(self.fazione))
+
+  @discord.ui.button(
+      label="Preleva Soldi",
+      style=discord.ButtonStyle.red,
+      emoji="💸",
+      row=0,
+  )
+  async def withdraw_cash(
+      self, interaction: discord.Interaction, button: discord.ui.Button
+  ):
+    await interaction.response.send_modal(WithdrawCashModal(self.fazione))
+
+  @discord.ui.button(
+      label="Deposita Item",
+      style=discord.ButtonStyle.blurple,
+      emoji="📦",
+      row=1,
+  )
+  async def deposit_item(
+      self, interaction: discord.Interaction, button: discord.ui.Button
+  ):
+    await interaction.response.send_modal(DepositItemModal(self.fazione))
+
+  @discord.ui.button(
+      label="Preleva Item",
+      style=discord.ButtonStyle.blurple,
+      emoji="📤",
+      row=1,
+  )
+  async def withdraw_item(
+      self, interaction: discord.Interaction, button: discord.ui.Button
+  ):
+    await interaction.response.send_modal(WithdrawItemModal(self.fazione))
+
+
 @bot.tree.command(
     name="deposito_fazione",
-    description=(
-        "Accedi al deposito della tua fazione basato sul tuo ruolo."
-    ),
+    description="Accedi al deposito della tua fazione basato sul tuo ruolo.",
 )
 @app_commands.describe(fazione="Nome della fazione registrata")
 @app_commands.autocomplete(fazione=fazione_autocomplete)
 async def deposito_fazione(interaction: discord.Interaction, fazione: str):
   user = interaction.user
 
-  # 1. Cerca il ruolo associato alla fazione (usiamo ilike per evitare problemi di maiuscole/minuscole)
   res = (
       supabase.table("faction_roles")
       .select("role_id")
@@ -1414,7 +1795,6 @@ async def deposito_fazione(interaction: discord.Interaction, fazione: str):
 
   role_id = int(res.data[0]["role_id"])
 
-  # 2. Controlla se l'utente possiede il ruolo
   if not any(r.id == role_id for r in user.roles):
     await interaction.response.send_message(
         "❌ Non possiedi il ruolo autorizzato per accedere a questo deposito.",
@@ -1422,24 +1802,35 @@ async def deposito_fazione(interaction: discord.Interaction, fazione: str):
     )
     return
 
-  # 3. Preleva i dati del deposito in modo sicuro
   res_vault = (
       supabase.table("faction_vaults")
-      .select("cash_balance, items_list")
+      .select("cash_balance")
+      .ilike("faction_name", fazione)
+      .execute()
+  )
+  saldo_soldi = (
+      res_vault.data[0]["cash_balance"]
+      if res_vault.data and res_vault.data[0].get("cash_balance") is not None
+      else 0.0
+  )
+
+  res_inv = (
+      supabase.table("faction_inventory")
+      .select("item_name, quantity, category")
       .ilike("faction_name", fazione)
       .execute()
   )
 
-  if res_vault.data:
-    saldo_soldi = res_vault.data[0].get("cash_balance", 0) or 0
-    lista_item = (
-        res_vault.data[0].get("items_list") or "Deposito vuoto."
+  if res_inv.data:
+    lista_item = "\n".join(
+        [
+            f"- {row['item_name']} (Cat: {row['category']}) x{row['quantity']}"
+            for row in res_inv.data
+        ]
     )
   else:
-    saldo_soldi = 0
     lista_item = "Deposito vuoto."
 
-  # 4. Crea l'embed e invia la risposta
   embed = discord.Embed(
       title=f"🏛️ Deposito Fazione: {fazione}",
       description=(
