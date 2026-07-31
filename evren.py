@@ -31,7 +31,8 @@ RUOLO_POLIZIA_ID = 1359569600198611104         # Permesso per CAD Polizia e Port
 RUOLO_IMMOBILIARE_ID = 1260308281302454533     # Permesso per registrare le case/immobili
 RUOLO_RICHIESTO_ID = 1521209331423383702
 RUOLO_FBI_ID = None
-FFMPEG_PATH = imageio_ffmpeg.get_ffmpeg_exe()
+# Mettilo in cima al file, prima delle funzioni audio
+FFMPEG_PATH = None  # Lasciandolo a None, discord.py cercherà ffmpeg automaticamente nel PATH del container
 
 supabase: Client = create_client(SUPABASE_URL, SUPABASE_KEY)
 
