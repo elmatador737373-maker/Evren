@@ -222,6 +222,86 @@ class CreaDocumentiStep2Modal(ui.Modal, title="🪪 ┃ ʀᴇɢɪsᴛʀᴏ (2/2:
             )
 
 
+# ==========================================
+# ⚙️ CONFIGURAZIONE GLOBALE
+# ==========================================
+PANIC_CHANNEL_ID = 1519418659821584384  # ID del canale dove arriva l'allarme
+ROLE_POLIZIA_ID = 1359569600198611104  # ID del ruolo Polizia autorizzato
+ROLE_FBI_ID = 1531970242329317520  # ID del ruolo FBI autorizzato
+
+# Lista dei ruoli/tag da menzionare nell'allarme (puoi ripeterli se vuoi taggare più volte)
+ROLES_TO_TAG = [
+    "<@&1363487988570521670>",
+    "<@&1259234623230181396>",
+]
+
+import asyncio
+
+# ==========================================
+
+
+# ==========================================
+# 🚨 COMANDO SLASH: /panicbutton
+# ==========================================
+@bot.tree.command(
+    name="panicbutton",
+    description="[EMERGENZA] Attiva il Panic Button d'emergenza sulla radio con notifiche ripetute.",
+)
+async def panicbutton(interaction: discord.Interaction):
+  user_roles = [role.id for role in interaction.user.roles]
+
+  # Controllo che l'utente possieda almeno uno dei ruoli autorizzati
+  if ROLE_POLIZIA_ID not in user_roles and ROLE_FBI_ID not in user_roles:
+    await interaction.response.send_message(
+        "❌ Non sei autorizzato a utilizzare il Panic Button!", ephemeral=True
+    )
+    return
+
+  channel = bot.get_channel(PANIC_CHANNEL_ID)
+  if not channel:
+    await interaction.response.send_message(
+        "❌ Canale Panic Button non trovato o non configurato correttamente.",
+        ephemeral=True,
+    )
+    return
+
+  # Risposta pubblica immediata in chat con l'azione richiesta
+  public_response = (
+      f"* L'agente {interaction.user.mention} preme il panic button sulla radio,"
+      " inviando una richiesta di soccorso immediata a tutte le unità *"
+  )
+  await interaction.response.send_message(content=public_response)
+
+  # Unisce tutti i tag configurati
+  tags_string = " ".join(ROLES_TO_TAG)
+
+  # Funzione interna asincrona per inviare i messaggi ripetuti con intervallo di 4 secondi
+  async def send_repeated_alerts():
+    for i in range(1, 4):  # Invia altri 3 messaggi di richiamo (totale 4 ondate)
+      await asyncio.sleep(4)
+      repeat_msg = (
+          f"🚨 **DISPATCH: SOS EMERGENZA (RICHIAMO #{i})** 🚨\n"
+          f"> L'operatore **{interaction.user.mention}** *richiede assistenza urgente, segnale ancora attivo!*\n\n"
+          f"📍 **Posizione in tempo reale di:** {interaction.user.mention}\n\n"
+          f"{tags_string}"
+      )
+      try:
+        await channel.send(content=repeat_msg)
+      except Exception as e:
+        print(f"Errore nell'invio del richiamo Panic Button: {e}")
+
+  # Avvia il loop in background senza bloccare il bot
+  bot.loop.create_task(send_repeated_alerts())
+
+  # Primo messaggio di allarme immediato nel canale dedicato
+  panic_msg = (
+      f"🚨 **DISPATCH: SOS EMERGENZA CRITICA!** 🚨\n"
+      f"> L'operatore **{interaction.user.mention}** *preme il panic button sulla radio, inviando una richiesta di soccorso immediata a tutte le unità*\n\n"
+      f"📍 **Posizione in tempo reale di:** {interaction.user.mention}\n\n"
+      f"{tags_string}"
+  )
+  await channel.send(content=panic_msg)
+
 # =======================================================
 #  VIEW CON IL PULSANTE PER APRIRE IL SECONDO MODULO
 # =======================================================
