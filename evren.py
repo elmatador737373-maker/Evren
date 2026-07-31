@@ -1893,7 +1893,7 @@ from discord import app_commands
 # fin da ora con ID placeholder ed attivati in seguito semplicemente sostituendo i numeri.
 SERVER_CONFIGS = {
     # 🏢 SERVER 1 (Attivo)
-    1233353915559313478:
+    1233353915559313478: {
         "fines": 1519609832372437034,
         "arrests": 1520010488212361337,
         "reports": 1520010488212361337,
@@ -1911,15 +1911,15 @@ SERVER_CONFIGS = {
         "role_tag": "<@&1363487988570521670>",  # Tag specifico Server 2
     },
     # 🏢 SERVER 3 (Non ancora attivo / Futuro - Sostituisci gli ID quando sarà pronto)
-#    333333333333333333: {
-#        "fines": 333333333333333331,
- #       "arrests": 333333333333333332,
- #       "reports": 333333333333333333,
-  #      "seized_vehicles": 333333333333333334,
-   #     "seized_items": 333333333333333335,
-  #      "role_tag": "<@&333333333333333336>",  # Tag specifico Server 3 futuro
-#    },
-#}
+    # 333333333333333333: {
+    #     "fines": 333333333333333331,
+    #     "arrests": 333333333333333332,
+    #     "reports": 333333333333333333,
+    #     "seized_vehicles": 333333333333333334,
+    #     "seized_items": 333333333333333335,
+    #     "role_tag": "<@&333333333333333336>",  # Tag specifico Server 3 futuro
+    # },
+}
 
 
 async def send_standardized_log(
