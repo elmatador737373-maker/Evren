@@ -1194,40 +1194,78 @@ async def portafoglio(interaction: discord.Interaction):
 
     await interaction.response.send_message(embed=embed, ephemeral=True)
 
-@bot.tree.command(name="deposito_fazione", description="Accedi al deposito della tua fazione basato sul tuo ruolo.")
+@bot.tree.command(
+    name="deposito_fazione",
+    description=(
+        "Accedi al deposito della tua fazione basato sul tuo ruolo."
+    ),
+)
 @app_commands.describe(fazione="Nome della fazione registrata")
 @app_commands.autocomplete(fazione=fazione_autocomplete)
 async def deposito_fazione(interaction: discord.Interaction, fazione: str):
-    user = interaction.user
-    
-    res = supabase.table("faction_roles").select("role_id").eq("faction_name", fazione).execute()
-    
-    if not res.data:
-        await interaction.response.send_message(f"❌ La fazione **{fazione}** non risulta registrata nel sistema.", ephemeral=True)
-        return
+  user = interaction.user
 
-    role_id = int(res.data[0]["role_id"])
-    
-    if not any(r.id == role_id for r in user.roles):
-        await interaction.response.send_message(f"❌ Non possiedi il ruolo autorizzato per accedere a questo deposito.", ephemeral=True)
-        return
+  # 1. Cerca il ruolo associato alla fazione (usiamo ilike per evitare problemi di maiuscole/minuscole)
+  res = (
+      supabase.table("faction_roles")
+      .select("role_id")
+      .ilike("faction_name", fazione)
+      .execute()
+  )
 
-    res_vault = supabase.table("faction_vaults").select("cash_balance, items_list").eq("faction_name", fazione).execute()
-    saldo_soldi = res_vault.data[0].get("cash_balance", 0) if res_vault.data else 0
-    lista_item = res_vault.data[0].get("items_list", "Deposito vuoto.") if res_vault.data else "Deposito vuoto."
-
-    embed = discord.Embed(
-        title=f"🏛️ Deposito Fazione: {fazione}",
-        description="Gestisci le risorse della fazione tramite i pulsanti sottostanti.",
-        color=discord.Color.gold()
+  if not res.data:
+    await interaction.response.send_message(
+        f"❌ La fazione **{fazione}** non risulta registrata nel sistema.",
+        ephemeral=True,
     )
-    embed.add_field(name="💰 Saldo Cassa", value=f"**€ {saldo_soldi:,.2f}**", inline=False)
-    embed.add_field(name="📦 Inventario Item", value=f"```{lista_item}```", inline=False)
-    embed.set_footer(text="Evren City OS • Gestione Risorse Fazione")
+    return
 
-    view = FactionVaultView(fazione)
-    await interaction.response.send_message(embed=embed, view=view, ephemeral=True)
-    
+  role_id = int(res.data[0]["role_id"])
+
+  # 2. Controlla se l'utente possiede il ruolo
+  if not any(r.id == role_id for r in user.roles):
+    await interaction.response.send_message(
+        "❌ Non possiedi il ruolo autorizzato per accedere a questo deposito.",
+        ephemeral=True,
+    )
+    return
+
+  # 3. Preleva i dati del deposito in modo sicuro
+  res_vault = (
+      supabase.table("faction_vaults")
+      .select("cash_balance, items_list")
+      .ilike("faction_name", fazione)
+      .execute()
+  )
+
+  if res_vault.data:
+    saldo_soldi = res_vault.data[0].get("cash_balance", 0) or 0
+    lista_item = (
+        res_vault.data[0].get("items_list") or "Deposito vuoto."
+    )
+  else:
+    saldo_soldi = 0
+    lista_item = "Deposito vuoto."
+
+  # 4. Crea l'embed e invia la risposta
+  embed = discord.Embed(
+      title=f"🏛️ Deposito Fazione: {fazione}",
+      description=(
+          "Gestisci le risorse della fazione tramite i pulsanti sottostanti."
+      ),
+      color=discord.Color.gold(),
+  )
+  embed.add_field(
+      name="💰 Saldo Cassa", value=f"**€ {saldo_soldi:,.2f}**", inline=False
+  )
+  embed.add_field(
+      name="📦 Inventario Item", value=f"```{lista_item}```", inline=False
+  )
+  embed.set_footer(text="Evren City OS • Gestione Risorse Fazione")
+
+  view = FactionVaultView(fazione)
+  await interaction.response.send_message(embed=embed, view=view, ephemeral=True)
+
 @bot.tree.command(name="crea_item", description="[STAFF] Crea un nuovo oggetto con meccaniche specifiche.")
 @app_commands.choices(categoria=[
     app_commands.Choice(name="⚔️ Arma", value="arma"),
@@ -2468,7 +2506,7 @@ async def mostra_documento(interaction: discord.Interaction):
 @bot.tree.command(name="registra_veicolo", description="[MOTORIZZAZIONE] Registra un veicolo con targa.")
 async def registra_veicolo(interaction: discord.Interaction, proprietario: discord.Member, modello: str, targa: str):
     if RUOLO_MOTORIZZAZIONE_ID and interaction.guild.get_role(RUOLO_MOTORIZZAZIONE_ID) not in interaction.user.roles:
-        await interaction.response.send_message("❌ Riservato alla Motorizzazione!", ephemeral=)
+        await interaction.response.send_message("❌ Riservato alla Motorizzazione!")
         return
 
     supabase.table("registered_vehicles").insert({"discord_id": str(proprietario.id), "model": modello, "plate": targa.upper()}).execute()
@@ -2479,7 +2517,7 @@ async def registra_veicolo(interaction: discord.Interaction, proprietario: disco
 @bot.tree.command(name="registra_patente", description="[MOTORIZZAZIONE] Rilascia una patente di guida.")
 async def registra_patente(interaction: discord.Interaction, cittadino: discord.Member, tipo_patente: str):
     if RUOLO_MOTORIZZAZIONE_ID and interaction.guild.get_role(RUOLO_MOTORIZZAZIONE_ID) not in interaction.user.roles:
-        await interaction.response.send_message("❌ Riservato alla Motorizzazione!", ephemeral=)
+        await interaction.response.send_message("❌ Riservato alla Motorizzazione!")
         return
 
     supabase.table("driver_licenses").insert({"discord_id": str(cittadino.id), "license_type": tipo_patente.upper(), "status": "Attiva"}).execute()
@@ -2490,7 +2528,7 @@ async def registra_patente(interaction: discord.Interaction, cittadino: discord.
 @bot.tree.command(name="registra_arma", description="[ARMERIA] Registra una matricola d'arma a un cittadino.")
 async def registra_arma(interaction: discord.Interaction, acquirente: discord.Member, matricola: str, modello: str):
     if RUOLO_ARMERIA_ID and interaction.guild.get_role(RUOLO_ARMERIA_ID) not in interaction.user.roles:
-        await interaction.response.send_message("❌ Riservato all'Armeria!", ephemeral=)
+        await interaction.response.send_message("❌ Riservato all'Armeria!")
         return
 
     supabase.table("registered_weapons").insert({"discord_id": str(acquirente.id), "model": modello, "serial_number": matricola}).execute()
@@ -2501,7 +2539,7 @@ async def registra_arma(interaction: discord.Interaction, acquirente: discord.Me
 @bot.tree.command(name="registra_porto_darmi", description="[POLIZIA] Rilascia un porto d'armi.")
 async def registra_porto_darmi(interaction: discord.Interaction, cittadino: discord.Member, tipo_licenza: str):
     if RUOLO_POLIZIA_ID and interaction.guild.get_role(RUOLO_POLIZIA_ID) not in interaction.user.roles:
-        await interaction.response.send_message("❌ Riservato alla Polizia!", ephemeral=True)
+        await interaction.response.send_message("❌ Riservato alla Polizia!")
         return
 
     supabase.table("gun_licenses").insert({"discord_id": str(cittadino.id), "license_type": tipo_licenza, "status": "Attivo"}).execute()
@@ -2512,12 +2550,12 @@ async def registra_porto_darmi(interaction: discord.Interaction, cittadino: disc
 @bot.tree.command(name="registra_casa", description="[IMMOBILIARE] Registra un immobile.")
 async def registra_casa(interaction: discord.Interaction, proprietario: discord.Member, indirizzo: str, tipologia: str):
     if RUOLO_IMMOBILIARE_ID and interaction.guild.get_role(RUOLO_IMMOBILIARE_ID) not in interaction.user.roles:
-        await interaction.response.send_message("❌ Riservato all'Agenzia Immobiliare!", ephemeral=)
+        await interaction.response.send_message("❌ Riservato all'Agenzia Immobiliare!")
         return
 
     supabase.table("registered_properties").insert({"discord_id": str(proprietario.id), "address": indirizzo, "property_type": tipologia}).execute()
     embed = discord.Embed(title="🏠 Immobile Registrato", description=f"• Proprietario: {proprietario.mention}\n• Indirizzo: `{indirizzo}`\n• Categoria: `{tipologia}`", color=discord.Color.gold())
-    await interaction.response.send_message(embed=embed, ephemeral=)
+    await interaction.response.send_message(embed=embed)
 
 
 # --- EVENTO READY E AVVIO ---
