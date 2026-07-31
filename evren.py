@@ -67,7 +67,7 @@ intents.guild_scheduled_events = True# Gestione degli eventi programmati del ser
 intents.auto_moderation_configuration = True # Configurazione AutoMod
 intents.auto_moderation_execution = True     # Esecuzione/Trigger AutoMod
 intents.polls = True                 # Gestione dei sondaggi nativi di Discord
-Bot = commands.Bot(command_prefix="!", intents=intents)
+bot = commands.Bot(command_prefix="!", intents=intents)
 
 # 1. Definiamo la funzione per il setup hook
 async def my_setup_hook():
@@ -83,10 +83,10 @@ async def my_setup_hook():
         print(f"❌ [WAVELINK] Errore di connessione nel setup_hook: {e}")
 
 # 2. Assegniamo la funzione al setup_hook del bot esistente
-Bot.setup_hook = my_setup_hook
+bot.setup_hook = my_setup_hook
 
 # 3. Evento separato per confermare quando il nodo è pronto nello stato CONNECTED
-@Bot.event
+@bot.event
 async def on_wavelink_node_ready(payload: wavelink.NodeReadyEventPayload) -> None:
     print(f"🎉 Wavelink Node pronto e connesso! URI: {payload.node.uri} | Session ID: {payload.session_id}")
 
