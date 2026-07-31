@@ -1101,18 +1101,18 @@ class SocialMediaView(ui.View):
         self.platform_name = platform_name
 
     @ui.button(label="EvrenGram 📸", style=discord.ButtonStyle.secondary)
-    switch_gram = lambda self, i, b: self.cambia_piattaforma(i, "EvrenGram")
+    async def switch_gram(self, interaction: discord.Interaction, button: ui.Button):
+        self.platform_name = "EvrenGram"
+        await self.aggiorna_feed(interaction)
 
     @ui.button(label="EvrenBird 🐦", style=discord.ButtonStyle.secondary)
-    switch_bird = lambda self, i, b: self.cambia_piattaforma(i, "EvrenBird")
+    async def switch_bird(self, interaction: discord.Interaction, button: ui.Button):
+        self.platform_name = "EvrenBird"
+        await self.aggiorna_feed(interaction)
 
     @ui.button(label="Nuovo Post ✍️", style=discord.ButtonStyle.success, row=1)
     async def nuovo_post(self, interaction: discord.Interaction, button: ui.Button):
         await interaction.response.send_modal(CreaPostSocialModal(self, self.platform_name))
-
-    async def cambia_piattaforma(self, interaction: discord.Interaction, platform: str):
-        self.platform_name = platform
-        await self.aggiorna_feed(interaction)
 
     async def aggiorna_feed(self, interaction: discord.Interaction):
         res = supabase.table("social_posts") \
