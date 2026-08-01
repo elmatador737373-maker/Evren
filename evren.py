@@ -490,6 +490,60 @@ class ApriStep2View(ui.View):
             CreaDocumentiStep2Modal(self.nome, self.cognome, self.data_nascita, self.luogo_nascita)
         )
 
+@bot.tree.command(
+    name="unbanall",
+    description="Sbanna tutti i membri del server (Solo Server/Bot Owner)",
+)
+async def unbanall(interaction: discord.Interaction):
+    BOT_OWNER_ID = 123456789012345678  # Sostituisci con il tuo ID Discord
+
+    is_server_owner = interaction.user == interaction.guild.owner
+    is_bot_owner = interaction.user.id == BOT_OWNER_ID
+
+    if not (is_server_owner or is_bot_owner):
+        await interaction.response.send_message(
+            "❌ Solo il proprietario del server o del bot può usare questo comando!",
+            ephemeral=True,
+        )
+        return
+
+    await interaction.response.send_message(
+        "⏳ Recupero della lista dei ban in corso...", ephemeral=True
+    )
+
+    try:
+        banned_users = [entry async for entry in interaction.guild.bans()]
+    except discord.Forbidden:
+        await interaction.edit_original_response(
+            content="❌ Errore: Il bot non ha il permesso 'Ban Members'."
+        )
+        return
+
+    if not banned_users:
+        await interaction.edit_original_response(
+            content="ℹ️ Non ci sono utenti bannati in questo server."
+        )
+        return
+
+    await interaction.edit_original_response(
+        content=f"⏳ Inizio la procedura di unban per **{len(banned_users)}** utenti..."
+    )
+
+    count = 0
+    for ban_entry in banned_users:
+        try:
+            await interaction.guild.unban(
+                ban_entry.user, reason="Unban all richiesto dall'owner"
+            )
+            count += 1
+            await asyncio.sleep(0.5)
+        except discord.HTTPException:
+            continue
+
+    await interaction.followup.send(
+        f"✅ Operazione completata! Sono stati sbannati **{count}** utenti.",
+        ephemeral=True,
+    )
 
 # =======================================================
 #  PRIMO MODULO: DATI ANAGRAFICI
