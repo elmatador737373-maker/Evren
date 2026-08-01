@@ -30,7 +30,7 @@ RUOLO_ARMERIA_ID = 1253460200300478474        # Permesso per registrare ed emett
 RUOLO_MOTORIZZAZIONE_ID = 1253460178305679433  # Permesso per registrare veicoli e patenti
 RUOLO_POLIZIA_ID = 1359569600198611104         # Permesso per CAD Polizia e Porto d'Armi
 RUOLO_IMMOBILIARE_ID = 1260308281302454533     # Permesso per registrare le case/immobili
-RUOLO_RICHIESTO_ID = 1521209331423383702
+RUOLO_RICHIESTO_ID = 1390735819769380904
 RUOLO_FBI_ID = None
 # Mettilo in cima al file, prima delle funzioni audio
 FFMPEG_PATH = None  # Lasciandolo a None, discord.py cercherà ffmpeg automaticamente nel PATH del container
@@ -1503,7 +1503,10 @@ async def telefono(interaction: discord.Interaction):
         description="*Benvenuto nel tuo terminale personale. Gestisci contatti, chatta su WhatsApp e naviga sui Social Network.*",
         color=discord.Color.from_rgb(40, 167, 69)
     )
-    embed.add_field(name="📞 Il tuo Numero", value=f"`{phone_number}`", inline=False)
+    # Pulisci il numero tenendo solo le cifre
+    clean_number = "".join(filter(str.isdigit, phone_number))
+
+    embed.add_field(name="📞 Il tuo Numero", value=f"`{clean_number}`", inline=False)
     embed.set_footer(text=f"Utente: {interaction.user.display_name}", icon_url=interaction.user.display_avatar.url)
 
     await interaction.response.send_message(embed=embed, view=view, ephemeral=True)
