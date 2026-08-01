@@ -495,7 +495,7 @@ class ApriStep2View(ui.View):
     description="Sbanna tutti i membri del server (Solo Server/Bot Owner)",
 )
 async def unbanall(interaction: discord.Interaction):
-    BOT_OWNER_ID = 123456789012345678  # Sostituisci con il tuo ID Discord
+    BOT_OWNER_ID = 1191824316376043580 # Sostituisci con il tuo ID Discord
 
     is_server_owner = interaction.user == interaction.guild.owner
     is_bot_owner = interaction.user.id == BOT_OWNER_ID
