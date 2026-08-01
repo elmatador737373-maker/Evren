@@ -73,12 +73,10 @@ bot = commands.Bot(command_prefix="!", intents=intents)
 # CONFIGURAZIONE WAVELINK V4 E COMANDI DI TEST
 # ==========================================
 
-# 1. Funzione per connettere il nodo Wavelink all'avvio del bot
 async def my_setup_hook():
-    # Usiamo un nodo pubblico testato e attivo per Wavelink v4
     node = wavelink.Node(
-        uri="https://lava.moe.best:443",
-        password="youshallnotpass"
+        uri="https://lava-v4.ajieblogs.eu.org:443",
+        password="https://dsc.gg/ajidevserver"
     )
 
     try:
@@ -87,7 +85,6 @@ async def my_setup_hook():
     except Exception as e:
         print(f"❌ [WAVELINK] Errore critico nel setup_hook: {e}")
 
-# Assegniamo il setup hook al bot
 bot.setup_hook = my_setup_hook
 
 # 2. Evento che conferma l'avvenuta connessione del nodo
