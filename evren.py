@@ -187,7 +187,7 @@ import asyncio
 ID_RUOLO_AUTORIZZATO = 1253460150141059198  # ID del ruolo che può usare il comando
 ID_CANALE_LOGS = 1255868935790657587        # ID del canale dei log
 
-@bot.command(name="delete")
+@bot.command(name="elimina")
 async def delete_message(ctx):
     # 1. Controllo se l'utente possiede il ruolo autorizzato
     ruolo = ctx.guild.get_role(ID_RUOLO_AUTORIZZATO)
