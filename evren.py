@@ -393,7 +393,7 @@ async def ruoli(
     azione="Scegli se aggiungere o rimuovere il ruolo",
     ruolo_da_gestire="Il ruolo da assegnare o rimuovere",
     ruolo_target="Il ruolo bersaglio (oppure seleziona Everyone per tutti)",
-    conferma="Scrivi 'CONFERMA' per procedere con l'operazione di massa"
+    conferma="Scrivi 'SI' per procedere con l'operazione di massa"
 )
 @app_commands.choices(azione=[
     app_commands.Choice(name="Aggiungi", value="add"),
@@ -410,9 +410,9 @@ async def massrole(
     ID_CANALE_LOG_AGGIUNTI = 1478146946198667505  
     ID_CANALE_LOG_RIMOSSI = 1478146969464471762   
 
-    if conferma.upper() != "CONFERMA":
+    if conferma.upper() != "SI":
         await interaction.response.send_message(
-            "❌ Operazione annullata. Devi digitare esattamente `CONFERMA` nel campo apposito per avviare il massrole.", 
+            "❌ Operazione annullata. Devi digitare esattamente `SI` nel campo apposito per avviare il massrole.", 
             ephemeral=False
         )
         return
