@@ -298,6 +298,8 @@ async def avvia_chiamata_vocale(interaction: discord.Interaction, numero_destina
         f"📞 Squillo in corso verso **{destinatario.display_name}**...\n🔊 **Entra nel canale vocale per attendere:** {voice_link}", 
         ephemeral=True
     )
+import asyncio
+import time
 
 @bot.tree.command(name="ruoli", description="Aggiungi o rimuovi un ruolo a un utente")
 @app_commands.describe(
@@ -315,60 +317,76 @@ async def ruoli(
     utente: discord.Member, 
     ruolo: discord.Role
 ):
-    ID_RUOLO_AUTORIZZATO = 1253460150141059198  # Sostituisci con l'ID del ruolo autorizzato
-    ID_CANALE_LOG_AGGIUNTI = 1478146946198667505  # Sostituisci con l'ID del canale log per i ruoli aggiunti
-    ID_CANALE_LOG_RIMOSSI = 1478146969464471762   # Sostituisci con l'ID del canale log per i ruoli rimossi
+    ID_RUOLO_AUTORIZZATO = 1253460150141059198  
+    ID_CANALE_LOG_AGGIUNTI = 1478146946198667505  
+    ID_CANALE_LOG_RIMOSSI = 1478146969464471762   
     
     if not any(r.id == ID_RUOLO_AUTORIZZATO for r in interaction.user.roles) and interaction.user != interaction.guild.owner:
         await interaction.response.send_message(
             "❌ Non hai il permesso necessario per utilizzare questo comando.", 
-            ephemeral=True
+            ephemeral=False
         )
         return
 
     if interaction.user != interaction.guild.owner and ruolo >= interaction.user.top_role:
         await interaction.response.send_message(
             "❌ Non puoi gestire questo ruolo perché è superiore o uguale al tuo ruolo più alto.", 
-            ephemeral=True
+            ephemeral=False
         )
         return
 
     if ruolo >= interaction.guild.me.top_role:
         await interaction.response.send_message(
             "❌ Non posso gestire questo ruolo perché si trova sopra o al pari del mio ruolo più alto nella gerarchia del server.", 
-            ephemeral=True
+            ephemeral=False
         )
         return
 
     try:
         if azione.value == "add":
             if ruolo in utente.roles:
-                await interaction.response.send_message(f"⚠️ {utente.mention} ha già il ruolo {ruolo.mention}.", ephemeral=True)
+                await interaction.response.send_message(f"⚠️ {utente.mention} ha già il ruolo {ruolo.mention}.", ephemeral=False)
                 return
             
             await utente.add_roles(ruolo, reason=f"Aggiunto da {interaction.user} tramite comando.")
-            await interaction.response.send_message(f"✅ Ho aggiunto con successo il ruolo {ruolo.mention} a {utente.mention}.", ephemeral=True)
+            await interaction.response.send_message(f"✅ Ho aggiunto con successo il ruolo {ruolo.mention} a {utente.mention}.", ephemeral=False)
             
             canale_log = interaction.guild.get_channel(ID_CANALE_LOG_AGGIUNTI)
             if canale_log:
-                await canale_log.send(f"🟢 **Ruolo Aggiunto**\n• **Esecutore:** {interaction.user.mention} (`{interaction.user.id}`)\n• **Utente:** {utente.mention} (`{utente.id}`)\n• **Ruolo:** {ruolo.mention} (`{ruolo.id}`)")
+                embed = discord.Embed(
+                    title="🟢 Ruolo Aggiunto",
+                    color=discord.Color.green(),
+                    timestamp=discord.utils.utcnow()
+                )
+                embed.add_field(name="Esecutore", value=f"{interaction.user.mention} (`{interaction.user.id}`)", inline=False)
+                embed.add_field(name="Utente", value=f"{utente.mention} (`{utente.id}`)", inline=False)
+                embed.add_field(name="Ruolo", value=f"{ruolo.mention} (`{ruolo.id}`)", inline=False)
+                await canale_log.send(embed=embed)
             
         elif azione.value == "remove":
             if ruolo not in utente.roles:
-                await interaction.response.send_message(f"⚠️ {utente.mention} non possiede il ruolo {ruolo.mention}.", ephemeral=True)
+                await interaction.response.send_message(f"⚠️ {utente.mention} non possiede il ruolo {ruolo.mention}.", ephemeral=False)
                 return
             
             await utente.remove_roles(ruolo, reason=f"Rimosso da {interaction.user} tramite comando.")
-            await interaction.response.send_message(f"✅ Ho rimosso con successo il ruolo {ruolo.mention} da {utente.mention}.", ephemeral=True)
+            await interaction.response.send_message(f"✅ Ho rimosso con successo il ruolo {ruolo.mention} da {utente.mention}.", ephemeral=False)
             
             canale_log = interaction.guild.get_channel(ID_CANALE_LOG_RIMOSSI)
             if canale_log:
-                await canale_log.send(f"🔴 **Ruolo Rimosso**\n• **Esecutore:** {interaction.user.mention} (`{interaction.user.id}`)\n• **Utente:** {utente.mention} (`{utente.id}`)\n• **Ruolo:** {ruolo.mention} (`{ruolo.id}`)")
+                embed = discord.Embed(
+                    title="🔴 Ruolo Rimosso",
+                    color=discord.Color.red(),
+                    timestamp=discord.utils.utcnow()
+                )
+                embed.add_field(name="Esecutore", value=f"{interaction.user.mention} (`{interaction.user.id}`)", inline=False)
+                embed.add_field(name="Utente", value=f"{utente.mention} (`{utente.id}`)", inline=False)
+                embed.add_field(name="Ruolo", value=f"{ruolo.mention} (`{ruolo.id}`)", inline=False)
+                await canale_log.send(embed=embed)
 
     except discord.Forbidden:
-        await interaction.response.send_message("❌ Si è verificato un errore di permessi: non ho i permessi necessari per gestire questo utente/ruolo.", ephemeral=True)
+        await interaction.response.send_message("❌ Si è verificato un errore di permessi: non ho i permessi necessari per gestire questo utente/ruolo.", ephemeral=False)
     except Exception as e:
-        await interaction.response.send_message(f"❌ Si è verificato un errore imprevisto: {e}", ephemeral=True)
+        await interaction.response.send_message(f"❌ Si è verificato un errore imprevisto: {e}", ephemeral=False)
 
 @bot.tree.command(name="massrole", description="Aggiungi o rimuovi un ruolo a tutti i membri con un determinato ruolo o a everyone")
 @app_commands.describe(
@@ -389,90 +407,108 @@ async def massrole(
     ruolo_target: discord.Role,
     conferma: str
 ):
+    ID_CANALE_LOG_AGGIUNTI = 1478146946198667505  
+    ID_CANALE_LOG_RIMOSSI = 1478146969464471762   
 
     if conferma.upper() != "CONFERMA":
         await interaction.response.send_message(
             "❌ Operazione annullata. Devi digitare esattamente `CONFERMA` nel campo apposito per avviare il massrole.", 
-            ephemeral=True
+            ephemeral=False
         )
         return
 
-    # Controllo gerarchia per chi esegue il comando (tranne l'owner)
     if interaction.user != interaction.guild.owner and ruolo_da_gestire >= interaction.user.top_role:
         await interaction.response.send_message(
             "❌ Non puoi gestire questo ruolo perché è superiore o uguale al tuo ruolo più alto.", 
-            ephemeral=True
+            ephemeral=False
         )
         return
 
     if ruolo_da_gestire >= interaction.guild.me.top_role:
         await interaction.response.send_message(
             "❌ Non posso gestire questo ruolo perché si trova sopra o al pari del mio ruolo più alto.", 
-            ephemeral=True
+            ephemeral=False
         )
         return
 
-    # Deferriamo la risposta poiché l'operazione di massa potrebbe richiedere tempo
-    await interaction.response.defer(ephemeral=True)
+    await interaction.response.defer(ephemeral=False)
 
-    # Determina i membri target
     if ruolo_target == interaction.guild.default_role:
         membri = interaction.guild.members
     else:
         membri = ruolo_target.members
 
     if not membri:
-        await interaction.followup.send("⚠️ Non ci sono membri a cui applicare l'azione nel target selezionato.", ephemeral=True)
+        await interaction.followup.send("⚠️ Non ci sono membri a cui applicare l'azione nel target selezionato.", ephemeral=False)
         return
+
+    # Filtriamo preventivamente chi ha già bisogno della modifica per calcolare il tempo stimato reale
+    if azione.value == "add":
+        membri_da_modificare = [m for m in membri if ruolo_da_gestire not in m.roles]
+    else:
+        membri_da_modificare = [m for m in membri if ruolo_da_gestire in m.roles]
+
+    # Stima basata su circa 0.6 secondi per richiesta API per evitare rate limits di Discord
+    tempo_stimato_secondi = len(membri_da_modificare) * 0.6
+    minuti = int(tempo_stimato_secondi // 60)
+    secondi = int(tempo_stimato_secondi % 60)
+    tempo_str = f"{minuti}m {secondi}s" if minuti > 0 else f"{secondi}s"
 
     successi = 0
     falliti = 0
+    tempo_inizio = time.time()
 
-    for membro in membri:
+    for membro in membri_da_modificare:
         try:
             if azione.value == "add":
-                if ruolo_da_gestire not in membro.roles:
-                    await membro.add_roles(ruolo_da_gestire, reason=f"Massrole (Aggiungi) eseguito da {interaction.user}")
-                    successi += 1
-            elif azione.value == "remove":
-                if ruolo_da_gestire in membro.roles:
-                    await membro.remove_roles(ruolo_da_gestire, reason=f"Massrole (Rimuovi) eseguito da {interaction.user}")
-                    successi += 1
+                await membro.add_roles(ruolo_da_gestire, reason=f"Massrole (Aggiungi) eseguito da {interaction.user}")
+            else:
+                await membro.remove_roles(ruolo_da_gestire, reason=f"Massrole (Rimuovi) eseguito da {interaction.user}")
+            successi += 1
+            await asyncio.sleep(0.5)  # Buffer di sicurezza per i rate limit di Discord
         except Exception:
             falliti += 1
 
+    tempo_impiegato = round(time.time() - tempo_inizio, 1)
     azione_testo = "Aggiunta" if azione.value == "add" else "Rimozione"
     
     await interaction.followup.send(
         f"✅ **Massrole ({azione_testo}) completato!**\n"
         f"• Ruolo: {ruolo_da_gestire.mention}\n"
         f"• Target: {ruolo_target.mention}\n"
+        f"• Tempo stimato iniziale: `{tempo_str}` (Effettivo: `{tempo_impiegato}s`)\n"
         f"• Membri aggiornati con successo: `{successi}`\n"
         f"• Falliti (errori/permessi): `{falliti}`", 
-        ephemeral=True
+        ephemeral=False
     )
 
-    # Invio del log nel canale corrispondente
     if azione.value == "add":
         canale_log = interaction.guild.get_channel(ID_CANALE_LOG_AGGIUNTI)
         if canale_log:
-            await canale_log.send(
-                f"🟢 **Massrole Aggiunta Eseguito**\n"
-                f"• **Esecutore:** {interaction.user.mention} (`{interaction.user.id}`)\n"
-                f"• **Ruolo Assegnato:** {ruolo_da_gestire.mention} (`{ruolo_da_gestire.id}`)\n"
-                f"• **Target:** {ruolo_target.mention} (`{ruolo_target.id}`)\n"
-                f"• **Membri aggiornati:** `{successi}` (Falliti: `{falliti}`)"
+            embed = discord.Embed(
+                title="🟢 Massrole Aggiunta Eseguito",
+                color=discord.Color.green(),
+                timestamp=discord.utils.utcnow()
             )
+            embed.add_field(name="Esecutore", value=f"{interaction.user.mention} (`{interaction.user.id}`)", inline=False)
+            embed.add_field(name="Ruolo Assegnato", value=f"{ruolo_da_gestire.mention} (`{ruolo_da_gestire.id}`)", inline=False)
+            embed.add_field(name="Target", value=f"{ruolo_target.mention} (`{ruolo_target.id}`)", inline=False)
+            embed.add_field(name="Statistiche", value=f"Aggiornati: `{successi}` | Falliti: `{falliti}` | Tempo: `{tempo_impiegato}s`", inline=False)
+            await canale_log.send(embed=embed)
     else:
         canale_log = interaction.guild.get_channel(ID_CANALE_LOG_RIMOSSI)
         if canale_log:
-            await canale_log.send(
-                f"🔴 **Massrole Rimozione Eseguito**\n"
-                f"• **Esecutore:** {interaction.user.mention} (`{interaction.user.id}`)\n"
-                f"• **Ruolo Rimosso:** {ruolo_da_gestire.mention} (`{ruolo_da_gestire.id}`)\n"
-                f"• **Target:** {ruolo_target.mention} (`{ruolo_target.id}`)\n"
-                f"• **Membri aggiornati:** `{successi}` (Falliti: `{falliti}`)"
+            embed = discord.Embed(
+                title="🔴 Massrole Rimozione Eseguito",
+                color=discord.Color.red(),
+                timestamp=discord.utils.utcnow()
             )
+            embed.add_field(name="Esecutore", value=f"{interaction.user.mention} (`{interaction.user.id}`)", inline=False)
+            embed.add_field(name="Ruolo Rimosso", value=f"{ruolo_da_gestire.mention} (`{ruolo_da_gestire.id}`)", inline=False)
+            embed.add_field(name="Target", value=f"{ruolo_target.mention} (`{ruolo_target.id}`)", inline=False)
+            embed.add_field(name="Statistiche", value=f"Aggiornati: `{successi}` | Falliti: `{falliti}` | Tempo: `{tempo_impiegato}s`", inline=False)
+            await canale_log.send(embed=embed)
+
 
     # =======================================================
 #  SECONDO MODULO: DETTAGLI FISICI E SALVATAGGIO
