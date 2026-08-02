@@ -177,6 +177,83 @@ async def upload_to_imgbb(foto: discord.Attachment) -> str:
                 return res_json["data"]["url"]
             else:
                 raise Exception(f"Errore ImgBB status code: {response.status}")
+
+import discord
+from discord.ext import commands
+import datetime
+import asyncio
+
+# --- CONFIGURAZIONE ---
+ID_RUOLO_AUTORIZZATO = 1253460150141059198  # ID del ruolo che può usare il comando
+ID_CANALE_LOGS = 1255868935790657587        # ID del canale dei log
+
+@bot.command(name="delete")
+async def delete_message(ctx):
+    # 1. Controllo se l'utente possiede il ruolo autorizzato
+    ruolo = ctx.guild.get_role(ID_RUOLO_AUTORIZZATO)
+    if not ruolo or ruolo not in ctx.author.roles:
+        await ctx.message.delete()
+        errore_msg = await ctx.send(f"❌ Non hai i permessi per usare questo comando. È richiesto il ruolo: {ruolo.mention if ruolo else 'Ruolo non trovato'}")
+        await asyncio.sleep(5)
+        await errore_msg.delete()
+        return
+
+    # 2. Controllo se il comando è una risposta a un altro messaggio
+    if not ctx.message.reference or not ctx.message.reference.message_id:
+        avviso = await ctx.send("⚠️ Devi usare il comando `!delete` **rispondendo** al messaggio che vuoi eliminare.")
+        await asyncio.sleep(5)
+        await avviso.delete()
+        return
+
+    # 3. Recupera il messaggio bersaglio tramite il riferimento della risposta
+    try:
+        messaggio_da_eliminare = await ctx.channel.fetch_message(ctx.message.reference.message_id)
+    except discord.NotFound:
+        await ctx.send("❌ Il messaggio a cui hai risposto non è stato trovato.", delete_after=5)
+        return
+    except discord.Forbidden:
+        await ctx.send("❌ Non ho i permessi per leggere quel messaggio.", delete_after=5)
+        return
+
+    autore_messaggio = messaggio_da_eliminare.author
+    contenuto_messaggio = messaggio_da_eliminare.content or "*[Contenuto multimediale / Vuoto / Allegati]*"
+
+    # 4. Elimina il messaggio bersaglio e il comando `!delete`
+    try:
+        await messaggio_da_eliminare.delete()
+        await ctx.message.delete()
+    except discord.Forbidden:
+        await ctx.send("❌ Non ho i permessi necessari per eliminare il messaggio.", delete_after=5)
+        return
+
+    # 5. Conferma visiva temporanea nel canale (si cancella dopo 4 secondi)
+    conferma = await ctx.send(f"🗑️ Messaggio di {autore_messaggio.mention} eliminato da {ctx.author.mention}.")
+    await asyncio.sleep(4)
+    try:
+        await conferma.delete()
+    except discord.HTTPException:
+        pass
+
+    # 6. Invio del log ultra-dettagliato in embed con il contenuto del messaggio nel canale dedicato
+    canale_log = ctx.guild.get_channel(ID_CANALE_LOGS)
+    if canale_log:
+        embed = discord.Embed(
+            title="🗑️ Messaggio Eliminato tramite Comando",
+            color=discord.Color.red(),
+            timestamp=datetime.datetime.now(datetime.timezone.utc)
+        )
+        embed.add_field(name="👮 Moderatore / Esecutore", value=f"{ctx.author.mention} (`{ctx.author.id}`)", inline=False)
+        embed.add_field(name="👤 Autore del Messaggio", value=f"{autore_messaggio.mention} (`{autore_messaggio.id}`)", inline=False)
+        embed.add_field(name="📍 Canale", value=ctx.channel.mention, inline=False)
+        embed.add_field(name="💬 Contenuto del Messaggio", value=f"```text\n{contenuto_messaggio[:1000]}\n```", inline=False)
+        embed.set_footer(text=f"Discord Italia • ID Messaggio: {messaggio_da_eliminare.id}")
+
+        try:
+            await canale_log.send(embed=embed)
+        except Exception as e:
+            print(f"[LOG ERROR] Impossibile inviare il log di eliminazione: {e}")
+
+
 import asyncio
 import os
 import discord
