@@ -370,6 +370,110 @@ async def ruoli(
     except Exception as e:
         await interaction.response.send_message(f"❌ Si è verificato un errore imprevisto: {e}", ephemeral=True)
 
+@bot.tree.command(name="massrole", description="Aggiungi o rimuovi un ruolo a tutti i membri con un determinato ruolo o a everyone")
+@app_commands.describe(
+    azione="Scegli se aggiungere o rimuovere il ruolo",
+    ruolo_da_gestire="Il ruolo da assegnare o rimuovere",
+    ruolo_target="Il ruolo bersaglio (oppure seleziona Everyone per tutti)",
+    conferma="Scrivi 'CONFERMA' per procedere con l'operazione di massa"
+)
+@app_commands.choices(azione=[
+    app_commands.Choice(name="Aggiungi", value="add"),
+    app_commands.Choice(name="Rimuovi", value="remove")
+])
+@app_commands.checks.has_permissions(administrator=True)
+async def massrole(
+    interaction: discord.Interaction, 
+    azione: app_commands.Choice[str],
+    ruolo_da_gestire: discord.Role, 
+    ruolo_target: discord.Role,
+    conferma: str
+):
+
+    if conferma.upper() != "CONFERMA":
+        await interaction.response.send_message(
+            "❌ Operazione annullata. Devi digitare esattamente `CONFERMA` nel campo apposito per avviare il massrole.", 
+            ephemeral=True
+        )
+        return
+
+    # Controllo gerarchia per chi esegue il comando (tranne l'owner)
+    if interaction.user != interaction.guild.owner and ruolo_da_gestire >= interaction.user.top_role:
+        await interaction.response.send_message(
+            "❌ Non puoi gestire questo ruolo perché è superiore o uguale al tuo ruolo più alto.", 
+            ephemeral=True
+        )
+        return
+
+    if ruolo_da_gestire >= interaction.guild.me.top_role:
+        await interaction.response.send_message(
+            "❌ Non posso gestire questo ruolo perché si trova sopra o al pari del mio ruolo più alto.", 
+            ephemeral=True
+        )
+        return
+
+    # Deferriamo la risposta poiché l'operazione di massa potrebbe richiedere tempo
+    await interaction.response.defer(ephemeral=True)
+
+    # Determina i membri target
+    if ruolo_target == interaction.guild.default_role:
+        membri = interaction.guild.members
+    else:
+        membri = ruolo_target.members
+
+    if not membri:
+        await interaction.followup.send("⚠️ Non ci sono membri a cui applicare l'azione nel target selezionato.", ephemeral=True)
+        return
+
+    successi = 0
+    falliti = 0
+
+    for membro in membri:
+        try:
+            if azione.value == "add":
+                if ruolo_da_gestire not in membro.roles:
+                    await membro.add_roles(ruolo_da_gestire, reason=f"Massrole (Aggiungi) eseguito da {interaction.user}")
+                    successi += 1
+            elif azione.value == "remove":
+                if ruolo_da_gestire in membro.roles:
+                    await membro.remove_roles(ruolo_da_gestire, reason=f"Massrole (Rimuovi) eseguito da {interaction.user}")
+                    successi += 1
+        except Exception:
+            falliti += 1
+
+    azione_testo = "Aggiunta" if azione.value == "add" else "Rimozione"
+    
+    await interaction.followup.send(
+        f"✅ **Massrole ({azione_testo}) completato!**\n"
+        f"• Ruolo: {ruolo_da_gestire.mention}\n"
+        f"• Target: {ruolo_target.mention}\n"
+        f"• Membri aggiornati con successo: `{successi}`\n"
+        f"• Falliti (errori/permessi): `{falliti}`", 
+        ephemeral=True
+    )
+
+    # Invio del log nel canale corrispondente
+    if azione.value == "add":
+        canale_log = interaction.guild.get_channel(ID_CANALE_LOG_AGGIUNTI)
+        if canale_log:
+            await canale_log.send(
+                f"🟢 **Massrole Aggiunta Eseguito**\n"
+                f"• **Esecutore:** {interaction.user.mention} (`{interaction.user.id}`)\n"
+                f"• **Ruolo Assegnato:** {ruolo_da_gestire.mention} (`{ruolo_da_gestire.id}`)\n"
+                f"• **Target:** {ruolo_target.mention} (`{ruolo_target.id}`)\n"
+                f"• **Membri aggiornati:** `{successi}` (Falliti: `{falliti}`)"
+            )
+    else:
+        canale_log = interaction.guild.get_channel(ID_CANALE_LOG_RIMOSSI)
+        if canale_log:
+            await canale_log.send(
+                f"🔴 **Massrole Rimozione Eseguito**\n"
+                f"• **Esecutore:** {interaction.user.mention} (`{interaction.user.id}`)\n"
+                f"• **Ruolo Rimosso:** {ruolo_da_gestire.mention} (`{ruolo_da_gestire.id}`)\n"
+                f"• **Target:** {ruolo_target.mention} (`{ruolo_target.id}`)\n"
+                f"• **Membri aggiornati:** `{successi}` (Falliti: `{falliti}`)"
+            )
+
     # =======================================================
 #  SECONDO MODULO: DETTAGLI FISICI E SALVATAGGIO
 # =======================================================
