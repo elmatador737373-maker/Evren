@@ -299,6 +299,77 @@ async def avvia_chiamata_vocale(interaction: discord.Interaction, numero_destina
         ephemeral=True
     )
 
+@bot.tree.command(name="ruoli", description="Aggiungi o rimuovi un ruolo a un utente")
+@app_commands.describe(
+    azione="Scegli se aggiungere o rimuovere il ruolo",
+    utente="L'utente a cui applicare l'azione",
+    ruolo="Il ruolo da aggiungere o rimuovere"
+)
+@app_commands.choices(azione=[
+    app_commands.Choice(name="Aggiungi", value="add"),
+    app_commands.Choice(name="Rimuovi", value="remove")
+])
+async def ruoli(
+    interaction: discord.Interaction, 
+    azione: app_commands.Choice[str], 
+    utente: discord.Member, 
+    ruolo: discord.Role
+):
+    ID_RUOLO_AUTORIZZATO = 1253460150141059198  # Sostituisci con l'ID del ruolo autorizzato
+    ID_CANALE_LOG_AGGIUNTI = 1478146946198667505  # Sostituisci con l'ID del canale log per i ruoli aggiunti
+    ID_CANALE_LOG_RIMOSSI = 1478146969464471762   # Sostituisci con l'ID del canale log per i ruoli rimossi
+    
+    if not any(r.id == ID_RUOLO_AUTORIZZATO for r in interaction.user.roles) and interaction.user != interaction.guild.owner:
+        await interaction.response.send_message(
+            "❌ Non hai il permesso necessario per utilizzare questo comando.", 
+            ephemeral=True
+        )
+        return
+
+    if interaction.user != interaction.guild.owner and ruolo >= interaction.user.top_role:
+        await interaction.response.send_message(
+            "❌ Non puoi gestire questo ruolo perché è superiore o uguale al tuo ruolo più alto.", 
+            ephemeral=True
+        )
+        return
+
+    if ruolo >= interaction.guild.me.top_role:
+        await interaction.response.send_message(
+            "❌ Non posso gestire questo ruolo perché si trova sopra o al pari del mio ruolo più alto nella gerarchia del server.", 
+            ephemeral=True
+        )
+        return
+
+    try:
+        if azione.value == "add":
+            if ruolo in utente.roles:
+                await interaction.response.send_message(f"⚠️ {utente.mention} ha già il ruolo {ruolo.mention}.", ephemeral=True)
+                return
+            
+            await utente.add_roles(ruolo, reason=f"Aggiunto da {interaction.user} tramite comando.")
+            await interaction.response.send_message(f"✅ Ho aggiunto con successo il ruolo {ruolo.mention} a {utente.mention}.", ephemeral=True)
+            
+            canale_log = interaction.guild.get_channel(ID_CANALE_LOG_AGGIUNTI)
+            if canale_log:
+                await canale_log.send(f"🟢 **Ruolo Aggiunto**\n• **Esecutore:** {interaction.user.mention} (`{interaction.user.id}`)\n• **Utente:** {utente.mention} (`{utente.id}`)\n• **Ruolo:** {ruolo.mention} (`{ruolo.id}`)")
+            
+        elif azione.value == "remove":
+            if ruolo not in utente.roles:
+                await interaction.response.send_message(f"⚠️ {utente.mention} non possiede il ruolo {ruolo.mention}.", ephemeral=True)
+                return
+            
+            await utente.remove_roles(ruolo, reason=f"Rimosso da {interaction.user} tramite comando.")
+            await interaction.response.send_message(f"✅ Ho rimosso con successo il ruolo {ruolo.mention} da {utente.mention}.", ephemeral=True)
+            
+            canale_log = interaction.guild.get_channel(ID_CANALE_LOG_RIMOSSI)
+            if canale_log:
+                await canale_log.send(f"🔴 **Ruolo Rimosso**\n• **Esecutore:** {interaction.user.mention} (`{interaction.user.id}`)\n• **Utente:** {utente.mention} (`{utente.id}`)\n• **Ruolo:** {ruolo.mention} (`{ruolo.id}`)")
+
+    except discord.Forbidden:
+        await interaction.response.send_message("❌ Si è verificato un errore di permessi: non ho i permessi necessari per gestire questo utente/ruolo.", ephemeral=True)
+    except Exception as e:
+        await interaction.response.send_message(f"❌ Si è verificato un errore imprevisto: {e}", ephemeral=True)
+
     # =======================================================
 #  SECONDO MODULO: DETTAGLI FISICI E SALVATAGGIO
 # =======================================================
