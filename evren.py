@@ -591,7 +591,7 @@ from discord import app_commands
 import asyncio
 import random
 
-ROLE_EDILIZIA_ID = 123456789012345678  # Sostituisci con l'ID del ruolo Edilizia
+ROLE_EDILIZIA_ID = 1534986071211769996  # Sostituisci con l'ID del ruolo Edilizia
 LISTA_MATERIALI_POSSIBILI = ["Cemento", "Mattoni", "Legno", "Acciaio", "Sabbia", "Vetri", "Tubi di Ferro"]
 
 def format_tempo_rimanente(secondi):
