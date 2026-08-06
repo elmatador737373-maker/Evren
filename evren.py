@@ -75,13 +75,13 @@ bot = commands.Bot(command_prefix="!", intents=intents)
 
 async def my_setup_hook():
     node = wavelink.Node(
-        uri="https://lava-v4.ajieblogs.eu.org:443",
-        password="https://dsc.gg/ajidevserver"
+        uri="https://bot-rp-fko9.onrender.com:443",
+        password="youshallnotpass"  # Inserisci la tua password se l'hai cambiata nel file application.yml
     )
 
     try:
         await wavelink.Pool.connect(nodes=[node], client=bot)
-        print("✅ [WAVELINK] Connessione al nodo avviata con successo!")
+        print("✅ [WAVELINK] Connessione al nodo Render avviata con successo!")
     except Exception as e:
         print(f"❌ [WAVELINK] Errore critico nel setup_hook: {e}")
 
