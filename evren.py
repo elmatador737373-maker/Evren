@@ -1519,69 +1519,6 @@ async def carica_foto_documento(
             ephemeral=True,
         )
 
-# --- SHOP OS ---
-
-class ShopCategorySelect(ui.Select):
-    def __init__(self):
-        options = [
-            discord.SelectOption(label="Armi", description="Acquista armi e munizioni", emoji="🔫", value="armi"),
-            discord.SelectOption(label="Mediche", description="Kit medici e bende", emoji="💊", value="mediche"),
-            discord.SelectOption(label="Generale", description="Oggetti vari e utility", emoji="🎒", value="generale"),
-        ]
-        super().__init__(placeholder="📂 Seleziona una categoria...", min_values=1, max_values=1, options=options)
-
-    async def callback(self, interaction: discord.Interaction):
-        categoria = self.values[0]
-        
-        res = supabase.table("custom_items").select("*").eq("category", categoria).execute()
-        items = res.data if res.data else []
-
-        embed = discord.Embed(
-            title=f"🛒 Evren Shop - Categoria: {categoria.capitalize()}",
-            description="Ecco gli articoli disponibili in questa categoria. Usa il comando `/compra [nome_item]` per acquistarli.",
-            color=discord.Color.blue()
-        )
-
-        if not items:
-            embed.add_field(name="Vuoto", value="Non ci sono oggetti in questa categoria al momento.", inline=False)
-        else:
-            for item in items:
-                nome = item.get("name", "Oggetto")
-                prezzo = item.get("price", 0)
-                ruolo_req = item.get("required_role_id", "Nessuno")
-                embed.add_field(
-                    name=f"🔹 {nome}",
-                    value=f"💰 Prezzo: **€ {prezzo:,.2f}**\n🔒 Ruolo richiesto: `{ruolo_req}`",
-                    inline=False
-                )
-
-        embed.set_footer(text="Evren City OS • Economia")
-        await interaction.response.edit_message(embed=embed, view=self.view)
-
-
-class ShopView(ui.View):
-    def __init__(self):
-        super().__init__(timeout=300)
-        self.add_item(ShopCategorySelect())
-
-
-@bot.tree.command(name="shop", description="Visualizza lo store di Evren City OS e naviga tra le categorie.")
-async def shop(interaction: discord.Interaction):
-    embed = discord.Embed(
-        title="🛒 Evren City OS - Negozio Generale",
-        description="Benvenuto nello shop ufficiale. Seleziona una categoria dal menu sottostante per visualizzare gli articoli in vendita.",
-        color=discord.Color.blue()
-    )
-    embed.set_footer(text="Evren City OS • Economia")
-    
-    view = ShopView()
-    await interaction.response.send_message(embed=embed, view=view, ephemeral=True)
-
-
-async def shop_item_autocomplete(interaction: discord.Interaction, current: str) -> list[app_commands.Choice[str]]:
-    res = supabase.table("custom_items").select("name").ilike("name", f"%{current}%").limit(25).execute()
-    items = res.data if res.data else []
-    return [app_commands.Choice(name=i["name"], value=i["name"]) for i in items]
 
 
 import random
@@ -2777,6 +2714,73 @@ async def deposito_fazione(interaction: discord.Interaction, fazione: str):
   view = FactionVaultView(fazione)
   await interaction.response.send_message(embed=embed, view=view, ephemeral=True)
 
+# --- SHOP OS ---
+
+class ShopCategorySelect(ui.Select):
+    def __init__(self):
+        options = [
+            discord.SelectOption(label="Armi", description="Acquista armi e munizioni", emoji="🔫", value="armi"),
+            discord.SelectOption(label="Mediche", description="Kit medici e bende", emoji="💊", value="mediche"),
+            discord.SelectOption(label="Utility", description="Zaini, chiavi e strumenti vari", emoji="🛠️", value="utility"),
+            discord.SelectOption(label="Edilizia", description="Materiali da costruzione", emoji="🏗️", value="edilizia"),
+            discord.SelectOption(label="Generale", description="Oggetti vari di consumo", emoji="🎒", value="generale"),
+            discord.SelectOption(label="Altro", description="Oggetti speciali ed extra", emoji="📦", value="altro"),
+        ]
+        super().__init__(placeholder="📂 Seleziona una categoria...", min_values=1, max_values=1, options=options)
+
+    async def callback(self, interaction: discord.Interaction):
+        categoria = self.values[0]
+        
+        res = supabase.table("custom_items").select("*").eq("category", categoria).execute()
+        items = res.data if res.data else []
+
+        embed = discord.Embed(
+            title=f"🛒 Evren Shop - Categoria: {categoria.capitalize()}",
+            description="Ecco gli articoli disponibili in questa categoria. Usa il comando `/compra [nome_item]` per acquistarli.",
+            color=discord.Color.blue()
+        )
+
+        if not items:
+            embed.add_field(name="Vuoto", value="Non ci sono oggetti in questa categoria al momento.", inline=False)
+        else:
+            for item in items:
+                nome = item.get("name", "Oggetto")
+                prezzo = item.get("price", 0)
+                ruolo_req = item.get("required_role_id", "Nessuno")
+                embed.add_field(
+                    name=f"🔹 {nome}",
+                    value=f"💰 Prezzo: **€ {prezzo:,.2f}**\n🔒 Ruolo richiesto: `{ruolo_req}`",
+                    inline=False
+                )
+
+        embed.set_footer(text="Evren City OS • Economia")
+        await interaction.response.edit_message(embed=embed, view=self.view)
+
+
+class ShopView(ui.View):
+    def __init__(self):
+        super().__init__(timeout=300)
+        self.add_item(ShopCategorySelect())
+
+
+@bot.tree.command(name="shop", description="Visualizza lo store di Evren City OS e naviga tra le categorie.")
+async def shop(interaction: discord.Interaction):
+    embed = discord.Embed(
+        title="🛒 Evren City OS - Negozio Generale",
+        description="Benvenuto nello shop ufficiale. Seleziona una categoria dal menu sottostante per visualizzare gli articoli in vendita.",
+        color=discord.Color.blue()
+    )
+    embed.set_footer(text="Evren City OS • Economia")
+    
+    view = ShopView()
+    await interaction.response.send_message(embed=embed, view=view, ephemeral=True)
+
+
+async def shop_item_autocomplete(interaction: discord.Interaction, current: str) -> list[app_commands.Choice[str]]:
+    res = supabase.table("custom_items").select("name").ilike("name", f"%{current}%").limit(25).execute()
+    items = res.data if res.data else []
+    return [app_commands.Choice(name=i["name"], value=i["name"]) for i in items]
+
 @bot.tree.command(name="crea_item", description="[STAFF] Crea un nuovo oggetto con meccaniche specifiche.")
 @app_commands.choices(categoria=[
     app_commands.Choice(name="⚔️ Arma", value="arma"),
@@ -2786,7 +2790,10 @@ async def deposito_fazione(interaction: discord.Interaction, fazione: str):
     app_commands.Choice(name="🌿 Droga", value="droga"),
     app_commands.Choice(name="🔑 Chiavi", value="chiavi"),
     app_commands.Choice(name="🎒 Zaino", value="zaino"),
-    app_commands.Choice(name="🔓 Scassinamento", value="scassinamento")
+    app_commands.Choice(name="🔓 Scassinamento", value="scassinamento"),
+    app_commands.Choice(name="🛠️ Utility", value="utility"),
+    app_commands.Choice(name="🏗️ Edilizia", value="edilizia"),
+    app_commands.Choice(name="📦 Altro", value="altro")
 ])
 @app_commands.describe(
     nome="Nome dell'oggetto",
@@ -2825,7 +2832,7 @@ async def crea_item(
         "weight": max(0.0, round(peso, 2)),
         "probability": float(probabilita_riuscita),
         "backpack_capacity": round(capienza_zaino, 2) if categoria.value == "zaino" else 0.0,
-        "required_role_id": str(ruolo_richiesto.id)  # Corretto per corrispondere alla colonna SQL
+        "required_role_id": str(ruolo_richiesto.id)
     }
 
     try:
@@ -2916,6 +2923,12 @@ class InventoryUseView(ui.View):
             new_max = curr_max + boost
             supabase.table("users").update({"max_weight": new_max}).eq("discord_id", str(self.user_id)).execute()
             action_msg = f"🎒 **Zaino Indossato!** Capienza inventario aumentata di **+{boost} kg** (Totale: `{new_max} kg`)."
+        elif category == "utility":
+            action_msg = f"🛠️ Hai utilizzato l'oggetto di utilità **{name}**."
+        elif category == "edilizia":
+            action_msg = f"🏗️ Hai impiegato **{name}** per le operazioni di cantiere/costruzione."
+        elif category == "altro":
+            action_msg = f"📦 Hai utilizzato **{name}**."
 
         qty = inv_item.get("quantity", 1)
         if qty > 1:
