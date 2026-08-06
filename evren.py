@@ -586,6 +586,265 @@ async def massrole(
             embed.add_field(name="Statistiche", value=f"Aggiornati: `{successi}` | Falliti: `{falliti}` | Tempo: `{tempo_impiegato}s`", inline=False)
             await canale_log.send(embed=embed)
 
+import discord
+from discord import app_commands
+import asyncio
+import random
+
+ROLE_EDILIZIA_ID = 123456789012345678  # Sostituisci con l'ID del ruolo Edilizia
+LISTA_MATERIALI_POSSIBILI = ["Cemento", "Mattoni", "Legno", "Acciaio", "Sabbia", "Vetri", "Tubi di Ferro"]
+
+def format_tempo_rimanente(secondi):
+    giorni = secondi // 86400
+    ore = (secondi % 86400) // 3600
+    minuti = (secondi % 3600) // 60
+    
+    parti = []
+    if giorni > 0:
+        parti.append(f"{giorni} {'giorno' if giorni == 1 else 'giorni'}")
+    if ore > 0:
+        parti.append(f"{ore} {'ora' if ore == 1 else 'ore'}")
+    if minuti > 0 and giorni == 0:
+        parti.append(f"{minuti} {'minuto' if minuti == 1 else 'minuti'}")
+        
+    return " e ".join(parti) if parti else "meno di un minuto"
+
+def generate_cantiere_embed(cantiere):
+    progresso = int((cantiere["materiali_attuali"] / cantiere["materiali_totali"]) * 100)
+    tempo_str = format_tempo_rimanente(cantiere["tempo_rimanente"])
+    
+    embed = discord.Embed(
+        title="🏗️ Cantiere",
+        color=discord.Color.from_rgb(43, 45, 49)
+    )
+    embed.add_field(name="Azienda Costruttrice:", value=cantiere["azienda"], inline=False)
+    embed.add_field(name="Progresso:", value=f"`{progresso}%`", inline=False)
+    embed.add_field(
+        name="Materiali:", 
+        value=f"`{cantiere['materiali_attuali']}/{cantiere['materiali_totali']}` ({cantiere['materiale_richiesto']})", 
+        inline=False
+    )
+    embed.add_field(name="Operai:", value=f"`{cantiere['operai_attuali']}/{cantiere['max_operai']}`", inline=False)
+    embed.add_field(name="Tempo rimanente:", value=f"`{tempo_str}`", inline=False)
+    
+    if cantiere["paused"]:
+        embed.set_footer(text="⚠️ Cantiere in attesa: premi 'Deposita Materiali' per far avanzare i lavori!")
+    else:
+        embed.set_footer(text="🔨 Lavori in corso...")
+    return embed
+
+# --- VISTA PERSISTENTE PER IL BOTTONE ---
+class MaterialiView(discord.ui.View):
+    def __init__(self, pool):
+        super().__init__(timeout=None)
+        self.pool = pool
+
+    @discord.ui.button(
+        label="🔨 Deposita Materiali", 
+        style=discord.ButtonStyle.primary, 
+        custom_id="btn_deposita_materiali_persistente"
+    )
+    async def add_material(self, interaction: discord.Interaction, button: discord.ui.Button):
+        async with self.pool.acquire() as conn:
+            cantiere = await conn.fetchrow(
+                "SELECT * FROM public.cantieri WHERE message_id = $1",
+                str(interaction.message.id)
+            )
+
+            if not cantiere:
+                await interaction.response.send_message("❌ Questo cantiere non esiste più o è terminato.", ephemeral=True)
+                return
+
+            if str(interaction.user.id) != cantiere["builder_id"]:
+                await interaction.response.send_message("❌ Solo il responsabile del cantiere può versare materiali!", ephemeral=True)
+                return
+
+            mat_nome = cantiere["materiale_richiesto"]
+            req_totali = cantiere["materiali_totali"]
+            attuali = cantiere["materiali_attuali"]
+            mancanti = req_totali - attuali
+
+            if mancanti <= 0:
+                await interaction.response.send_message("✅ Il cantiere ha già tutti i materiali necessari!", ephemeral=True)
+                return
+
+            inv_row = await conn.fetchrow(
+                "SELECT quantity FROM public.inventory WHERE discord_id = $1 AND item_name = $2",
+                str(interaction.user.id), mat_nome
+            )
+
+            disponibili = inv_row['quantity'] if inv_row else 0
+
+            if disponibili <= 0:
+                await interaction.response.send_message(f"❌ Non hai **{mat_nome}** nell'inventario!", ephemeral=True)
+                return
+
+            da_usare = min(disponibili, mancanti)
+            nuova_qta = disponibili - da_usare
+
+            if nuova_qta > 0:
+                await conn.execute(
+                    "UPDATE public.inventory SET quantity = $1 WHERE discord_id = $2 AND item_name = $3",
+                    nuova_qta, str(interaction.user.id), mat_nome
+                )
+            else:
+                await conn.execute(
+                    "DELETE FROM public.inventory WHERE discord_id = $1 AND item_name = $2",
+                    str(interaction.user.id), mat_nome
+                )
+
+            nuovi_attuali = attuali + da_usare
+            paused = nuovi_attuali < req_totali
+
+            await conn.execute(
+                "UPDATE public.cantieri SET materiali_attuali = $1, paused = $2 WHERE message_id = $3",
+                nuovi_attuali, paused, str(interaction.message.id)
+            )
+
+            cantiere_dict = dict(cantiere)
+            cantiere_dict["materiali_attuali"] = nuovi_attuali
+            cantiere_dict["paused"] = paused
+            cantiere_dict["operai_attuali"] = random.randint(1, 5)
+            cantiere_dict["max_operai"] = 5
+
+            await interaction.response.edit_message(embed=generate_cantiere_embed(cantiere_dict))
+            await interaction.followup.send(
+                content=f"📥 Hai depositato **+{da_usare}x {mat_nome}**! Totale depositato: `{nuovi_attuali}/{req_totali}`", 
+                ephemeral=True
+            )
+
+# --- COMANDO SLASH ---
+@app_commands.command(name="costruisci", description="Avvia la costruzione di un edificio")
+@app_commands.describe(
+    azienda="Azienda costruttrice che gestisce i lavori",
+    indirizzo="Indirizzo dell'immobile",
+    grandezza="Dimensione dell'edificio"
+)
+@app_commands.choices(grandezza=[
+    app_commands.Choice(name="Piccola (1-2 Giorni Reali)", value="piccola"),
+    app_commands.Choice(name="Media (2-4 Giorni Reali)", value="media"),
+    app_commands.Choice(name="Grande (4-7 Giorni Reali)", value="grande")
+])
+async def costruisci(interaction: discord.Interaction, azienda: str, indirizzo: str, grandezza: app_commands.Choice[str]):
+    has_role = any(role.id == ROLE_EDILIZIA_ID for role in interaction.user.roles)
+    if not has_role:
+        await interaction.response.send_message("❌ Devi avere il ruolo **Edilizia** per avviare un cantiere!", ephemeral=True)
+        return
+
+    val = grandezza.value
+    materiale_estratto = random.choice(LISTA_MATERIALI_POSSIBILI)
+
+    if val == 'piccola':
+        mat_totali = random.randint(100, 300)
+        tempo_secondi = random.randint(1, 2) * 86400
+        max_op = 3
+    elif val == 'media':
+        mat_totali = random.randint(350, 750)
+        tempo_secondi = random.randint(2, 4) * 86400
+        max_op = 5
+    else:
+        mat_totali = random.randint(800, 1800)
+        tempo_secondi = random.randint(4, 7) * 86400
+        max_op = 8
+
+    cantiere = {
+        "builder_id": str(interaction.user.id),
+        "azienda": azienda,
+        "indirizzo": indirizzo,
+        "grandezza": val,
+        "materiale_richiesto": materiale_estratto,
+        "materiali_totali": mat_totali,
+        "materiali_attuali": 0,
+        "operai_attuali": random.randint(1, max_op),
+        "max_operai": max_op,
+        "tempo_rimanente": tempo_secondi,
+        "paused": True
+    }
+
+    pool = interaction.client.db_pool
+
+    async with pool.acquire() as conn:
+        row = await conn.fetchrow(
+            "SELECT quantity FROM public.inventory WHERE discord_id = $1 AND item_name = $2",
+            str(interaction.user.id), materiale_estratto
+        )
+        if row and row['quantity'] > 0:
+            disponibili = row['quantity']
+            da_usare = min(disponibili, mat_totali)
+            nuova_qta = disponibili - da_usare
+
+            if nuova_qta > 0:
+                await conn.execute(
+                    "UPDATE public.inventory SET quantity = $1 WHERE discord_id = $2 AND item_name = $3",
+                    nuova_qta, str(interaction.user.id), materiale_estratto
+                )
+            else:
+                await conn.execute(
+                    "DELETE FROM public.inventory WHERE discord_id = $1 AND item_name = $2",
+                    str(interaction.user.id), materiale_estratto
+                )
+            cantiere["materiali_attuali"] += da_usare
+
+    if cantiere["materiali_attuali"] >= cantiere["materiali_totali"]:
+        cantiere["paused"] = False
+
+    view = MaterialiView(pool)
+    await interaction.response.send_message(embed=generate_cantiere_embed(cantiere), view=view)
+    msg = await interaction.original_response()
+
+    async with pool.acquire() as conn:
+        await conn.execute(
+            """
+            INSERT INTO public.cantieri (message_id, builder_id, azienda, address, grandezza, materiale_richiesto, materiali_totali, materiali_attuali, tempo_rimanente, paused)
+            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
+            """,
+            str(msg.id), cantiere["builder_id"], cantiere["azienda"], cantiere["indirizzo"], cantiere["grandezza"],
+            cantiere["materiale_richiesto"], cantiere["materiali_totali"], cantiere["materiali_attuali"],
+            cantiere["tempo_rimanente"], cantiere["paused"]
+        )
+
+    while True:
+        await asyncio.sleep(60)
+
+        async with pool.acquire() as conn:
+            data = await conn.fetchrow("SELECT * FROM public.cantieri WHERE message_id = $1", str(msg.id))
+            if not data:
+                break
+
+            if data["paused"]:
+                continue
+
+            nuovo_tempo = max(0, data["tempo_rimanente"] - 60)
+            await conn.execute("UPDATE public.cantieri SET tempo_rimanente = $1 WHERE message_id = $2", nuovo_tempo, str(msg.id))
+
+            cantiere_dict = dict(data)
+            cantiere_dict["tempo_rimanente"] = nuovo_tempo
+            cantiere_dict["operai_attuali"] = random.randint(1, max_op)
+            cantiere_dict["max_operai"] = max_op
+
+            try:
+                await msg.edit(embed=generate_cantiere_embed(cantiere_dict))
+            except discord.HTTPException:
+                pass
+
+            if nuovo_tempo <= 0:
+                await conn.execute(
+                    "INSERT INTO public.registered_properties (discord_id, address, property_type) VALUES ($1, $2, $3)",
+                    data["builder_id"], data["address"], f"Edificio ({data['grandezza'].capitalize()})"
+                )
+                await conn.execute("DELETE FROM public.cantieri WHERE message_id = $1", str(msg.id))
+
+                try:
+                    dm_embed = discord.Embed(
+                        title="🎉 Costruzione Completata!",
+                        description=f"Il cantiere gestito da **{data['azienda']}** presso **{data['address']}** è stato completato ed è stato aggiunto alle tue proprietà!",
+                        color=discord.Color.green()
+                    )
+                    user = await interaction.client.fetch_user(int(data["builder_id"]))
+                    await user.send(embed=dm_embed)
+                except discord.HTTPException:
+                    pass
+                break
 
     # =======================================================
 #  SECONDO MODULO: DETTAGLI FISICI E SALVATAGGIO
@@ -4743,6 +5002,7 @@ async def registra_casa(interaction: discord.Interaction, proprietario: discord.
 async def on_ready():
     await bot.tree.sync()
     bot.add_view(PannelloAnagrafeView())
+    bot.add_view(MaterialiView(bot.db_pool))
     print(f"✅ Bot online come {bot.user}")
 
 if __name__ == "__main__":
