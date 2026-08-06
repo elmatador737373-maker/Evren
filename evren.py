@@ -109,6 +109,10 @@ def run_flask():
 
 
 # --- FUNZIONI DI SUPPORTO & UTILITY ---
+async def shop_item_autocomplete(interaction: discord.Interaction, current: str) -> list[app_commands.Choice[str]]:
+    res = supabase.table("custom_items").select("name").ilike("name", f"%{current}%").limit(25).execute()
+    items = res.data if res.data else []
+    return [app_commands.Choice(name=i["name"], value=i["name"]) for i in items]
 
 def get_or_create_user(user_id: int, username: str):
     response = supabase.table("users").select("*").eq("discord_id", str(user_id)).execute()
@@ -2776,10 +2780,6 @@ async def shop(interaction: discord.Interaction):
     await interaction.response.send_message(embed=embed, view=view, ephemeral=True)
 
 
-async def shop_item_autocomplete(interaction: discord.Interaction, current: str) -> list[app_commands.Choice[str]]:
-    res = supabase.table("custom_items").select("name").ilike("name", f"%{current}%").limit(25).execute()
-    items = res.data if res.data else []
-    return [app_commands.Choice(name=i["name"], value=i["name"]) for i in items]
 
 @bot.tree.command(name="crea_item", description="[STAFF] Crea un nuovo oggetto con meccaniche specifiche.")
 @app_commands.choices(categoria=[
