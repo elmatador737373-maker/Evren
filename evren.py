@@ -718,7 +718,7 @@ class MaterialiView(discord.ui.View):
             )
 
 # --- COMANDO SLASH ---
-@app_commands.command(name="costruisci", description="Avvia la costruzione di un edificio")
+@bot.tree.command(name="costruisci", description="Avvia la costruzione di un edificio")
 @app_commands.describe(
     azienda="Azienda costruttrice che gestisce i lavori",
     indirizzo="Indirizzo dell'immobile",
