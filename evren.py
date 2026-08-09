@@ -5078,9 +5078,24 @@ async def mostra_documento(interaction: discord.Interaction):
 
     doc = response.data[0]
 
+    # ID dei ruoli definiti in precedenza
+    RUOLO_LOS_ANGELES = 1536072707878420541
+    RUOLO_MESSICO = 1536072848224034856
+
+    # Controlliamo i ruoli dell'utente sul server
+    user_role_ids = [role.id for role in interaction.user.roles]
+
+    if RUOLO_MESSICO in user_role_ids:
+        residenza_utente = "Messico"
+    elif RUOLO_LOS_ANGELES in user_role_ids:
+        residenza_utente = "Los Angeles"
+    else:
+        # Valore di fallback se non ha nessuno dei due ruoli
+        residenza_utente = "Los Angeles"
+
     # Generazione del contenuto HTML del documento
     html_content = await genera_carta_identita(
-        residenza=doc["residenza"],
+        residenza=residenza_utente,
         nome=doc["name"],
         cognome=doc["surname"],
         birth_date=doc["birth_date"],
@@ -5096,7 +5111,7 @@ async def mostra_documento(interaction: discord.Interaction):
     # Conversione dell'HTML in immagine tramite Playwright
     file_documento = await renderizza_html_in_immagine(html_content)
 
-    # Invio del documento all'utente (usando followup perché è stato fatto il defer)
+    # Invio del documento all'utente
     await interaction.followup.send(
         "🪪 Ecco la tua carta d'identità ufficiale:",
         file=file_documento
