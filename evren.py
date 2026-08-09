@@ -1162,7 +1162,7 @@ async def unbanall(interaction: discord.Interaction):
     )
 
 # =======================================================
-#  PRIMO MODULO: DATI ANAGRAFICI
+#  PRIMO MODULO: DATI ANAGRAFICI E RESIDENZA
 # =======================================================
 class CreaDocumentiStep1Modal(ui.Modal, title="🪪 ┃ ʀᴇɢɪsᴛʀᴏ (1/2: Anagrafica)"):
     def __init__(self):
@@ -1172,27 +1172,56 @@ class CreaDocumentiStep1Modal(ui.Modal, title="🪪 ┃ ʀᴇɢɪsᴛʀᴏ (1/2:
         self.cognome = ui.TextInput(label="ᴄᴏɢɴᴏᴍᴇ", placeholder="Es. Rossi", required=True, max_length=50)
         self.data_nascita = ui.TextInput(label="ᴅᴀᴛᴀ ᴅɪ ɴᴀsᴄɪᴛᴀ", placeholder="Es. 15/05/1998", required=True, max_length=20)
         self.luogo_nascita = ui.TextInput(label="ʟᴜᴏɢᴏ ᴅɪ ɴᴀsᴄɪᴛᴀ", placeholder="Es. Los Angeles", required=True, max_length=50)
+        
+        # Aggiunta del campo Residenza tramite Select Menu
+        self.residenza = ui.Select(
+            placeholder="🌍 ┃ Seleziona la tua residenza",
+            options=[
+                discord.SelectOption(label="Los Angeles", value="Los Angeles", emoji="🇺🇸"),
+                discord.SelectOption(label="Messico", value="Messico", emoji="🇲🇽")
+            ],
+            min_values=1,
+            max_values=1
+        )
 
         self.add_item(self.nome)
         self.add_item(self.cognome)
         self.add_item(self.data_nascita)
         self.add_item(self.luogo_nascita)
+        self.add_item(self.residenza) # Aggiunto il menu al modal
 
     async def on_submit(self, interaction: discord.Interaction):
         nome_val = self.nome.value.strip()
         cognome_val = self.cognome.value.strip()
         data_val = self.data_nascita.value.strip()
         luogo_val = self.luogo_nascita.value.strip()
+        residenza_val = self.residenza.values[0] # Recupera la scelta (Los Angeles o Messico)
+
+        # Configurazione degli ID dei ruoli (Sostituisci con i veri ID)
+        ROLE_ID_LA = 123456789012345678    # Inserisci l'ID del ruolo di Los Angeles
+        ROLE_ID_MEX = 876543210987654321   # Inserisci l'ID del ruolo del Messico
+
+        try:
+            # Assegnazione del ruolo in base alla residenza scelta
+            if residenza_val == "Los Angeles":
+                role = interaction.guild.get_role(ROLE_ID_LA)
+            elif residenza_val == "Messico":
+                role = interaction.guild.get_role(ROLE_ID_MEX)
+            
+            if role:
+                await interaction.user.add_roles(role)
+        except Exception as e:
+            print(f"Errore durante l'assegnazione del ruolo: {e}")
 
         # Invia un messaggio effimero con il pulsante per procedere al secondo modulo
-        view = ApriStep2View(nome_val, cognome_val, data_val, luogo_val)
+        # (Passiamo anche residenza_val alla view successiva se ti serve salvarla)
+        view = ApriStep2View(nome_val, cognome_val, data_val, luogo_val, residenza_val)
         await interaction.response.send_message(
-            "📌 **Primo step completato con successo!**\n"
+            f"📌 **Primo step completato con successo!** Residenza impostata su **{residenza_val}**.\n"
             "Clicca sul pulsante sottostante per inserire i dati fisici e completare la registrazione.",
             view=view,
             ephemeral=True
         )
-
 
 # =======================================================
 #  VIEW PERSISTENTE PER IL PANNELLO ANAGRAFE
@@ -4260,8 +4289,105 @@ async def paga_multa(interaction: discord.Interaction):
     await interaction.response.send_message(embed=embed, view=view, ephemeral=True)
 
 
-# --- DOCUMENTI IDENTIFICATIVI ---
-async def genera_carta_identita(nome, cognome, birth_date, birth_place, cf, doc_number, photo_url, colore_occhi, colore_capelli, segni_particolari):
+import discord
+from discord import ui
+
+# =======================================================
+#  CONFIGURAZIONE RUOLI (Sostituisci con i veri ID)
+# =======================================================
+RUOLO_LOS_ANGELES = 123456789012345678  # ID del ruolo per Los Angeles
+RUOLO_MESSICO = 876543210987654321      # ID del ruolo per il Messico
+
+
+# =======================================================
+#  PRIMO MODULO: DATI ANAGRAFICI E SCELTA RESIDENZA
+# =======================================================
+class CreaDocumentiStep1Modal(ui.Modal, title="🪪 ┃ ʀᴇɢɪsᴛʀᴏ (1/2: Anagrafica)"):
+    def __init__(self):
+        super().__init__()
+
+        self.nome = ui.TextInput(label="ɴᴏᴍᴇ", placeholder="Es. Mario", required=True, max_length=50)
+        self.cognome = ui.TextInput(label="ᴄᴏɢɴᴏᴍᴇ", placeholder="Es. Rossi", required=True, max_length=50)
+        self.data_nascita = ui.TextInput(label="ᴅᴀᴛᴀ ᴅɪ ɴᴀsᴄɪᴛᴀ", placeholder="Es. 15/05/1998", required=True, max_length=20)
+        self.luogo_nascita = ui.TextInput(label="ʟᴜᴏɢᴏ ᴅɪ ɴᴀsᴄɪᴛᴀ", placeholder="Es. Los Angeles", required=True, max_length=50)
+        
+        # Selezione della residenza
+        self.residenza = ui.Select(
+            placeholder="🌍 ┃ Seleziona la tua residenza",
+            options=[
+                discord.SelectOption(label="Los Angeles", value="Los Angeles", emoji="🇺🇸"),
+                discord.SelectOption(label="Messico", value="Messico", emoji="🇲🇽")
+            ],
+            min_values=1,
+            max_values=1
+        )
+
+        self.add_item(self.nome)
+        self.add_item(self.cognome)
+        self.add_item(self.data_nascita)
+        self.add_item(self.luogo_nascita)
+        self.add_item(self.residenza)
+
+    async def on_submit(self, interaction: discord.Interaction):
+        nome_val = self.nome.value.strip()
+        cognome_val = self.cognome.value.strip()
+        data_val = self.data_nascita.value.strip()
+        luogo_val = self.luogo_nascita.value.strip()
+        residenza_val = self.residenza.values[0]
+
+        try:
+            # Assegnazione del ruolo corrispondente in base alla residenza
+            if residenza_val == "Los Angeles":
+                ruolo = interaction.guild.get_role(RUOLO_LOS_ANGELES)
+            elif residenza_val == "Messico":
+                ruolo = interaction.guild.get_role(RUOLO_MESSICO)
+            
+            if ruolo:
+                await interaction.user.add_roles(ruolo)
+        except Exception as e:
+            print(f"Errore durante l'assegnazione del ruolo: {e}")
+
+        # Passaggio dei dati al secondo step (includendo la residenza)
+        view = ApriStep2View(nome_val, cognome_val, data_val, luogo_val, residenza_val)
+        await interaction.response.send_message(
+            f"📌 **Primo step completato!** Residenza registrata: **{residenza_val}**.\n"
+            "Clicca sul pulsante sottostante per inserire i dati fisici.",
+            view=view,
+            ephemeral=True
+        )
+
+
+# =======================================================
+#  GENERATORE DOCUMENTI REALISTICI (HTML Personalizzato)
+# =======================================================
+async def genera_documento_identita(residenza, nome, cognome, birth_date, birth_place, cf, doc_number, photo_url, colore_occhi, colore_capelli, segni_particolari):
+    
+    # Personalizzazione grafica e testUale in base alla residenza (Stile USA vs Stile Messicano)
+    if residenza == "Messico":
+        ente_titolo = "GOBIERNO DE MÉXICO"
+        sotto_titolo = "ESTADO DE MÉXICO — CREDENCIAL DE IDENTIDAD"
+        colore_primario = "#006847"  # Verde bandiera messicana
+        colore_secondario = "#ce1126" # Rosso bandiera messicana
+        bordo_colore = "#006847"
+        lang_label_1 = "APELLIDO / SURNAME"
+        lang_label_2 = "NOMBRE / GIVEN NAME"
+        lang_label_3 = "FECHA Y LUGAR DE NACIMIENTO"
+        lang_label_4 = "OJOS / EYES"
+        lang_label_5 = "CABELLO / HAIR"
+        lang_label_6 = "SEÑAS PARTICULARES / MARKS"
+    else:  # Los Angeles
+        ente_titolo = "CITY OF LOS ANGELES"
+        sotto_titolo = "CALIFORNIA — IDENTIFICATION CARD"
+        colore_primario = "#1e3a8a"  # Blu istituzionale LA
+        colore_secondario = "#f59e0b" # Oro/Giallo
+        bordo_colore = "#1e3a8a"
+        lang_label_1 = "SURNAME / COGNOME"
+        lang_label_2 = "GIVEN NAME / NOME"
+        lang_label_3 = "DATE & PLACE OF BIRTH / DATA E LUOGO"
+        lang_label_4 = "EYES / OCCHI"
+        lang_label_5 = "HAIR / CAPELLI"
+        lang_label_6 = "DISTINCTIVE MARKS / SEGNI PARTICOLARI"
+
     html_content = f"""
     <!DOCTYPE html>
     <html lang="it">
@@ -4275,19 +4401,19 @@ async def genera_carta_identita(nome, cognome, birth_date, birth_place, cf, doc_
                 height: 500px;
                 background: #f8fafc;
                 font-family: 'Segoe UI', Arial, sans-serif;
-                border: 3px solid #1e3a8a;
+                border: 4px solid {bordo_colore};
                 box-sizing: border-box;
                 position: relative;
                 overflow: hidden;
             }}
             .header {{
-                background: linear-gradient(135deg, #1e3a8a 0%, #1d4ed8 100%);
+                background: linear-gradient(135deg, {colore_primario} 0%, #1d4ed8 100%);
                 color: white;
                 padding: 14px 24px;
                 display: flex;
                 justify-content: space-between;
                 align-items: center;
-                border-bottom: 4px solid #f59e0b;
+                border-bottom: 4px solid {colore_secondario};
             }}
             .header-left h1 {{
                 margin: 0;
@@ -4299,7 +4425,7 @@ async def genera_carta_identita(nome, cognome, birth_date, birth_place, cf, doc_
             .header-left span {{
                 font-size: 11px;
                 letter-spacing: 2px;
-                color: #93c5fd;
+                color: #cbd5e1;
                 text-transform: uppercase;
                 font-weight: 600;
             }}
@@ -4308,8 +4434,8 @@ async def genera_carta_identita(nome, cognome, birth_date, birth_place, cf, doc_
                 font-size: 13px;
                 font-weight: bold;
                 letter-spacing: 1px;
-                color: #fde047;
-                background: rgba(0, 0, 0, 0.2);
+                color: {colore_secondario};
+                background: rgba(0, 0, 0, 0.25);
                 padding: 4px 10px;
                 border-radius: 4px;
             }}
@@ -4321,7 +4447,7 @@ async def genera_carta_identita(nome, cognome, birth_date, birth_place, cf, doc_
             .foto-container {{
                 width: 165px;
                 height: 215px;
-                border: 3px solid #1e3a8a;
+                border: 3px solid {colore_primario};
                 background: #fff;
                 box-shadow: 0 4px 10px rgba(0,0,0,0.15);
                 flex-shrink: 0;
@@ -4347,14 +4473,14 @@ async def genera_carta_identita(nome, cognome, birth_date, birth_place, cf, doc_
                 grid-column: span 2;
             }}
             .label {{
-                font-size: 11px;
+                font-size: 10px;
                 text-transform: uppercase;
                 color: #475569;
                 font-weight: 700;
                 letter-spacing: 0.5px;
             }}
             .value {{
-                font-size: 17px;
+                font-size: 16px;
                 font-weight: 700;
                 color: #0f172a;
                 margin-top: 2px;
@@ -4367,27 +4493,27 @@ async def genera_carta_identita(nome, cognome, birth_date, birth_place, cf, doc_
                 display: flex;
                 justify-content: space-between;
                 align-items: center;
-                font-size: 14px;
+                font-size: 13px;
                 color: #1e293b;
                 border-top: 2px solid #cbd5e1;
                 padding: 10px 15px;
                 background: #e2e8f0;
                 border-radius: 4px;
+                font-family: 'Courier New', monospace;
             }}
             .footer span b {{
-                color: #1e3a8a;
-                font-size: 15px;
+                color: {colore_primario};
             }}
         </style>
     </head>
     <body>
         <div class="header">
             <div class="header-left">
-                <h1>CITTÀ DI LOS ANGELES</h1>
-                <span>CALIFORNIA — CARTA D'IDENTITÀ</span>
+                <h1>{ente_titolo}</h1>
+                <span>{sotto_titolo}</span>
             </div>
             <div class="header-right">
-                <span>IDENTIFICATION CARD</span>
+                <span>OFFICIAL ID</span>
             </div>
         </div>
         
@@ -4398,40 +4524,41 @@ async def genera_carta_identita(nome, cognome, birth_date, birth_place, cf, doc_
             
             <div class="info-grid">
                 <div class="field">
-                    <span class="label">Cognome / Surname</span>
+                    <span class="label">{lang_label_1}</span>
                     <span class="value">{cognome.upper()}</span>
                 </div>
                 <div class="field">
-                    <span class="label">Nome / Given Name</span>
+                    <span class="label">{lang_label_2}</span>
                     <span class="value">{nome.capitalize()}</span>
                 </div>
                 <div class="field full">
-                    <span class="label">Data e Luogo di Nascita / Date & Place of Birth</span>
+                    <span class="label">{lang_label_3}</span>
                     <span class="value">{birth_date} — {birth_place}</span>
                 </div>
                 <div class="field">
-                    <span class="label">Occhi / Eyes</span>
+                    <span class="label">{lang_label_4}</span>
                     <span class="value">{colore_occhi}</span>
                 </div>
                 <div class="field">
-                    <span class="label">Capelli / Hair</span>
+                    <span class="label">{lang_label_5}</span>
                     <span class="value">{colore_capelli}</span>
                 </div>
                 <div class="field full">
-                    <span class="label">Segni Particolari / Distinctive Marks</span>
+                    <span class="label">{lang_label_6}</span>
                     <span class="value">{segni_particolari}</span>
                 </div>
             </div>
         </div>
 
         <div class="footer">
-            <span>Codice Fiscale: <b>{cf}</b></span>
-            <span>N. Documento: <b>{doc_number}</b></span>
+            <span>TAX/CURP CODE: <b>{cf}</b></span>
+            <span>DOC NO: <b>{doc_number}</b></span>
         </div>
     </body>
     </html>
     """
     return html_content
+
 
 
     async with async_playwright() as p:
