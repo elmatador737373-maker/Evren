@@ -4302,6 +4302,7 @@ class CreaDocumentiStep1Modal(ui.Modal, title="🪪 ┃ ʀᴇɢɪsᴛʀᴏ (1/2:
 # =======================================================
 #  GENERATORE DOCUMENTI REALISTICI (HTML Personalizzato)
 # =======================================================
+
 async def genera_carta_identita(residenza, nome, cognome, birth_date, birth_place, cf, doc_number, photo_url, colore_occhi, colore_capelli, segni_particolari):
     
     if residenza == "Messico":
@@ -4494,12 +4495,12 @@ async def genera_carta_identita(residenza, nome, cognome, birth_date, birth_plac
                     <span class="value">{birth_date} — {birth_place}</span>
                 </div>
                 <div class="field">
-                    <span class="label">Occhi / Eyes</span>
-                    <span class="value">{colore_occhi}</span>
+                    <span class="label">N. Documento / Doc No.</span>
+                    <span class="value">{doc_number}</span>
                 </div>
                 <div class="field">
-                    <span class="label">Capelli / Hair</span>
-                    <span class="value">{colore_capelli}</span>
+                    <span class="label">Occhi / Capelli / Eyes / Hair</span>
+                    <span class="value">{colore_occhi} / {colore_capelli}</span>
                 </div>
                 <div class="field full">
                     <span class="label">Segni Particolari / Distinctive Marks</span>
@@ -4516,7 +4517,6 @@ async def genera_carta_identita(residenza, nome, cognome, birth_date, birth_plac
     </html>
     """
     return html_content
-
 
 
     async with async_playwright() as p:
@@ -4554,107 +4554,122 @@ async def genera_fattura_html(
     <head>
         <meta charset="UTF-8">
         <style>
-            body {{
+            * {{
+                box-sizing: border-box;
                 margin: 0;
-                padding: 30px 40px;
-                width: 780px;
-                height: 520px;
+                padding: 0;
+            }}
+            body {{
+                width: 794px;
+                height: 1123px;
                 background: #ffffff;
                 font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif;
                 color: #202124;
-                box-sizing: border-box;
+                padding: 50px 60px;
+                display: flex;
+                flex-direction: column;
+                justify-content: space-between;
                 position: relative;
-                border: 1px solid #dadce0;
             }}
             .invoice-header {{
                 display: flex;
                 justify-content: space-between;
                 align-items: flex-start;
-                border-bottom: 2px solid #202124;
-                padding-bottom: 15px;
-                margin-bottom: 20px;
+                border-bottom: 3px solid #1a73e8;
+                padding-bottom: 20px;
+                margin-bottom: 30px;
             }}
             .company-info h1 {{
                 margin: 0;
-                font-size: 22px;
-                font-weight: 700;
-                color: #202124;
+                font-size: 26px;
+                font-weight: 800;
+                color: #1a73e8;
                 letter-spacing: 0.5px;
                 text-transform: uppercase;
             }}
             .company-info span {{
-                font-size: 11px;
+                font-size: 12px;
                 color: #5f6368;
                 text-transform: uppercase;
-                letter-spacing: 1px;
+                letter-spacing: 1.5px;
                 font-weight: 600;
+                display: block;
+                margin-top: 4px;
             }}
             .invoice-meta {{
                 text-align: right;
             }}
             .invoice-meta h2 {{
-                margin: 0 0 5px 0;
-                font-size: 18px;
-                color: #1a73e8;
+                margin: 0 0 6px 0;
+                font-size: 22px;
+                color: #202124;
+                font-weight: 700;
             }}
             .invoice-meta p {{
-                margin: 2px 0;
-                font-size: 12px;
-                color: #5f6368;
-            }}
-            .details-section {{
-                display: flex;
-                justify-content: space-between;
-                margin-bottom: 25px;
+                margin: 3px 0;
                 font-size: 13px;
-                background: #f8f9fa;
-                padding: 12px 15px;
-                border-radius: 6px;
-                border: 1px solid #e8eaed;
-            }}
-            .detail-block h4 {{
-                margin: 0 0 4px 0;
-                font-size: 11px;
-                text-transform: uppercase;
                 color: #5f6368;
-                letter-spacing: 0.5px;
-            }}
-            .detail-block p {{
-                margin: 0;
-                font-weight: 600;
-                color: #202124;
-                font-size: 14px;
             }}
             .status-badge {{
                 display: inline-block;
-                padding: 4px 10px;
+                padding: 6px 12px;
                 background-color: {colore_badge_bg};
                 color: {colore_badge_text};
                 border: 1px solid {colore_border};
                 border-radius: 4px;
-                font-size: 11px;
+                font-size: 12px;
                 font-weight: 700;
                 text-transform: uppercase;
                 letter-spacing: 0.5px;
+                margin-top: 8px;
+            }}
+            .parties-section {{
+                display: flex;
+                justify-content: space-between;
+                margin-bottom: 40px;
+                gap: 30px;
+            }}
+            .party-box {{
+                flex: 1;
+                background: #f8f9fa;
+                padding: 18px 20px;
+                border-radius: 8px;
+                border: 1px solid #e8eaed;
+            }}
+            .party-box h4 {{
+                margin: 0 0 8px 0;
+                font-size: 11px;
+                text-transform: uppercase;
+                color: #5f6368;
+                letter-spacing: 1px;
+                border-bottom: 1px solid #dadce0;
+                padding-bottom: 6px;
+            }}
+            .party-box p {{
+                margin: 0;
+                font-weight: 600;
+                color: #202124;
+                font-size: 15px;
+                line-height: 1.4;
             }}
             .invoice-table {{
                 width: 100%;
                 border-collapse: collapse;
-                margin-bottom: 20px;
+                margin-bottom: 30px;
             }}
             .invoice-table th {{
                 background-color: #f1f3f4;
                 color: #3c4043;
-                font-size: 11px;
+                font-size: 12px;
                 text-transform: uppercase;
                 text-align: left;
-                padding: 8px 12px;
+                padding: 12px 16px;
                 border-bottom: 2px solid #bdc1c6;
                 letter-spacing: 0.5px;
             }}
             .invoice-table td {{
-                padding: 12px;
-                font-size: 13px;
+                padding: 16px;
+                font-size: 14px;
                 border-bottom: 1px solid #e8eaed;
                 color: #202124;
             }}
@@ -4662,92 +4677,111 @@ async def genera_fattura_html(
                 text-align: right;
                 font-weight: 700;
             }}
-            .invoice-footer {{
-                position: absolute;
-                bottom: 25px;
-                left: 40px;
-                right: 40px;
+            .totals-container {{
                 display: flex;
-                justify-content: space-between;
-                align-items: center;
-                border-top: 1px solid #dadce0;
-                padding-top: 12px;
-                font-size: 11px;
-                color: #5f6368;
+                justify-content: flex-end;
+                margin-bottom: 50px;
+            }}
+            .totals-box {{
+                width: 320px;
+                background: #f8f9fa;
+                border: 1px solid #e8eaed;
+                border-radius: 8px;
+                padding: 15px 20px;
             }}
             .total-row {{
                 display: flex;
-                justify-content: flex-end;
+                justify-content: space-between;
                 align-items: center;
-                gap: 15px;
-                margin-top: 5px;
-                font-size: 15px;
-            }}
-            .total-row span.label {{
-                font-weight: 600;
+                margin-bottom: 8px;
+                font-size: 13px;
                 color: #5f6368;
-                font-size: 12px;
-                text-transform: uppercase;
             }}
-            .total-row span.value {{
+            .total-row.final {{
+                margin-top: 10px;
+                padding-top: 10px;
+                border-top: 2px solid #dadce0;
+                font-size: 16px;
+                color: #202124;
                 font-weight: 700;
+            }}
+            .total-row.final span.value {{
                 color: #1a73e8;
-                font-size: 18px;
+                font-size: 20px;
+            }}
+            .invoice-footer {{
+                border-top: 1px solid #dadce0;
+                padding-top: 15px;
+                display: flex;
+                justify-content: space-between;
+                align-items: center;
+                font-size: 11px;
+                color: #5f6368;
             }}
         </style>
     </head>
     <body>
-        <div class="invoice-header">
-            <div class="company-info">
-                <h1>{azienda.upper()}</h1>
-                <span>Documento Fiscale Ufficiale</span>
+        <div>
+            <div class="invoice-header">
+                <div class="company-info">
+                    <h1>{azienda.upper()}</h1>
+                    <span>Fattura Elettronica / Documento Fiscale</span>
+                </div>
+                <div class="invoice-meta">
+                    <h2>FATTURA #{invoice_id}</h2>
+                    <p>Data di emissione: <b>{data_emissione}</b></p>
+                    <div>
+                        <span class="status-badge">{stato.upper()}</span>
+                    </div>
+                </div>
             </div>
-            <div class="invoice-meta">
-                <h2>FATTURA #{invoice_id}</h2>
-                <p>Data: <b>{data_emissione}</b></p>
-                <div style="margin-top: 6px;">
-                    <span class="status-badge">{stato.upper()}</span>
+            
+            <div class="parties-section">
+                <div class="party-box">
+                    <h4>Emittente</h4>
+                    <p>{emittente}</p>
+                </div>
+                <div class="party-box">
+                    <h4>Cliente / Destinatario</h4>
+                    <p>{destinatario}</p>
+                </div>
+            </div>
+
+            <table class="invoice-table">
+                <thead>
+                    <tr>
+                        <th style="width: 75%;">Descrizione / Causale del Servizio</th>
+                        <th style="width: 25%; text-align: right;">Importo (€)</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <tr>
+                        <td>{causale}</td>
+                        <td class="amount">€ {importo:,.2f}</td>
+                    </tr>
+                </tbody>
+            </table>
+
+            <div class="totals-container">
+                <div class="totals-box">
+                    <div class="total-row">
+                        <span>Imponibile:</span>
+                        <span>€ {importo:,.2f}</span>
+                    </div>
+                    <div class="total-row">
+                        <span>IVA (0%):</span>
+                        <span>€ 0,00</span>
+                    </div>
+                    <div class="total-row final">
+                        <span>Totale Documento:</span>
+                        <span class="value">€ {importo:,.2f}</span>
+                    </div>
                 </div>
             </div>
         </div>
-        
-        <div class="details-section">
-            <div class="detail-block">
-                <h4>Emittente</h4>
-                <p>{emittente}</p>
-            </div>
-            <div class="detail-block">
-                <h4>Destinatario / Cliente</h4>
-                <p>{destinatario}</p>
-            </div>
-            <div class="detail-block" style="text-align: right;">
-                <h4>Sistema Fiscale</h4>
-                <p>Evren City OS</p>
-            </div>
-        </div>
-
-        <table class="invoice-table">
-            <thead>
-                <tr>
-                    <th style="width: 70%;">Descrizione / Causale</th>
-                    <th style="width: 30%; text-align: right;">Importo</th>
-                </tr>
-            </thead>
-            <tbody>
-                <tr>
-                    <td>{causale}</td>
-                    <td class="amount">€ {importo:,.2f}</td>
-                </tr>
-            </tbody>
-        </table>
-
-        <div class="total-row">
-            <span class="label">Totale da pagare:</span>
-            <span class="value">€ {importo:,.2f}</span>
-        </div>
 
         <div class="invoice-footer">
-            <span>Documento generato digitalmente tramite Evren City OS</span>
+            <span>Documento emesso e archiviato digitalmente tramite Evren City OS</span>
             <span>Pagina 1 di 1</span>
         </div>
     </body>
@@ -4755,7 +4789,7 @@ async def genera_fattura_html(
     """
   return html_content
 
-# --- FUNZIONE PER CONVERTIRE L'HTML IN IMMAGINE ---
+# --- FUNZIONE PER CONVERTIRE L'HTML IN IMMAGINE (Formato A4 Verticale) ---
 async def renderizza_fattura_immagine(fattura):
   html = await genera_fattura_html(
       invoice_id=fattura["id"],
@@ -4770,9 +4804,14 @@ async def renderizza_fattura_immagine(fattura):
   
   async with async_playwright() as p:
     browser = await p.chromium.launch(headless=True)
-    page = await browser.new_page(viewport={"width": 780, "height": 480})
-    await page.set_content(html)
-    screenshot_bytes = await page.screenshot(type="png")
+    # Impostato sul formato A4 verticale in pixel con alta definizione (device_scale_factor)
+    context = await browser.new_context(
+        viewport={"width": 794, "height": 1123},
+        device_scale_factor=2
+    )
+    page = await context.new_page()
+    await page.set_content(html, wait_until="load")
+    screenshot_bytes = await page.screenshot(type="png", full_page=False)
     await browser.close()
     
   return io.BytesIO(screenshot_bytes)
@@ -5044,32 +5083,32 @@ import io
 from playwright.async_api import async_playwright
 import discord
 
+import io
+from playwright.async_api import async_playwright
+import discord
+
 async def renderizza_html_in_immagine(html_content: str) -> discord.File:
     async with async_playwright() as p:
-        # Avviamo il browser
         browser = await p.chromium.launch(headless=True)
-        
-        # Creazione del contesto con le dimensioni esatte della carta d'identità
         context = await browser.new_context(
             viewport={"width": 820, "height": 520},
-            device_scale_factor=2  # Rende l'immagine ad alta definizione (retina)
+            device_scale_factor=2
         )
-        
         page = await context.new_page()
         
-        # Carichiamo l'HTML
-        await page.setContent(html_content, wait_until="load")
+        # CORRETTO: set_content invece di setContent
+        await page.set_content(html_content, wait_until="load")
         
-        # Catturiamo lo screenshot esattamente della pagina della misura impostata
         screenshot_bytes = await page.screenshot(type="png", full_page=False)
-        
         await browser.close()
         
-        # Inviamo il file pronto per Discord
         buffer = io.BytesIO(screenshot_bytes)
         buffer.seek(0)
         return discord.File(buffer, filename="carta_identita.png")
 
+
+import random
+import string
 
 import random
 import string
@@ -5095,20 +5134,14 @@ async def mostra_documento(interaction: discord.Interaction):
 
     doc = response.data[0]
 
-    # Controlliamo se il numero di documento esiste già nel database
     doc_number = doc.get("doc_number")
 
-    # Se non è presente (o è vuoto), lo generiamo ora per la prima volta e lo salviamo nel DB
     if not doc_number:
-        # Esempio di generazione codice univoco (es. AB123456)
         lettere = ''.join(random.choices(string.ascii_uppercase, k=2))
         numeri = ''.join(random.choices(string.digits, k=6))
         doc_number = f"{lettere}{numeri}"
-
-        # Salviamo il nuovo numero nel database per renderlo permanente
         supabase.table("documents").update({"doc_number": doc_number}).eq("discord_id", user_id).execute()
 
-    # Determinazione della residenza in base ai ruoli Discord
     RUOLO_LOS_ANGELES = 1536072707878420541
     RUOLO_MESSICO = 1536072848224034856
 
@@ -5121,7 +5154,6 @@ async def mostra_documento(interaction: discord.Interaction):
     else:
         residenza_utente = "Los Angeles"
 
-    # Generazione del contenuto HTML utilizzando il numero fisso
     html_content = await genera_carta_identita(
         residenza=residenza_utente,
         nome=doc["name"],
@@ -5129,17 +5161,15 @@ async def mostra_documento(interaction: discord.Interaction):
         birth_date=doc["birth_date"],
         birth_place=doc["birth_place"],
         cf=doc["cf"],
-        doc_number=doc_number,  # <--- Numero fisso e salvato
+        doc_number=doc_number,
         photo_url=doc["photo_url"],
         colore_occhi=doc["eye_color"],
         colore_capelli=doc["hair_color"],
         segni_particolari=doc["distinct_marks"],
     )
 
-    # Conversione dell'HTML in immagine tramite Playwright
     file_documento = await renderizza_html_in_immagine(html_content)
 
-    # Invio del documento all'utente
     await interaction.followup.send(
         "🪪 Ecco la tua carta d'identità ufficiale:",
         file=file_documento
