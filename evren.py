@@ -381,6 +381,120 @@ async def avvia_chiamata_vocale(interaction: discord.Interaction, numero_destina
     )
 import asyncio
 import time
+# RUOLO_STAFF_ID = 123456789012345678  # Sostituisci con l'ID reale del tuo ruolo staff
+
+# --- COMANDO /item give (Solo Staff) ---
+@bot.tree.command(name="item-give", description="Aggiunge un oggetto direttamente all'inventario di un utente (Riservato allo Staff)")
+@app_commands.describe(
+    utente="L'utente a cui dare l'oggetto",
+    item="Nome dell'oggetto",
+    quantita="Quantità da aggiungere (default: 1)"
+)
+async def item_give(interaction: discord.Interaction, utente: discord.Member, item: str, quantita: int = 1):
+    has_role = any(role.id == RUOLO_STAFF_ID for role in interaction.user.roles)
+    if not has_role and not interaction.user.guild_permissions.administrator:
+        await interaction.response.send_message("❌ Devi possedere il ruolo **Staff** per poter usare questo comando!", ephemeral=True)
+        return
+
+    if quantita <= 0:
+        await interaction.response.send_message("❌ La quantità deve essere maggiore di zero.", ephemeral=True)
+        return
+
+    user_id = str(utente.id)
+
+    # Verifica se l'oggetto esiste nella tabella custom_items per ricavare categoria e peso
+    res_item = supabase.table("custom_items").select("*").ilike("name", item).execute()
+    
+    if res_item.data:
+        item_data = res_item.data[0]
+        item_name = item_data.get("name")
+        category = item_data.get("category", "Generale")
+        weight = item_data.get("weight", 0.1)
+    else:
+        # Fallback se l'oggetto non è registrato nello shop/custom_items
+        item_name = item
+        category = "Generale"
+        weight = 0.1
+
+    nome_finale_oggetto = item_name
+    matricola_testo = ""
+
+    # Gestione matricola per le armi esattamente come nel comando /compra
+    if category.lower() in ["armi", "arma"]:
+        parte1 = "".join(random.choices(string.digits + string.ascii_uppercase, k=4))
+        parte2 = "".join(random.choices(string.digits + string.ascii_uppercase, k=4))
+        matricola = f"{parte1}-{parte2}"
+        
+        nome_finale_oggetto = f"{item_name} [{matricola}]"
+        matricola_testo = f"\nMatricola: **{matricola}**"
+
+    # Controllo se l'utente possiede già esattamente questo oggetto nel database
+    res_inv = supabase.table("inventory").select("*").eq("discord_id", user_id).ilike("item_name", nome_finale_oggetto).execute()
+
+    if res_inv.data:
+        # Se esiste già, aggiorniamo la quantità
+        vecchia_qta = res_inv.data[0]["quantity"]
+        nuova_qta = vecchia_qta + quantita
+        supabase.table("inventory").update({"quantity": nuova_qta}).eq("discord_id", user_id).ilike("item_name", nome_finale_oggetto).execute()
+    else:
+        # Altrimenti inseriamo una nuova riga
+        supabase.table("inventory").insert({
+            "discord_id": user_id,
+            "item_name": nome_finale_oggetto,
+            "category": category,
+            "weight": weight,
+            "quantity": quantita
+        }).execute()
+
+    await interaction.response.send_message(
+        f"✅ Oggetto aggiunto con successo all'inventario di {utente.mention}!\n"
+        f"Oggetto: **{nome_finale_oggetto}** (Quantità: `{quantita}`)"
+        f"{matricola_testo}",
+        ephemeral=True
+    )
+
+
+# --- COMANDO /item remove (Solo Staff) ---
+@bot.tree.command(name="item-remove", description="Rimuove o decrementa un oggetto dall'inventario di un utente (Riservato allo Staff)")
+@app_commands.describe(
+    utente="L'utente a cui rimuovere l'oggetto",
+    item="Nome esatto o parziale dell'oggetto da rimuovere",
+    quantita="Quantità da rimuovere (lasciare vuoto per rimuovere tutto)"
+)
+async def item_remove(interaction: discord.Interaction, utente: discord.Member, item: str, quantita: int = None):
+    has_role = any(role.id == RUOLO_STAFF_ID for role in interaction.user.roles)
+    if not has_role and not interaction.user.guild_permissions.administrator:
+        await interaction.response.send_message("❌ Devi possedere il ruolo **Staff** per poter usare questo comando!", ephemeral=True)
+        return
+
+    user_id = str(utente.id)
+
+    # Cerchiamo l'oggetto nell'inventario dell'utente
+    res_inv = supabase.table("inventory").select("*").eq("discord_id", user_id).ilike("item_name", f"%{item}%").execute()
+
+    if not res_inv.data:
+        await interaction.response.send_message(f"❌ L'utente {utente.mention} non possiede alcun oggetto corrispondente a **{item}** nel suo inventario.", ephemeral=True)
+        return
+
+    item_trovato = res_inv.data[0]
+    nome_oggetto_inventario = item_trovato["item_name"]
+    qta_attuale = item_trovato["quantity"]
+
+    # Se la quantità da rimuovere non è specificata o è maggiore/uguale al posseduto, rimuoviamo l'intera riga
+    if quantita is None or quantita >= qta_attuale:
+        supabase.table("inventory").delete().eq("discord_id", user_id).eq("item_name", nome_oggetto_inventario).execute()
+        rimossi_effettivi = qta_attuale
+    else:
+        # Altrimenti decrementiamo la quantità
+        rimossi_effettivi = quantita
+        nuova_qta = qta_attuale - quantita
+        supabase.table("inventory").update({"quantity": nuova_qta}).eq("discord_id", user_id).eq("item_name", nome_oggetto_inventario).execute()
+
+    await interaction.response.send_message(
+        f"🗑️ Rimozione completata con successo!\n"
+        f"Rimossi **{rimossi_effettivi}x {nome_oggetto_inventario}** dall'inventario di {utente.mention}.",
+        ephemeral=True
+    )
 
 @bot.tree.command(name="ruoli", description="Aggiungi o rimuovi un ruolo a un utente")
 @app_commands.describe(
