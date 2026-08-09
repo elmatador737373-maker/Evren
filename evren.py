@@ -5062,21 +5062,21 @@ async def renderizza_html_in_immagine(html_content: str) -> discord.File:
     description="Mostra la tua carta d'identità ufficiale in chat.",
 )
 async def mostra_documento(interaction: discord.Interaction):
-  await interaction.response.defer(ephemeral=False)
+    await interaction.response.defer(ephemeral=False)
 
-  user_id = str(interaction.user.id)
-  response = (
-      supabase.table("documents").select("*").eq("discord_id", user_id).execute()
-  )
-
-  if not response.data:
-    await interaction.followup.send(
-        "❌ Non possiedi ancora un documento registrato! Vai su https://discord.com/channels/1233353915559313478/1519652687036157982 per crearlo.",
-        ephemeral=True,
+    user_id = str(interaction.user.id)
+    response = (
+        supabase.table("documents").select("*").eq("discord_id", user_id).execute()
     )
-    return
 
-  doc = response.data[0]
+    if not response.data:
+        await interaction.followup.send(
+            "❌ Non possiedi ancora un documento registrato! Vai su https://discord.com/channels/1233353915559313478/1519652687036157982 per crearlo.",
+            ephemeral=True,
+        )
+        return
+
+    doc = response.data[0]
 
     # Generazione del contenuto HTML del documento
     html_content = await genera_carta_identita(
@@ -5096,11 +5096,10 @@ async def mostra_documento(interaction: discord.Interaction):
     # Conversione dell'HTML in immagine tramite Playwright
     file_documento = await renderizza_html_in_immagine(html_content)
 
-    # Invio del documento all'utente
-    await interaction.response.send_message(
+    # Invio del documento all'utente (usando followup perché è stato fatto il defer)
+    await interaction.followup.send(
         "🪪 Ecco la tua carta d'identità ufficiale:",
-        file=file_documento,
-        ephemeral=False
+        file=file_documento
     )
 
 # --- COMANDI REGISTRAZIONE ISTITUZIONALE ---
