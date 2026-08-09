@@ -5040,26 +5040,35 @@ import io
 from playwright.async_api import async_playwright
 
 
+import io
+from playwright.async_api import async_playwright
+import discord
+
 async def renderizza_html_in_immagine(html_content: str) -> discord.File:
-  async with async_playwright() as p:
-    # Avvia Chromium in background
-    browser = await p.chromium.launch(
-        headless=True, args=["--no-sandbox", "--disable-setuid-sandbox"]
-    )
-    # Imposta la pagina con le dimensioni esatte della carta (780x500)
-    page = await browser.new_page(viewport={"width": 780, "height": 500})
-
-    # Carica l'HTML
-    await page.set_content(html_content)
-
-    # Cattura lo screenshot della carta come byte PNG
-    screenshot_bytes = await page.screenshot(type="png", full_page=False)
-    await browser.close()
-
-  # Converte i byte in un file utilizzabile da Discord
-  buffer = io.BytesIO(screenshot_bytes)
-  buffer.seek(0)
-  return discord.File(buffer, filename="carta_identita.png")
+    async with async_playwright() as p:
+        # Avviamo il browser
+        browser = await p.chromium.launch(headless=True)
+        
+        # Creazione del contesto con le dimensioni esatte della carta d'identità
+        context = await browser.new_context(
+            viewport={"width": 820, "height": 520},
+            device_scale_factor=2  # Rende l'immagine ad alta definizione (retina)
+        )
+        
+        page = await context.new_page()
+        
+        # Carichiamo l'HTML
+        await page.setContent(html_content, wait_until="load")
+        
+        # Catturiamo lo screenshot esattamente della pagina della misura impostata
+        screenshot_bytes = await page.screenshot(type="png", full_page=False)
+        
+        await browser.close()
+        
+        # Inviamo il file pronto per Discord
+        buffer = io.BytesIO(screenshot_bytes)
+        buffer.seek(0)
+        return discord.File(buffer, filename="carta_identita.png")
 
 
 import random
