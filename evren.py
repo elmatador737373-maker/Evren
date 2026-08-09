@@ -4304,23 +4304,21 @@ class CreaDocumentiStep1Modal(ui.Modal, title="🪪 ┃ ʀᴇɢɪsᴛʀᴏ (1/2:
 # =======================================================
 async def genera_carta_identita(residenza, nome, cognome, birth_date, birth_place, cf, doc_number, photo_url, colore_occhi, colore_capelli, segni_particolari):
     
-    # Personalizzazione basata sulla residenza (Esclusivamente ID Card)
     if residenza == "Messico":
         ente_titolo = "ESTADOS UNIDOS MEXICANOS"
         sotto_titolo = "CREDENCIAL PARA VOTAR / CÉDULA DE IDENTIDAD"
-        colore_primario = "#006847"  # Verde Messico
-        colore_secondario = "#ce1126" # Rosso Messico
+        colore_primario = "#006847"
+        colore_secondario = "#ce1126"
         paese_cod = "MEX"
         stato_emittente = "DCMX"
-    else:  # Los Angeles
+    else:
         ente_titolo = "STATE OF CALIFORNIA"
         sotto_titolo = "CITY OF LOS ANGELES — OFFICIAL IDENTIFICATION CARD"
-        colore_primario = "#1e3a8a"  # Blu istituzionale
-        colore_secondario = "#f59e0b" # Oro/Giallo
+        colore_primario = "#1e3a8a"
+        colore_secondario = "#f59e0b"
         paese_cod = "USA"
         stato_emittente = "USCAL"
 
-    # Generazione stringa MRZ (Machine Readable Zone) per ID Card
     mrz_line1 = f"I<{paese_cod}{cognome.upper()}<<{nome.upper()}<<<<<<<<<<<<<<"
     mrz_line2 = f"{doc_number}9{paese_cod}{birth_date.replace('/', '')}M281231{stato_emittente}<<<<<<<$"
 
@@ -4330,18 +4328,23 @@ async def genera_carta_identita(residenza, nome, cognome, birth_date, birth_plac
     <head>
         <meta charset="UTF-8">
         <style>
-            body {{
+            * {{
+                box-sizing: border-box;
                 margin: 0;
                 padding: 0;
+            }}
+            body {{
                 width: 820px;
                 height: 520px;
                 background: #f8fafc;
                 font-family: 'Helvetica Neue', Arial, sans-serif;
-                border: 3px solid {colore_primario};
-                border-radius: 10px;
-                box-sizing: border-box;
-                position: relative;
                 overflow: hidden;
+                display: flex;
+                flex-direction: column;
+                justify-content: space-between;
+                border: 3px solid {colore_primario};
+                border-radius: 12px;
+                position: relative;
             }}
             .security-bg {{
                 position: absolute;
@@ -4354,23 +4357,23 @@ async def genera_carta_identita(residenza, nome, cognome, birth_date, birth_plac
             .header {{
                 background: linear-gradient(135deg, {colore_primario} 0%, #0f172a 100%);
                 color: white;
-                padding: 12px 22px;
+                padding: 12px 20px;
                 display: flex;
                 justify-content: space-between;
                 align-items: center;
                 border-bottom: 4px solid {colore_secondario};
-                position: relative;
                 z-index: 1;
+                height: 70px;
+                flex-shrink: 0;
             }}
             .header-left h1 {{
-                margin: 0;
-                font-size: 18px;
-                letter-spacing: 2px;
+                font-size: 17px;
+                letter-spacing: 1.5px;
                 font-weight: 900;
                 text-transform: uppercase;
             }}
             .header-left span {{
-                font-size: 10px;
+                font-size: 9px;
                 letter-spacing: 1.5px;
                 color: #93c5fd;
                 text-transform: uppercase;
@@ -4379,22 +4382,23 @@ async def genera_carta_identita(residenza, nome, cognome, birth_date, birth_plac
             .badge-state {{
                 background: {colore_secondario};
                 color: #0f172a;
-                font-size: 12px;
+                font-size: 11px;
                 font-weight: 800;
-                padding: 4px 12px;
+                padding: 4px 10px;
                 border-radius: 4px;
                 letter-spacing: 1px;
             }}
             .body-content {{
-                padding: 20px 24px;
+                padding: 15px 22px;
                 display: flex;
                 gap: 22px;
-                position: relative;
                 z-index: 1;
+                flex-grow: 1;
+                align-items: center;
             }}
             .foto-container {{
-                width: 155px;
-                height: 200px;
+                width: 145px;
+                height: 190px;
                 border: 3px solid {colore_primario};
                 background: #fff;
                 box-shadow: 0 4px 10px rgba(0,0,0,0.15);
@@ -4411,7 +4415,7 @@ async def genera_carta_identita(residenza, nome, cognome, birth_date, birth_plac
                 flex-grow: 1;
                 display: grid;
                 grid-template-columns: 1fr 1fr;
-                gap: 10px 15px;
+                gap: 8px 15px;
             }}
             .field {{
                 display: flex;
@@ -4423,37 +4427,38 @@ async def genera_carta_identita(residenza, nome, cognome, birth_date, birth_plac
                 grid-column: span 2;
             }}
             .label {{
-                font-size: 9px;
+                font-size: 8px;
                 text-transform: uppercase;
                 color: #475569;
                 font-weight: 800;
                 letter-spacing: 0.5px;
             }}
             .value {{
-                font-size: 15px;
+                font-size: 14px;
                 font-weight: 700;
                 color: #0f172a;
                 margin-top: 1px;
             }}
             .mrz-container {{
-                position: absolute;
-                bottom: 12px;
-                left: 24px;
-                right: 24px;
                 background: #e2e8f0;
-                padding: 6px 12px;
-                border-radius: 4px;
-                border: 1px solid #cbd5e1;
+                padding: 6px 15px;
+                border-top: 1px solid #cbd5e1;
                 font-family: 'Courier New', Courier, monospace;
-                font-size: 13px;
+                font-size: 12px;
                 font-weight: bold;
                 letter-spacing: 2px;
                 color: #1e293b;
                 z-index: 1;
+                height: 48px;
+                flex-shrink: 0;
+                display: flex;
+                flex-direction: column;
+                justify-content: center;
             }}
             .mrz-line {{
                 white-space: pre;
                 overflow: hidden;
+                line-height: 1.25;
             }}
         </style>
     </head>
@@ -5057,6 +5062,9 @@ async def renderizza_html_in_immagine(html_content: str) -> discord.File:
   return discord.File(buffer, filename="carta_identita.png")
 
 
+import random
+import string
+
 @bot.tree.command(
     name="mostra_documento",
     description="Mostra la tua carta d'identità ufficiale in chat.",
@@ -5078,11 +5086,23 @@ async def mostra_documento(interaction: discord.Interaction):
 
     doc = response.data[0]
 
-    # ID dei ruoli definiti in precedenza
+    # Controlliamo se il numero di documento esiste già nel database
+    doc_number = doc.get("doc_number")
+
+    # Se non è presente (o è vuoto), lo generiamo ora per la prima volta e lo salviamo nel DB
+    if not doc_number:
+        # Esempio di generazione codice univoco (es. AB123456)
+        lettere = ''.join(random.choices(string.ascii_uppercase, k=2))
+        numeri = ''.join(random.choices(string.digits, k=6))
+        doc_number = f"{lettere}{numeri}"
+
+        # Salviamo il nuovo numero nel database per renderlo permanente
+        supabase.table("documents").update({"doc_number": doc_number}).eq("discord_id", user_id).execute()
+
+    # Determinazione della residenza in base ai ruoli Discord
     RUOLO_LOS_ANGELES = 1536072707878420541
     RUOLO_MESSICO = 1536072848224034856
 
-    # Controlliamo i ruoli dell'utente sul server
     user_role_ids = [role.id for role in interaction.user.roles]
 
     if RUOLO_MESSICO in user_role_ids:
@@ -5090,10 +5110,9 @@ async def mostra_documento(interaction: discord.Interaction):
     elif RUOLO_LOS_ANGELES in user_role_ids:
         residenza_utente = "Los Angeles"
     else:
-        # Valore di fallback se non ha nessuno dei due ruoli
         residenza_utente = "Los Angeles"
 
-    # Generazione del contenuto HTML del documento
+    # Generazione del contenuto HTML utilizzando il numero fisso
     html_content = await genera_carta_identita(
         residenza=residenza_utente,
         nome=doc["name"],
@@ -5101,7 +5120,7 @@ async def mostra_documento(interaction: discord.Interaction):
         birth_date=doc["birth_date"],
         birth_place=doc["birth_place"],
         cf=doc["cf"],
-        doc_number=doc["doc_number"],
+        doc_number=doc_number,  # <--- Numero fisso e salvato
         photo_url=doc["photo_url"],
         colore_occhi=doc["eye_color"],
         colore_capelli=doc["hair_color"],
