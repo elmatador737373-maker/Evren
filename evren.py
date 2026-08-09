@@ -4304,31 +4304,25 @@ class CreaDocumentiStep1Modal(ui.Modal, title="🪪 ┃ ʀᴇɢɪsᴛʀᴏ (1/2:
 # =======================================================
 async def genera_carta_identita(residenza, nome, cognome, birth_date, birth_place, cf, doc_number, photo_url, colore_occhi, colore_capelli, segni_particolari):
     
-    # Personalizzazione grafica e testUale in base alla residenza (Stile USA vs Stile Messicano)
+    # Personalizzazione basata sulla residenza (Esclusivamente ID Card)
     if residenza == "Messico":
-        ente_titolo = "GOBIERNO DE MÉXICO"
-        sotto_titolo = "ESTADO DE MÉXICO — CREDENCIAL DE IDENTIDAD"
-        colore_primario = "#006847"  # Verde bandiera messicana
-        colore_secondario = "#ce1126" # Rosso bandiera messicana
-        bordo_colore = "#006847"
-        lang_label_1 = "APELLIDO / SURNAME"
-        lang_label_2 = "NOMBRE / GIVEN NAME"
-        lang_label_3 = "FECHA Y LUGAR DE NACIMIENTO"
-        lang_label_4 = "OJOS / EYES"
-        lang_label_5 = "CABELLO / HAIR"
-        lang_label_6 = "SEÑAS PARTICULARES / MARKS"
+        ente_titolo = "ESTADOS UNIDOS MEXICANOS"
+        sotto_titolo = "CREDENCIAL PARA VOTAR / CÉDULA DE IDENTIDAD"
+        colore_primario = "#006847"  # Verde Messico
+        colore_secondario = "#ce1126" # Rosso Messico
+        paese_cod = "MEX"
+        stato_emittente = "DCMX"
     else:  # Los Angeles
-        ente_titolo = "CITY OF LOS ANGELES"
-        sotto_titolo = "CALIFORNIA — IDENTIFICATION CARD"
-        colore_primario = "#1e3a8a"  # Blu istituzionale LA
+        ente_titolo = "STATE OF CALIFORNIA"
+        sotto_titolo = "CITY OF LOS ANGELES — OFFICIAL IDENTIFICATION CARD"
+        colore_primario = "#1e3a8a"  # Blu istituzionale
         colore_secondario = "#f59e0b" # Oro/Giallo
-        bordo_colore = "#1e3a8a"
-        lang_label_1 = "SURNAME / COGNOME"
-        lang_label_2 = "GIVEN NAME / NOME"
-        lang_label_3 = "DATE & PLACE OF BIRTH / DATA E LUOGO"
-        lang_label_4 = "EYES / OCCHI"
-        lang_label_5 = "HAIR / CAPELLI"
-        lang_label_6 = "DISTINCTIVE MARKS / SEGNI PARTICOLARI"
+        paese_cod = "USA"
+        stato_emittente = "USCAL"
+
+    # Generazione stringa MRZ (Machine Readable Zone) per ID Card
+    mrz_line1 = f"I<{paese_cod}{cognome.upper()}<<{nome.upper()}<<<<<<<<<<<<<<"
+    mrz_line2 = f"{doc_number}9{paese_cod}{birth_date.replace('/', '')}M281231{stato_emittente}<<<<<<<$"
 
     html_content = f"""
     <!DOCTYPE html>
@@ -4339,123 +4333,140 @@ async def genera_carta_identita(residenza, nome, cognome, birth_date, birth_plac
             body {{
                 margin: 0;
                 padding: 0;
-                width: 780px;
-                height: 500px;
+                width: 820px;
+                height: 520px;
                 background: #f8fafc;
-                font-family: 'Segoe UI', Arial, sans-serif;
-                border: 4px solid {bordo_colore};
+                font-family: 'Helvetica Neue', Arial, sans-serif;
+                border: 3px solid {colore_primario};
+                border-radius: 10px;
                 box-sizing: border-box;
                 position: relative;
                 overflow: hidden;
             }}
+            .security-bg {{
+                position: absolute;
+                top: 0; left: 0; width: 100%; height: 100%;
+                background-image: radial-gradient({colore_primario} 0.8px, transparent 0.8px);
+                background-size: 14px 14px;
+                opacity: 0.03;
+                z-index: 0;
+            }}
             .header {{
-                background: linear-gradient(135deg, {colore_primario} 0%, #1d4ed8 100%);
+                background: linear-gradient(135deg, {colore_primario} 0%, #0f172a 100%);
                 color: white;
-                padding: 14px 24px;
+                padding: 12px 22px;
                 display: flex;
                 justify-content: space-between;
                 align-items: center;
                 border-bottom: 4px solid {colore_secondario};
+                position: relative;
+                z-index: 1;
             }}
             .header-left h1 {{
                 margin: 0;
-                font-size: 21px;
-                letter-spacing: 1.5px;
-                font-weight: 800;
+                font-size: 18px;
+                letter-spacing: 2px;
+                font-weight: 900;
                 text-transform: uppercase;
             }}
             .header-left span {{
-                font-size: 11px;
-                letter-spacing: 2px;
-                color: #cbd5e1;
+                font-size: 10px;
+                letter-spacing: 1.5px;
+                color: #93c5fd;
                 text-transform: uppercase;
-                font-weight: 600;
+                font-weight: 700;
             }}
-            .header-right {{
-                text-align: right;
-                font-size: 13px;
-                font-weight: bold;
-                letter-spacing: 1px;
-                color: {colore_secondario};
-                background: rgba(0, 0, 0, 0.25);
-                padding: 4px 10px;
+            .badge-state {{
+                background: {colore_secondario};
+                color: #0f172a;
+                font-size: 12px;
+                font-weight: 800;
+                padding: 4px 12px;
                 border-radius: 4px;
+                letter-spacing: 1px;
             }}
             .body-content {{
-                padding: 22px 26px;
+                padding: 20px 24px;
                 display: flex;
-                gap: 25px;
+                gap: 22px;
+                position: relative;
+                z-index: 1;
             }}
             .foto-container {{
-                width: 165px;
-                height: 215px;
+                width: 155px;
+                height: 200px;
                 border: 3px solid {colore_primario};
                 background: #fff;
                 box-shadow: 0 4px 10px rgba(0,0,0,0.15);
+                border-radius: 4px;
                 flex-shrink: 0;
             }}
             .foto-container img {{
                 width: 100%;
                 height: 100%;
                 object-fit: cover;
+                border-radius: 2px;
             }}
             .info-grid {{
                 flex-grow: 1;
                 display: grid;
                 grid-template-columns: 1fr 1fr;
-                gap: 12px 18px;
+                gap: 10px 15px;
             }}
             .field {{
                 display: flex;
                 flex-direction: column;
-                border-bottom: 2px solid #cbd5e1;
-                padding-bottom: 4px;
+                border-bottom: 1.5px solid #cbd5e1;
+                padding-bottom: 2px;
             }}
             .field.full {{
                 grid-column: span 2;
             }}
             .label {{
-                font-size: 10px;
+                font-size: 9px;
                 text-transform: uppercase;
                 color: #475569;
-                font-weight: 700;
+                font-weight: 800;
                 letter-spacing: 0.5px;
             }}
             .value {{
-                font-size: 16px;
+                font-size: 15px;
                 font-weight: 700;
                 color: #0f172a;
-                margin-top: 2px;
+                margin-top: 1px;
             }}
-            .footer {{
+            .mrz-container {{
                 position: absolute;
-                bottom: 14px;
-                left: 26px;
-                right: 26px;
-                display: flex;
-                justify-content: space-between;
-                align-items: center;
-                font-size: 13px;
-                color: #1e293b;
-                border-top: 2px solid #cbd5e1;
-                padding: 10px 15px;
+                bottom: 12px;
+                left: 24px;
+                right: 24px;
                 background: #e2e8f0;
+                padding: 6px 12px;
                 border-radius: 4px;
-                font-family: 'Courier New', monospace;
+                border: 1px solid #cbd5e1;
+                font-family: 'Courier New', Courier, monospace;
+                font-size: 13px;
+                font-weight: bold;
+                letter-spacing: 2px;
+                color: #1e293b;
+                z-index: 1;
             }}
-            .footer span b {{
-                color: {colore_primario};
+            .mrz-line {{
+                white-space: pre;
+                overflow: hidden;
             }}
         </style>
     </head>
     <body>
+        <div class="security-bg"></div>
+        
         <div class="header">
             <div class="header-left">
                 <h1>{ente_titolo}</h1>
                 <span>{sotto_titolo}</span>
             </div>
-            <div class="header-right">
-                <span>OFFICIAL ID</span>
+            <div class="badge-state">
+                <span>{paese_cod}</span>
             </div>
         </div>
         
@@ -4466,35 +4477,35 @@ async def genera_carta_identita(residenza, nome, cognome, birth_date, birth_plac
             
             <div class="info-grid">
                 <div class="field">
-                    <span class="label">{lang_label_1}</span>
+                    <span class="label">Cognome / Surname</span>
                     <span class="value">{cognome.upper()}</span>
                 </div>
                 <div class="field">
-                    <span class="label">{lang_label_2}</span>
+                    <span class="label">Nome / Given Name</span>
                     <span class="value">{nome.capitalize()}</span>
                 </div>
                 <div class="field full">
-                    <span class="label">{lang_label_3}</span>
+                    <span class="label">Data e Luogo di Nascita / Date & Place of Birth</span>
                     <span class="value">{birth_date} — {birth_place}</span>
                 </div>
                 <div class="field">
-                    <span class="label">{lang_label_4}</span>
+                    <span class="label">Occhi / Eyes</span>
                     <span class="value">{colore_occhi}</span>
                 </div>
                 <div class="field">
-                    <span class="label">{lang_label_5}</span>
+                    <span class="label">Capelli / Hair</span>
                     <span class="value">{colore_capelli}</span>
                 </div>
                 <div class="field full">
-                    <span class="label">{lang_label_6}</span>
+                    <span class="label">Segni Particolari / Distinctive Marks</span>
                     <span class="value">{segni_particolari}</span>
                 </div>
             </div>
         </div>
 
-        <div class="footer">
-            <span>TAX/CURP CODE: <b>{cf}</b></span>
-            <span>DOC NO: <b>{doc_number}</b></span>
+        <div class="mrz-container">
+            <div class="mrz-line">{mrz_line1[:44]}</div>
+            <div class="mrz-line">{mrz_line2[:44]}</div>
         </div>
     </body>
     </html>
@@ -5068,18 +5079,19 @@ async def mostra_documento(interaction: discord.Interaction):
   doc = response.data[0]
 
   # 1. Ottiene il codice HTML tramite la tua funzione
-  html_content = await genera_carta_identita(
-      nome=doc["name"],
-      cognome=doc["surname"],
-      birth_date=doc["birth_date"],
-      birth_place=doc["birth_place"],
-      cf=doc["cf"],
-      doc_number=doc["doc_number"],
-      photo_url=doc["photo_url"],
-      colore_occhi=doc["eye_color"],
-      colore_capelli=doc["hair_color"],
-      segni_particolari=doc["distinct_marks"],
-  )
+html_content = await genera_carta_identita(
+    residenza=doc["residenza"],  # <-- Aggiunto per evitare l'errore di argomento mancante
+    nome=doc["name"],
+    cognome=doc["surname"],
+    birth_date=doc["birth_date"],
+    birth_place=doc["birth_place"],
+    cf=doc["cf"],
+    doc_number=doc["doc_number"],
+    photo_url=doc["photo_url"],
+    colore_occhi=doc["eye_color"],
+    colore_capelli=doc["hair_color"],
+    segni_particolari=doc["distinct_marks"],
+)
 
   # 2. Converte l'HTML in un'immagine tramite Playwright
   file_documento = await renderizza_html_in_immagine(html_content)
