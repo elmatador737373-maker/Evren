@@ -1165,6 +1165,10 @@ async def unbanall(interaction: discord.Interaction):
 # =======================================================
 #  VIEW PERSISTENTE PER IL PANNELLO ANAGRAFE
 # =======================================================
+import asyncio
+import discord
+from discord import ui
+
 class PannelloAnagrafeView(ui.View):
     def __init__(self):
         super().__init__(timeout=None)
@@ -1178,19 +1182,32 @@ class PannelloAnagrafeView(ui.View):
     async def apri_modal(self, interaction: discord.Interaction, button: ui.Button):
         user_id = str(interaction.user.id)
 
-        # Controllo preventivo: blocca se l'utente ha già un documento registrato
-        existing = supabase.table("documents").select("discord_id").eq("discord_id", user_id).execute()
+        try:
+            # Eseguiamo la query a Supabase in un thread separato per evitare di bloccare il bot ed evitare il timeout di Discord
+            def check_db():
+                return supabase.table("documents").select("discord_id").eq("discord_id", user_id).execute()
 
-        if existing.data:
-            await interaction.response.send_message(
-                "❌ **Hai già completato la tua registrazione anagrafica!**\n"
-                "Non è possibile creare un nuovo documento.",
-                ephemeral=True
-            )
-            return
+            existing = await asyncio.to_thread(check_db)
 
-        # Apre il primo modulo
-        await interaction.response.send_modal(CreaDocumentiStep1Modal())
+            if existing.data:
+                await interaction.response.send_message(
+                    "❌ **Hai già completato la tua registrazione anagrafica!**\n"
+                    "Non è possibile creare un nuovo documento.",
+                    ephemeral=True
+                )
+                return
+
+            # Apre il primo modulo immediatamente se non ha già un documento
+            await interaction.response.send_modal(CreaDocumentiStep1Modal())
+
+        except Exception as e:
+            # Gestione di sicurezza nel caso in cui la chiamata fallisca o scada il tempo
+            if not interaction.response.is_done():
+                await interaction.response.send_message(
+                    "❌ Si è verificato un errore durante la verifica. Riprova tra poco.",
+                    ephemeral=True
+                )
+            print(f"Errore nel Pannello Anagrafe: {e}")
 
 # =======================================================
 #  COMANDO /PANNELLO_DOCUMENTI (PER GLI ADMIN)
