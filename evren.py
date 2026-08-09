@@ -5078,26 +5078,30 @@ async def mostra_documento(interaction: discord.Interaction):
 
   doc = response.data[0]
 
-  # 1. Ottiene il codice HTML tramite la tua funzione
-html_content = await genera_carta_identita(
-    residenza=doc["residenza"],  # <-- Aggiunto per evitare l'errore di argomento mancante
-    nome=doc["name"],
-    cognome=doc["surname"],
-    birth_date=doc["birth_date"],
-    birth_place=doc["birth_place"],
-    cf=doc["cf"],
-    doc_number=doc["doc_number"],
-    photo_url=doc["photo_url"],
-    colore_occhi=doc["eye_color"],
-    colore_capelli=doc["hair_color"],
-    segni_particolari=doc["distinct_marks"],
-)
+    # Generazione del contenuto HTML del documento
+    html_content = await genera_carta_identita(
+        residenza=doc["residenza"],
+        nome=doc["name"],
+        cognome=doc["surname"],
+        birth_date=doc["birth_date"],
+        birth_place=doc["birth_place"],
+        cf=doc["cf"],
+        doc_number=doc["doc_number"],
+        photo_url=doc["photo_url"],
+        colore_occhi=doc["eye_color"],
+        colore_capelli=doc["hair_color"],
+        segni_particolari=doc["distinct_marks"],
+    )
 
-  # 2. Converte l'HTML in un'immagine tramite Playwright
-  file_documento = await renderizza_html_in_immagine(html_content)
+    # Conversione dell'HTML in immagine tramite Playwright
+    file_documento = await renderizza_html_in_immagine(html_content)
 
-  # 3. Invia il file immagine su Discord (rimuovi ephemeral=True se vuoi che sia visibile a tutti in chat pubblica)
-  await interaction.followup.send(file=file_documento)
+    # Invio del documento all'utente
+    await interaction.response.send_message(
+        "🪪 Ecco la tua carta d'identità ufficiale:",
+        file=file_documento,
+        ephemeral=False
+    )
 
 # --- COMANDI REGISTRAZIONE ISTITUZIONALE ---
 
