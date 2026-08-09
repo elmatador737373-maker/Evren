@@ -4302,7 +4302,7 @@ class CreaDocumentiStep1Modal(ui.Modal, title="🪪 ┃ ʀᴇɢɪsᴛʀᴏ (1/2:
 # =======================================================
 #  GENERATORE DOCUMENTI REALISTICI (HTML Personalizzato)
 # =======================================================
-async def genera_documento_identita(residenza, nome, cognome, birth_date, birth_place, cf, doc_number, photo_url, colore_occhi, colore_capelli, segni_particolari):
+async def genera_carta_identita(residenza, nome, cognome, birth_date, birth_place, cf, doc_number, photo_url, colore_occhi, colore_capelli, segni_particolari):
     
     # Personalizzazione grafica e testUale in base alla residenza (Stile USA vs Stile Messicano)
     if residenza == "Messico":
