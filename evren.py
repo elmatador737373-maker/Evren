@@ -4991,8 +4991,7 @@ async def mostra_documento(interaction: discord.Interaction):
 
   if not response.data:
     await interaction.followup.send(
-        "❌ Non possiedi ancora un documento registrato! Usa `/crea_documenti`"
-        " per crearlo.",
+        "❌ Non possiedi ancora un documento registrato! Vai su https://discord.com/channels/1233353915559313478/1519652687036157982 per crearlo.",
         ephemeral=True,
     )
     return
