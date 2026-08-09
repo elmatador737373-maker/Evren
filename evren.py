@@ -1161,67 +1161,6 @@ async def unbanall(interaction: discord.Interaction):
         ephemeral=True,
     )
 
-# =======================================================
-#  PRIMO MODULO: DATI ANAGRAFICI E RESIDENZA
-# =======================================================
-class CreaDocumentiStep1Modal(ui.Modal, title="🪪 ┃ ʀᴇɢɪsᴛʀᴏ (1/2: Anagrafica)"):
-    def __init__(self):
-        super().__init__()
-
-        self.nome = ui.TextInput(label="ɴᴏᴍᴇ", placeholder="Es. Mario", required=True, max_length=50)
-        self.cognome = ui.TextInput(label="ᴄᴏɢɴᴏᴍᴇ", placeholder="Es. Rossi", required=True, max_length=50)
-        self.data_nascita = ui.TextInput(label="ᴅᴀᴛᴀ ᴅɪ ɴᴀsᴄɪᴛᴀ", placeholder="Es. 15/05/1998", required=True, max_length=20)
-        self.luogo_nascita = ui.TextInput(label="ʟᴜᴏɢᴏ ᴅɪ ɴᴀsᴄɪᴛᴀ", placeholder="Es. Los Angeles", required=True, max_length=50)
-        
-        # Aggiunta del campo Residenza tramite Select Menu
-        self.residenza = ui.Select(
-            placeholder="🌍 ┃ Seleziona la tua residenza",
-            options=[
-                discord.SelectOption(label="Los Angeles", value="Los Angeles", emoji="🇺🇸"),
-                discord.SelectOption(label="Messico", value="Messico", emoji="🇲🇽")
-            ],
-            min_values=1,
-            max_values=1
-        )
-
-        self.add_item(self.nome)
-        self.add_item(self.cognome)
-        self.add_item(self.data_nascita)
-        self.add_item(self.luogo_nascita)
-        self.add_item(self.residenza) # Aggiunto il menu al modal
-
-    async def on_submit(self, interaction: discord.Interaction):
-        nome_val = self.nome.value.strip()
-        cognome_val = self.cognome.value.strip()
-        data_val = self.data_nascita.value.strip()
-        luogo_val = self.luogo_nascita.value.strip()
-        residenza_val = self.residenza.values[0] # Recupera la scelta (Los Angeles o Messico)
-
-        # Configurazione degli ID dei ruoli (Sostituisci con i veri ID)
-        ROLE_ID_LA = 123456789012345678    # Inserisci l'ID del ruolo di Los Angeles
-        ROLE_ID_MEX = 876543210987654321   # Inserisci l'ID del ruolo del Messico
-
-        try:
-            # Assegnazione del ruolo in base alla residenza scelta
-            if residenza_val == "Los Angeles":
-                role = interaction.guild.get_role(ROLE_ID_LA)
-            elif residenza_val == "Messico":
-                role = interaction.guild.get_role(ROLE_ID_MEX)
-            
-            if role:
-                await interaction.user.add_roles(role)
-        except Exception as e:
-            print(f"Errore durante l'assegnazione del ruolo: {e}")
-
-        # Invia un messaggio effimero con il pulsante per procedere al secondo modulo
-        # (Passiamo anche residenza_val alla view successiva se ti serve salvarla)
-        view = ApriStep2View(nome_val, cognome_val, data_val, luogo_val, residenza_val)
-        await interaction.response.send_message(
-            f"📌 **Primo step completato con successo!** Residenza impostata su **{residenza_val}**.\n"
-            "Clicca sul pulsante sottostante per inserire i dati fisici e completare la registrazione.",
-            view=view,
-            ephemeral=True
-        )
 
 # =======================================================
 #  VIEW PERSISTENTE PER IL PANNELLO ANAGRAFE
@@ -4295,8 +4234,11 @@ from discord import ui
 # =======================================================
 #  CONFIGURAZIONE RUOLI (Sostituisci con i veri ID)
 # =======================================================
-RUOLO_LOS_ANGELES = 123456789012345678  # ID del ruolo per Los Angeles
-RUOLO_MESSICO = 876543210987654321      # ID del ruolo per il Messico
+# =======================================================
+#  DEFINIZIONE RUOLI E RESIDENZA
+# =======================================================
+RUOLO_MESSICO = 1536072848224034856
+RUOLO_LOS_ANGELES = 1536072707878420541
 
 
 # =======================================================
