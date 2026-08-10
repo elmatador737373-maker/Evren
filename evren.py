@@ -109,6 +109,21 @@ def run_flask():
 
 
 # --- FUNZIONI DI SUPPORTO & UTILITY ---
+class ApriStep2View(ui.View):
+    def __init__(self, nome, cognome, data_nascita, luogo_nascita):
+        super().__init__(timeout=180)  # Il pulsante scade dopo 3 minuti
+        self.nome = nome
+        self.cognome = cognome
+        self.data_nascita = data_nascita
+        self.luogo_nascita = luogo_nascita
+
+    @ui.button(label="Continua con i Dati Fisici (2/2)", style=discord.ButtonStyle.primary, emoji="➡️")
+    async def apri_secondo_modulo(self, interaction: discord.Interaction, button: ui.Button):
+        await interaction.response.send_modal(
+            CreaDocumentiStep2Modal(self.nome, self.cognome, self.data_nascita, self.luogo_nascita)
+        )
+
+
 async def shop_item_autocomplete(interaction: discord.Interaction, current: str) -> list[app_commands.Choice[str]]:
     res = supabase.table("custom_items").select("name").ilike("name", f"%{current}%").limit(25).execute()
     items = res.data if res.data else []
@@ -452,6 +467,64 @@ async def item_give(interaction: discord.Interaction, utente: discord.Member, it
         f"{matricola_testo}",
         ephemeral=True
     )
+
+    # =======================================================
+#  SECONDO MODULO: DETTAGLI FISICI E SALVATAGGIO
+# =======================================================
+class CreaDocumentiStep2Modal(ui.Modal, title="🪪 ┃ ʀᴇɢɪsᴛʀᴏ (2/2: Dati Fisici)"):
+    def __init__(self, nome, cognome, data_nascita, luogo_nascita):
+        super().__init__()
+        self.nome = nome
+        self.cognome = cognome
+        self.data_nascita = data_nascita
+        self.luogo_nascita = luogo_nascita
+
+        self.colore_occhi = ui.TextInput(label="ᴄᴏʟᴏʀᴇ ᴏᴄᴄʜɪ", placeholder="Es. Marroni / Verdi", required=True, max_length=30)
+        self.colore_capelli = ui.TextInput(label="ᴄᴏʟᴏʀᴇ ᴄᴀᴘᴇʟʟɪ", placeholder="Es. Castani / Neri", required=True, max_length=30)
+        self.segni_particolari = ui.TextInput(label="sᴇɢɴɪ ᴘᴀʀᴛɪᴄᴏʟᴀʀɪ", placeholder="Es. Cicatrice o Nessuno", required=False, max_length=100)
+
+        self.add_item(self.colore_occhi)
+        self.add_item(self.colore_capelli)
+        self.add_item(self.segni_particolari)
+
+    async def on_submit(self, interaction: discord.Interaction):
+        occhi_val = self.colore_occhi.value.strip()
+        capelli_val = self.colore_capelli.value.strip()
+        segni_val = self.segni_particolari.value.strip() or "Nessuno"
+
+        user_id = str(interaction.user.id)
+
+        try:
+            cf_temporaneo = f"EVREN-{user_id[-6:]}"
+            doc_numero = f"DOC-{user_id[-5:]}"
+
+            data = {
+                "discord_id": user_id,
+                "name": self.nome,
+                "surname": self.cognome,
+                "birth_date": self.data_nascita,
+                "birth_place": self.luogo_nascita,
+                "eye_color": occhi_val,
+                "hair_color": capelli_val,
+                "distinct_marks": segni_val,
+                "cf": cf_temporaneo,
+                "doc_number": doc_numero,
+                "photo_url": None
+            }
+
+            supabase.table("documents").insert(data).execute()
+
+            await interaction.response.send_message(
+                "✅ **ᴅᴀᴛɪ ᴀɴᴀɢʀᴀꜰɪᴄɪ sᴀʟᴠᴀᴛɪ ᴄᴏɴ sᴜᴄᴄᴇss!**\n"
+                "Ora utilizza il comando `/carica_foto_documento` allegando la tua foto per completare la carta d'identità.",
+                ephemeral=True
+            )
+
+        except Exception as e:
+            await interaction.response.send_message(
+                f"❌ Si è verificato un errore durante il salvataggio dei dati: {e}",
+                ephemeral=True
+            )
 
 
 # --- COMANDO /item remove (Solo Staff) ---
@@ -915,63 +988,6 @@ async def avvia_loop_cantiere(msg: discord.Message):
     # Il cantiere parte subito attivamente (supponendo che si parta con 0, andrà in pausa subito dopo il primo minuto se non si deposita, oppure puoi lasciarlo partire)
     is_paused = False 
 
-    # =======================================================
-#  SECONDO MODULO: DETTAGLI FISICI E SALVATAGGIO
-# =======================================================
-class CreaDocumentiStep2Modal(ui.Modal, title="🪪 ┃ ʀᴇɢɪsᴛʀᴏ (2/2: Dati Fisici)"):
-    def __init__(self, nome, cognome, data_nascita, luogo_nascita):
-        super().__init__()
-        self.nome = nome
-        self.cognome = cognome
-        self.data_nascita = data_nascita
-        self.luogo_nascita = luogo_nascita
-
-        self.colore_occhi = ui.TextInput(label="ᴄᴏʟᴏʀᴇ ᴏᴄᴄʜɪ", placeholder="Es. Marroni / Verdi", required=True, max_length=30)
-        self.colore_capelli = ui.TextInput(label="ᴄᴏʟᴏʀᴇ ᴄᴀᴘᴇʟʟɪ", placeholder="Es. Castani / Neri", required=True, max_length=30)
-        self.segni_particolari = ui.TextInput(label="sᴇɢɴɪ ᴘᴀʀᴛɪᴄᴏʟᴀʀɪ", placeholder="Es. Cicatrice o Nessuno", required=False, max_length=100)
-
-        self.add_item(self.colore_occhi)
-        self.add_item(self.colore_capelli)
-        self.add_item(self.segni_particolari)
-
-    async def on_submit(self, interaction: discord.Interaction):
-        occhi_val = self.colore_occhi.value.strip()
-        capelli_val = self.colore_capelli.value.strip()
-        segni_val = self.segni_particolari.value.strip() or "Nessuno"
-
-        user_id = str(interaction.user.id)
-
-        try:
-            cf_temporaneo = f"EVREN-{user_id[-6:]}"
-            doc_numero = f"DOC-{user_id[-5:]}"
-
-            data = {
-                "discord_id": user_id,
-                "name": self.nome,
-                "surname": self.cognome,
-                "birth_date": self.data_nascita,
-                "birth_place": self.luogo_nascita,
-                "eye_color": occhi_val,
-                "hair_color": capelli_val,
-                "distinct_marks": segni_val,
-                "cf": cf_temporaneo,
-                "doc_number": doc_numero,
-                "photo_url": None
-            }
-
-            supabase.table("documents").insert(data).execute()
-
-            await interaction.response.send_message(
-                "✅ **ᴅᴀᴛɪ ᴀɴᴀɢʀᴀꜰɪᴄɪ sᴀʟᴠᴀᴛɪ ᴄᴏɴ sᴜᴄᴄᴇss!**\n"
-                "Ora utilizza il comando `/carica_foto_documento` allegando la tua foto per completare la carta d'identità.",
-                ephemeral=True
-            )
-
-        except Exception as e:
-            await interaction.response.send_message(
-                f"❌ Si è verificato un errore durante il salvataggio dei dati: {e}",
-                ephemeral=True
-            )
 
 @bot.tree.command(name="playtest", description="Testa la riproduzione di un brano audio")
 async def playtest(interaction: discord.Interaction, query: str = "https://www.youtube.com/watch?v=dQw4w9WgXcQ"):
@@ -1092,19 +1108,6 @@ async def panicbutton(interaction: discord.Interaction):
 # =======================================================
 #  VIEW CON IL PULSANTE PER APRIRE IL SECONDO MODULO
 # =======================================================
-class ApriStep2View(ui.View):
-    def __init__(self, nome, cognome, data_nascita, luogo_nascita):
-        super().__init__(timeout=180)  # Il pulsante scade dopo 3 minuti
-        self.nome = nome
-        self.cognome = cognome
-        self.data_nascita = data_nascita
-        self.luogo_nascita = luogo_nascita
-
-    @ui.button(label="Continua con i Dati Fisici (2/2)", style=discord.ButtonStyle.primary, emoji="➡️")
-    async def apri_secondo_modulo(self, interaction: discord.Interaction, button: ui.Button):
-        await interaction.response.send_modal(
-            CreaDocumentiStep2Modal(self.nome, self.cognome, self.data_nascita, self.luogo_nascita)
-        )
 
 @bot.tree.command(
     name="unbanall",
@@ -1160,7 +1163,302 @@ async def unbanall(interaction: discord.Interaction):
         f"✅ Operazione completata! Sono stati sbannati **{count}** utenti.",
         ephemeral=True,
     )
+# =======================================================
+#  DEFINIZIONE RUOLI E RESIDENZA
+# =======================================================
+RUOLO_MESSICO = 1536072848224034856
+RUOLO_LOS_ANGELES = 1536072707878420541
 
+
+# =======================================================
+#  PRIMO MODULO: DATI ANAGRAFICI E SCELTA RESIDENZA
+# =======================================================
+class CreaDocumentiStep1Modal(ui.Modal, title="🪪 ┃ ʀᴇɢɪsᴛʀᴏ (1/2: Anagrafica)"):
+    def __init__(self):
+        super().__init__()
+
+        self.nome = ui.TextInput(label="ɴᴏᴍᴇ", placeholder="Es. Mario", required=True, max_length=50)
+        self.cognome = ui.TextInput(label="ᴄᴏɢɴᴏᴍᴇ", placeholder="Es. Rossi", required=True, max_length=50)
+        self.data_nascita = ui.TextInput(label="ᴅᴀᴛᴀ ᴅɪ ɴᴀsᴄɪᴛᴀ", placeholder="Es. 15/05/1998", required=True, max_length=20)
+        self.luogo_nascita = ui.TextInput(label="ʟᴜᴏɢᴏ ᴅɪ ɴᴀsᴄɪᴛᴀ", placeholder="Es. Los Angeles", required=True, max_length=50)
+        
+        # Selezione della residenza
+        self.residenza = ui.Select(
+            placeholder="🌍 ┃ Seleziona la tua residenza",
+            options=[
+                discord.SelectOption(label="Los Angeles", value="Los Angeles", emoji="🇺🇸"),
+                discord.SelectOption(label="Messico", value="Messico", emoji="🇲🇽")
+            ],
+            min_values=1,
+            max_values=1
+        )
+
+        self.add_item(self.nome)
+        self.add_item(self.cognome)
+        self.add_item(self.data_nascita)
+        self.add_item(self.luogo_nascita)
+        self.add_item(self.residenza)
+
+    async def on_submit(self, interaction: discord.Interaction):
+        nome_val = self.nome.value.strip()
+        cognome_val = self.cognome.value.strip()
+        data_val = self.data_nascita.value.strip()
+        luogo_val = self.luogo_nascita.value.strip()
+        residenza_val = self.residenza.values[0]
+
+        try:
+            # Assegnazione del ruolo corrispondente in base alla residenza
+            if residenza_val == "Los Angeles":
+                ruolo = interaction.guild.get_role(RUOLO_LOS_ANGELES)
+            elif residenza_val == "Messico":
+                ruolo = interaction.guild.get_role(RUOLO_MESSICO)
+            
+            if ruolo:
+                await interaction.user.add_roles(ruolo)
+        except Exception as e:
+            print(f"Errore durante l'assegnazione del ruolo: {e}")
+
+        # Passaggio dei dati al secondo step (includendo la residenza)
+        view = ApriStep2View(nome_val, cognome_val, data_val, luogo_val, residenza_val)
+        await interaction.response.send_message(
+            f"📌 **Primo step completato!** Residenza registrata: **{residenza_val}**.\n"
+            "Clicca sul pulsante sottostante per inserire i dati fisici.",
+            view=view,
+            ephemeral=True
+        )
+
+
+# =======================================================
+#  GENERATORE DOCUMENTI REALISTICI (HTML Personalizzato)
+# =======================================================
+
+async def genera_carta_identita(residenza, nome, cognome, birth_date, birth_place, cf, doc_number, photo_url, colore_occhi, colore_capelli, segni_particolari):
+    
+    if residenza == "Messico":
+        ente_titolo = "ESTADOS UNIDOS MEXICANOS"
+        sotto_titolo = "CREDENCIAL PARA VOTAR / CÉDULA DE IDENTIDAD"
+        colore_primario = "#006847"
+        colore_secondario = "#ce1126"
+        paese_cod = "MEX"
+        stato_emittente = "DCMX"
+    else:
+        ente_titolo = "STATE OF CALIFORNIA"
+        sotto_titolo = "CITY OF LOS ANGELES — OFFICIAL IDENTIFICATION CARD"
+        colore_primario = "#1e3a8a"
+        colore_secondario = "#f59e0b"
+        paese_cod = "USA"
+        stato_emittente = "USCAL"
+
+    mrz_line1 = f"I<{paese_cod}{cognome.upper()}<<{nome.upper()}<<<<<<<<<<<<<<"
+    mrz_line2 = f"{doc_number}9{paese_cod}{birth_date.replace('/', '')}M281231{stato_emittente}<<<<<<<$"
+
+    html_content = f"""
+    <!DOCTYPE html>
+    <html lang="it">
+    <head>
+        <meta charset="UTF-8">
+        <style>
+            * {{
+                box-sizing: border-box;
+                margin: 0;
+                padding: 0;
+            }}
+            body {{
+                width: 820px;
+                height: 520px;
+                background: #f8fafc;
+                font-family: 'Helvetica Neue', Arial, sans-serif;
+                overflow: hidden;
+                display: flex;
+                flex-direction: column;
+                justify-content: space-between;
+                border: 3px solid {colore_primario};
+                border-radius: 12px;
+                position: relative;
+            }}
+            .security-bg {{
+                position: absolute;
+                top: 0; left: 0; width: 100%; height: 100%;
+                background-image: radial-gradient({colore_primario} 0.8px, transparent 0.8px);
+                background-size: 14px 14px;
+                opacity: 0.03;
+                z-index: 0;
+            }}
+            .header {{
+                background: linear-gradient(135deg, {colore_primario} 0%, #0f172a 100%);
+                color: white;
+                padding: 12px 20px;
+                display: flex;
+                justify-content: space-between;
+                align-items: center;
+                border-bottom: 4px solid {colore_secondario};
+                z-index: 1;
+                height: 70px;
+                flex-shrink: 0;
+            }}
+            .header-left h1 {{
+                font-size: 17px;
+                letter-spacing: 1.5px;
+                font-weight: 900;
+                text-transform: uppercase;
+            }}
+            .header-left span {{
+                font-size: 9px;
+                letter-spacing: 1.5px;
+                color: #93c5fd;
+                text-transform: uppercase;
+                font-weight: 700;
+            }}
+            .badge-state {{
+                background: {colore_secondario};
+                color: #0f172a;
+                font-size: 11px;
+                font-weight: 800;
+                padding: 4px 10px;
+                border-radius: 4px;
+                letter-spacing: 1px;
+            }}
+            .body-content {{
+                padding: 15px 22px;
+                display: flex;
+                gap: 22px;
+                z-index: 1;
+                flex-grow: 1;
+                align-items: center;
+            }}
+            .foto-container {{
+                width: 145px;
+                height: 190px;
+                border: 3px solid {colore_primario};
+                background: #fff;
+                box-shadow: 0 4px 10px rgba(0,0,0,0.15);
+                border-radius: 4px;
+                flex-shrink: 0;
+            }}
+            .foto-container img {{
+                width: 100%;
+                height: 100%;
+                object-fit: cover;
+                border-radius: 2px;
+            }}
+            .info-grid {{
+                flex-grow: 1;
+                display: grid;
+                grid-template-columns: 1fr 1fr;
+                gap: 8px 15px;
+            }}
+            .field {{
+                display: flex;
+                flex-direction: column;
+                border-bottom: 1.5px solid #cbd5e1;
+                padding-bottom: 2px;
+            }}
+            .field.full {{
+                grid-column: span 2;
+            }}
+            .label {{
+                font-size: 8px;
+                text-transform: uppercase;
+                color: #475569;
+                font-weight: 800;
+                letter-spacing: 0.5px;
+            }}
+            .value {{
+                font-size: 14px;
+                font-weight: 700;
+                color: #0f172a;
+                margin-top: 1px;
+            }}
+            .mrz-container {{
+                background: #e2e8f0;
+                padding: 6px 15px;
+                border-top: 1px solid #cbd5e1;
+                font-family: 'Courier New', Courier, monospace;
+                font-size: 12px;
+                font-weight: bold;
+                letter-spacing: 2px;
+                color: #1e293b;
+                z-index: 1;
+                height: 48px;
+                flex-shrink: 0;
+                display: flex;
+                flex-direction: column;
+                justify-content: center;
+            }}
+            .mrz-line {{
+                white-space: pre;
+                overflow: hidden;
+                line-height: 1.25;
+            }}
+        </style>
+    </head>
+    <body>
+        <div class="security-bg"></div>
+        
+        <div class="header">
+            <div class="header-left">
+                <h1>{ente_titolo}</h1>
+                <span>{sotto_titolo}</span>
+            </div>
+            <div class="badge-state">
+                <span>{paese_cod}</span>
+            </div>
+        </div>
+        
+        <div class="body-content">
+            <div class="foto-container">
+                <img src="{photo_url}" />
+            </div>
+            
+            <div class="info-grid">
+                <div class="field">
+                    <span class="label">Cognome / Surname</span>
+                    <span class="value">{cognome.upper()}</span>
+                </div>
+                <div class="field">
+                    <span class="label">Nome / Given Name</span>
+                    <span class="value">{nome.capitalize()}</span>
+                </div>
+                <div class="field full">
+                    <span class="label">Data e Luogo di Nascita / Date & Place of Birth</span>
+                    <span class="value">{birth_date} — {birth_place}</span>
+                </div>
+                <div class="field">
+                    <span class="label">N. Documento / Doc No.</span>
+                    <span class="value">{doc_number}</span>
+                </div>
+                <div class="field">
+                    <span class="label">Occhi / Capelli / Eyes / Hair</span>
+                    <span class="value">{colore_occhi} / {colore_capelli}</span>
+                </div>
+                <div class="field full">
+                    <span class="label">Segni Particolari / Distinctive Marks</span>
+                    <span class="value">{segni_particolari}</span>
+                </div>
+            </div>
+        </div>
+
+        <div class="mrz-container">
+            <div class="mrz-line">{mrz_line1[:44]}</div>
+            <div class="mrz-line">{mrz_line2[:44]}</div>
+        </div>
+    </body>
+    </html>
+    """
+    return html_content
+
+
+    async with async_playwright() as p:
+        browser = await p.chromium.launch(headless=True)
+        page = await browser.new_page(viewport={"width": 780, "height": 500})
+        await page.set_content(html_content)
+        await page.wait_for_load_state("networkidle")
+        screenshot_bytes = await page.screenshot(type="png")
+        await browser.close()
+
+    buffer = io.BytesIO(screenshot_bytes)
+    buffer.seek(0)
+    return discord.File(buffer, filename="carta_identita.png")
 
 # =======================================================
 #  VIEW PERSISTENTE PER IL PANNELLO ANAGRAFE
@@ -1208,7 +1506,6 @@ class PannelloAnagrafeView(ui.View):
                     ephemeral=True
                 )
             print(f"Errore nel Pannello Anagrafe: {e}")
-
 # =======================================================
 #  COMANDO /PANNELLO_DOCUMENTI (PER GLI ADMIN)
 # =======================================================
@@ -4251,302 +4548,6 @@ from discord import ui
 # =======================================================
 #  CONFIGURAZIONE RUOLI (Sostituisci con i veri ID)
 # =======================================================
-# =======================================================
-#  DEFINIZIONE RUOLI E RESIDENZA
-# =======================================================
-RUOLO_MESSICO = 1536072848224034856
-RUOLO_LOS_ANGELES = 1536072707878420541
-
-
-# =======================================================
-#  PRIMO MODULO: DATI ANAGRAFICI E SCELTA RESIDENZA
-# =======================================================
-class CreaDocumentiStep1Modal(ui.Modal, title="🪪 ┃ ʀᴇɢɪsᴛʀᴏ (1/2: Anagrafica)"):
-    def __init__(self):
-        super().__init__()
-
-        self.nome = ui.TextInput(label="ɴᴏᴍᴇ", placeholder="Es. Mario", required=True, max_length=50)
-        self.cognome = ui.TextInput(label="ᴄᴏɢɴᴏᴍᴇ", placeholder="Es. Rossi", required=True, max_length=50)
-        self.data_nascita = ui.TextInput(label="ᴅᴀᴛᴀ ᴅɪ ɴᴀsᴄɪᴛᴀ", placeholder="Es. 15/05/1998", required=True, max_length=20)
-        self.luogo_nascita = ui.TextInput(label="ʟᴜᴏɢᴏ ᴅɪ ɴᴀsᴄɪᴛᴀ", placeholder="Es. Los Angeles", required=True, max_length=50)
-        
-        # Selezione della residenza
-        self.residenza = ui.Select(
-            placeholder="🌍 ┃ Seleziona la tua residenza",
-            options=[
-                discord.SelectOption(label="Los Angeles", value="Los Angeles", emoji="🇺🇸"),
-                discord.SelectOption(label="Messico", value="Messico", emoji="🇲🇽")
-            ],
-            min_values=1,
-            max_values=1
-        )
-
-        self.add_item(self.nome)
-        self.add_item(self.cognome)
-        self.add_item(self.data_nascita)
-        self.add_item(self.luogo_nascita)
-        self.add_item(self.residenza)
-
-    async def on_submit(self, interaction: discord.Interaction):
-        nome_val = self.nome.value.strip()
-        cognome_val = self.cognome.value.strip()
-        data_val = self.data_nascita.value.strip()
-        luogo_val = self.luogo_nascita.value.strip()
-        residenza_val = self.residenza.values[0]
-
-        try:
-            # Assegnazione del ruolo corrispondente in base alla residenza
-            if residenza_val == "Los Angeles":
-                ruolo = interaction.guild.get_role(RUOLO_LOS_ANGELES)
-            elif residenza_val == "Messico":
-                ruolo = interaction.guild.get_role(RUOLO_MESSICO)
-            
-            if ruolo:
-                await interaction.user.add_roles(ruolo)
-        except Exception as e:
-            print(f"Errore durante l'assegnazione del ruolo: {e}")
-
-        # Passaggio dei dati al secondo step (includendo la residenza)
-        view = ApriStep2View(nome_val, cognome_val, data_val, luogo_val, residenza_val)
-        await interaction.response.send_message(
-            f"📌 **Primo step completato!** Residenza registrata: **{residenza_val}**.\n"
-            "Clicca sul pulsante sottostante per inserire i dati fisici.",
-            view=view,
-            ephemeral=True
-        )
-
-
-# =======================================================
-#  GENERATORE DOCUMENTI REALISTICI (HTML Personalizzato)
-# =======================================================
-
-async def genera_carta_identita(residenza, nome, cognome, birth_date, birth_place, cf, doc_number, photo_url, colore_occhi, colore_capelli, segni_particolari):
-    
-    if residenza == "Messico":
-        ente_titolo = "ESTADOS UNIDOS MEXICANOS"
-        sotto_titolo = "CREDENCIAL PARA VOTAR / CÉDULA DE IDENTIDAD"
-        colore_primario = "#006847"
-        colore_secondario = "#ce1126"
-        paese_cod = "MEX"
-        stato_emittente = "DCMX"
-    else:
-        ente_titolo = "STATE OF CALIFORNIA"
-        sotto_titolo = "CITY OF LOS ANGELES — OFFICIAL IDENTIFICATION CARD"
-        colore_primario = "#1e3a8a"
-        colore_secondario = "#f59e0b"
-        paese_cod = "USA"
-        stato_emittente = "USCAL"
-
-    mrz_line1 = f"I<{paese_cod}{cognome.upper()}<<{nome.upper()}<<<<<<<<<<<<<<"
-    mrz_line2 = f"{doc_number}9{paese_cod}{birth_date.replace('/', '')}M281231{stato_emittente}<<<<<<<$"
-
-    html_content = f"""
-    <!DOCTYPE html>
-    <html lang="it">
-    <head>
-        <meta charset="UTF-8">
-        <style>
-            * {{
-                box-sizing: border-box;
-                margin: 0;
-                padding: 0;
-            }}
-            body {{
-                width: 820px;
-                height: 520px;
-                background: #f8fafc;
-                font-family: 'Helvetica Neue', Arial, sans-serif;
-                overflow: hidden;
-                display: flex;
-                flex-direction: column;
-                justify-content: space-between;
-                border: 3px solid {colore_primario};
-                border-radius: 12px;
-                position: relative;
-            }}
-            .security-bg {{
-                position: absolute;
-                top: 0; left: 0; width: 100%; height: 100%;
-                background-image: radial-gradient({colore_primario} 0.8px, transparent 0.8px);
-                background-size: 14px 14px;
-                opacity: 0.03;
-                z-index: 0;
-            }}
-            .header {{
-                background: linear-gradient(135deg, {colore_primario} 0%, #0f172a 100%);
-                color: white;
-                padding: 12px 20px;
-                display: flex;
-                justify-content: space-between;
-                align-items: center;
-                border-bottom: 4px solid {colore_secondario};
-                z-index: 1;
-                height: 70px;
-                flex-shrink: 0;
-            }}
-            .header-left h1 {{
-                font-size: 17px;
-                letter-spacing: 1.5px;
-                font-weight: 900;
-                text-transform: uppercase;
-            }}
-            .header-left span {{
-                font-size: 9px;
-                letter-spacing: 1.5px;
-                color: #93c5fd;
-                text-transform: uppercase;
-                font-weight: 700;
-            }}
-            .badge-state {{
-                background: {colore_secondario};
-                color: #0f172a;
-                font-size: 11px;
-                font-weight: 800;
-                padding: 4px 10px;
-                border-radius: 4px;
-                letter-spacing: 1px;
-            }}
-            .body-content {{
-                padding: 15px 22px;
-                display: flex;
-                gap: 22px;
-                z-index: 1;
-                flex-grow: 1;
-                align-items: center;
-            }}
-            .foto-container {{
-                width: 145px;
-                height: 190px;
-                border: 3px solid {colore_primario};
-                background: #fff;
-                box-shadow: 0 4px 10px rgba(0,0,0,0.15);
-                border-radius: 4px;
-                flex-shrink: 0;
-            }}
-            .foto-container img {{
-                width: 100%;
-                height: 100%;
-                object-fit: cover;
-                border-radius: 2px;
-            }}
-            .info-grid {{
-                flex-grow: 1;
-                display: grid;
-                grid-template-columns: 1fr 1fr;
-                gap: 8px 15px;
-            }}
-            .field {{
-                display: flex;
-                flex-direction: column;
-                border-bottom: 1.5px solid #cbd5e1;
-                padding-bottom: 2px;
-            }}
-            .field.full {{
-                grid-column: span 2;
-            }}
-            .label {{
-                font-size: 8px;
-                text-transform: uppercase;
-                color: #475569;
-                font-weight: 800;
-                letter-spacing: 0.5px;
-            }}
-            .value {{
-                font-size: 14px;
-                font-weight: 700;
-                color: #0f172a;
-                margin-top: 1px;
-            }}
-            .mrz-container {{
-                background: #e2e8f0;
-                padding: 6px 15px;
-                border-top: 1px solid #cbd5e1;
-                font-family: 'Courier New', Courier, monospace;
-                font-size: 12px;
-                font-weight: bold;
-                letter-spacing: 2px;
-                color: #1e293b;
-                z-index: 1;
-                height: 48px;
-                flex-shrink: 0;
-                display: flex;
-                flex-direction: column;
-                justify-content: center;
-            }}
-            .mrz-line {{
-                white-space: pre;
-                overflow: hidden;
-                line-height: 1.25;
-            }}
-        </style>
-    </head>
-    <body>
-        <div class="security-bg"></div>
-        
-        <div class="header">
-            <div class="header-left">
-                <h1>{ente_titolo}</h1>
-                <span>{sotto_titolo}</span>
-            </div>
-            <div class="badge-state">
-                <span>{paese_cod}</span>
-            </div>
-        </div>
-        
-        <div class="body-content">
-            <div class="foto-container">
-                <img src="{photo_url}" />
-            </div>
-            
-            <div class="info-grid">
-                <div class="field">
-                    <span class="label">Cognome / Surname</span>
-                    <span class="value">{cognome.upper()}</span>
-                </div>
-                <div class="field">
-                    <span class="label">Nome / Given Name</span>
-                    <span class="value">{nome.capitalize()}</span>
-                </div>
-                <div class="field full">
-                    <span class="label">Data e Luogo di Nascita / Date & Place of Birth</span>
-                    <span class="value">{birth_date} — {birth_place}</span>
-                </div>
-                <div class="field">
-                    <span class="label">N. Documento / Doc No.</span>
-                    <span class="value">{doc_number}</span>
-                </div>
-                <div class="field">
-                    <span class="label">Occhi / Capelli / Eyes / Hair</span>
-                    <span class="value">{colore_occhi} / {colore_capelli}</span>
-                </div>
-                <div class="field full">
-                    <span class="label">Segni Particolari / Distinctive Marks</span>
-                    <span class="value">{segni_particolari}</span>
-                </div>
-            </div>
-        </div>
-
-        <div class="mrz-container">
-            <div class="mrz-line">{mrz_line1[:44]}</div>
-            <div class="mrz-line">{mrz_line2[:44]}</div>
-        </div>
-    </body>
-    </html>
-    """
-    return html_content
-
-
-    async with async_playwright() as p:
-        browser = await p.chromium.launch(headless=True)
-        page = await browser.new_page(viewport={"width": 780, "height": 500})
-        await page.set_content(html_content)
-        await page.wait_for_load_state("networkidle")
-        screenshot_bytes = await page.screenshot(type="png")
-        await browser.close()
-
-    buffer = io.BytesIO(screenshot_bytes)
-    buffer.seek(0)
-    return discord.File(buffer, filename="carta_identita.png")
 
 import io
 from playwright.async_api import async_playwright
