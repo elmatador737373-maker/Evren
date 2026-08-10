@@ -5122,10 +5122,10 @@ async def renderizza_html_in_immagine(html_content: str) -> discord.File:
         )
         page = await context.new_page()
         
-        # CORRETTO: set_content invece di setContent
         await page.set_content(html_content, wait_until="load")
         
-        screenshot_bytes = await page.screenshot(type="png", full_page=False)
+        # MODIFICATO: full_page=True cattura tutto il documento verticalmente
+        screenshot_bytes = await page.screenshot(type="png", full_page=True)
         await browser.close()
         
         buffer = io.BytesIO(screenshot_bytes)
