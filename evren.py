@@ -1505,10 +1505,9 @@ class PannelloAnagrafeView(ui.View):
         except Exception as e:
             print(f"Errore dettagliato nel Pannello Anagrafe: {e}")
             
-            # Gestione nel caso in cui l'interazione non abbia ancora ricevuto una risposta
             if not interaction.response.is_done():
                 await interaction.response.send_message(
-                    "❌ Si è verificato un errore durante la verifica. Riprova tra poco.",
+                    f"❌ **Errore di debug:** `{e}`",
                     ephemeral=True
                 )
 
