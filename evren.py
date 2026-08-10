@@ -1466,6 +1466,9 @@ async def genera_carta_identita(residenza, nome, cognome, birth_date, birth_plac
 import asyncio
 import discord
 from discord import ui
+import discord
+from discord import ui
+import asyncio
 
 class PannelloAnagrafeView(ui.View):
     def __init__(self):
@@ -1481,13 +1484,14 @@ class PannelloAnagrafeView(ui.View):
         user_id = str(interaction.user.id)
 
         try:
-            # Eseguiamo la query a Supabase in un thread separato per evitare di bloccare il bot ed evitare il timeout di Discord
+            # Eseguiamo la query a Supabase in un thread separato per evitare blocchi
             def check_db():
                 return supabase.table("documents").select("discord_id").eq("discord_id", user_id).execute()
 
             existing = await asyncio.to_thread(check_db)
 
-            if existing.data:
+            # Controlla se l'utente ha già registrato un documento
+            if existing and hasattr(existing, "data") and existing.data:
                 await interaction.response.send_message(
                     "❌ **Hai già completato la tua registrazione anagrafica!**\n"
                     "Non è possibile creare un nuovo documento.",
@@ -1495,17 +1499,19 @@ class PannelloAnagrafeView(ui.View):
                 )
                 return
 
-            # Apre il primo modulo immediatamente se non ha già un documento
+            # Apre il modulo immediatamente se non ha già un documento
             await interaction.response.send_modal(CreaDocumentiStep1Modal())
 
         except Exception as e:
-            # Gestione di sicurezza nel caso in cui la chiamata fallisca o scada il tempo
+            print(f"Errore dettagliato nel Pannello Anagrafe: {e}")
+            
+            # Gestione nel caso in cui l'interazione non abbia ancora ricevuto una risposta
             if not interaction.response.is_done():
                 await interaction.response.send_message(
                     "❌ Si è verificato un errore durante la verifica. Riprova tra poco.",
                     ephemeral=True
                 )
-            print(f"Errore nel Pannello Anagrafe: {e}")
+
 # =======================================================
 #  COMANDO /PANNELLO_DOCUMENTI (PER GLI ADMIN)
 # =======================================================
