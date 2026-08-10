@@ -4819,6 +4819,8 @@ import io
 import discord
 
 # --- FUNZIONE HTML TO IMAGE (Compatibile con PebbleHost, usa API di rendering) ---
+import base64
+
 async def renderizza_fattura_immagine(fattura):
     html = await genera_fattura_html(
         invoice_id=fattura["id"],
@@ -4838,9 +4840,16 @@ async def renderizza_fattura_immagine(fattura):
         "device_scale_factor": "2"
     }
 
-    # Autenticazione Basic con la tua API Key inserita
+    # Se hai due codici separati (User ID e API Key), metti qui sotto i tuoi dati reali:
+    user_id = "01KZPCE84PPV7VR108CEEE4SCG"     # es. d3b07384-...
+    api_key = "019fecc7-2096-7cab-9a5f-b984c4061b51" # La chiave che hai usato prima
+    
+    # Se HCTI richiede la codifica Base64 della coppia User ID:API Key:
+    credentials = f"{user_id}:{api_key}"
+    encoded_credentials = base64.b64encode(credentials.encode()).decode()
+
     headers = {
-        "Authorization": f"Basic 019fecc7-2096-7cab-9a5f-b984c4061b51"
+        "Authorization": f"Basic {encoded_credentials}"
     }
 
     async with aiohttp.ClientSession() as session:
@@ -4849,7 +4858,6 @@ async def renderizza_fattura_immagine(fattura):
                 result = await response.json()
                 image_url = result.get("url")
                 
-                # Scarichiamo l'immagine generata dal cloud
                 async with session.get(image_url) as img_resp:
                     screenshot_bytes = await img_resp.read()
             else:
@@ -5134,20 +5142,30 @@ import io
 import discord
 import aiohttp
 
+import aiohttp
+import io
+import discord
+import base64
+
 async def renderizza_html_in_immagine(html_content: str) -> discord.File:
-    api_key = "019fecc7-2096-7cab-9a5f-b984c4061b51"
+    # INSERISCI QUI I TUOI DATI REALI PRESI DALLA DASHBOARD DI HCTI:
+    user_id = "01KZPCE84PPV7VR108CEEE4SCG"     # Es. una stringa o un UUID identificativo
+    api_key = "019fecc7-2096-7cab-9a5f-b984c4061b51" # La chiave che stavi usando
     
     payload = {
         "html": html_content,
         "viewport_width": "820",
         "viewport_height": "520",
-        "device_scale_factor": "2"
+        "device_scale": 2
     }
 
-    # HCTI usa l'autenticazione Basic (User ID / API Key)
-    # Se questa stringa è la tua chiave, la usiamo come password o token
+    # Codifica corretta in Base64 della coppia User ID e API Key per l'HTTP Basic Auth
+    credentials = f"{user_id}:{api_key}"
+    encoded_credentials = base64.b64encode(credentials.encode()).decode()
+
     headers = {
-        "Authorization": f"Basic {api_key}" # O adattato in base al servizio
+        "Authorization": f"Basic {encoded_credentials}",
+        "Content-Type": "application/json"
     }
 
     async with aiohttp.ClientSession() as session:
