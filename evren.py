@@ -5260,7 +5260,7 @@ async def registra_casa(interaction: discord.Interaction, proprietario: discord.
 async def on_ready():
     await bot.tree.sync()
     bot.add_view(PannelloAnagrafeView())
-    bot.add_view(MaterialiView(bot.db_pool))
+    bot.add_view(MaterialiView())
     print(f"✅ Bot online come {bot.user}")
 
 if __name__ == "__main__":
