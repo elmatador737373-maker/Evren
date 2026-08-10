@@ -108,21 +108,22 @@ def run_flask():
     app.run(host="0.0.0.0", port=port)
 
 
+
 # --- FUNZIONI DI SUPPORTO & UTILITY ---
 class ApriStep2View(ui.View):
-    def __init__(self, nome, cognome, data_nascita, luogo_nascita):
+    def __init__(self, nome, cognome, data_nascita, luogo_nascita, residenza):
         super().__init__(timeout=180)  # Il pulsante scade dopo 3 minuti
         self.nome = nome
         self.cognome = cognome
         self.data_nascita = data_nascita
         self.luogo_nascita = luogo_nascita
+        self.residenza = residenza
 
     @ui.button(label="Continua con i Dati Fisici (2/2)", style=discord.ButtonStyle.primary, emoji="➡️")
     async def apri_secondo_modulo(self, interaction: discord.Interaction, button: ui.Button):
         await interaction.response.send_modal(
-            CreaDocumentiStep2Modal(self.nome, self.cognome, self.data_nascita, self.luogo_nascita)
+            CreaDocumentiStep2Modal(self.nome, self.cognome, self.data_nascita, self.luogo_nascita, self.residenza)
         )
-
 
 async def shop_item_autocomplete(interaction: discord.Interaction, current: str) -> list[app_commands.Choice[str]]:
     res = supabase.table("custom_items").select("name").ilike("name", f"%{current}%").limit(25).execute()
