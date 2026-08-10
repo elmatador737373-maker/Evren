@@ -201,6 +201,348 @@ import discord
 from discord.ext import commands
 import datetime
 import asyncio
+import discord
+from discord import app_commands
+from discord.ext import commands
+
+# Sostituisci con l'ID reale del ruolo staff
+
+
+def is_staff():
+  async def predicate(interaction: discord.Interaction):
+    if not any(role.id == RUOLO_STAFF_ID for role in interaction.user.roles):
+      await interaction.response.send_message(
+          "Non hai i permessi necessari per usare questo comando.",
+          ephemeral=True,
+      )
+      return False
+    return True
+
+  return app_commands.check(predicate)
+
+
+class StaffAndEconomy(commands.Cog):
+
+  def __init__(self, bot, db_pool):
+    self.bot = bot
+    self.db_pool = db_pool
+
+  # 1. Aggiungi Item con controllo peso
+  @bot.tree.command(
+      name="staff_give_item",
+      description="Aggiunge un item all'inventario di un utente gestendo il peso.",
+  )
+  @app_commands.describe(
+      member="L'utente a cui dare l'item",
+      item_name="Nome esatto dell'item",
+      quantity="Quantità da aggiungere",
+  )
+  @is_staff()
+  async def staff_give_item(
+      self,
+      interaction: discord.Interaction,
+      member: discord.Member,
+      item_name: str,
+      quantity: int,
+  ):
+    if quantity <= 0:
+      await interaction.response.send_message(
+          "La quantità deve essere maggiore di 0.", ephemeral=True
+      )
+      return
+
+    async with self.db_pool.acquire() as conn:
+      item_info = await conn.fetchrow(
+          "SELECT category, weight FROM public.custom_items WHERE name = $1",
+          item_name,
+      )
+      if not item_info:
+        await interaction.response.send_message(
+            f"L'item **{item_name}** non esiste nel database.", ephemeral=True
+        )
+        return
+
+      category = item_info["category"]
+      unit_weight = item_info["weight"]
+      total_item_weight = unit_weight * quantity
+
+      user_data = await conn.fetchrow(
+          "SELECT max_weight FROM public.users WHERE discord_id = $1",
+          str(member.id),
+      )
+      if not user_data:
+        await interaction.response.send_message(
+            "L'utente non è registrato nel database.", ephemeral=True
+        )
+        return
+
+      max_weight = user_data["max_weight"]
+      current_inv = await conn.fetch(
+          "SELECT weight, quantity FROM public.inventory WHERE discord_id = $1",
+          str(member.id),
+      )
+      current_total_weight = sum(
+          row["weight"] * row["quantity"] for row in current_inv
+      )
+
+      if current_total_weight + total_item_weight > max_weight:
+        await interaction.response.send_message(
+            f"Impossibile aggiungere l'item. Limite di peso superato"
+            f" ({current_total_weight + total_item_weight:.2f}/{max_weight:.2f}).",
+            ephemeral=True,
+        )
+        return
+
+      existing_item = await conn.fetchrow(
+          "SELECT id, quantity FROM public.inventory WHERE discord_id = $1 AND"
+          " item_name = $2",
+          str(member.id),
+          item_name,
+      )
+
+      if existing_item:
+        await conn.execute(
+            "UPDATE public.inventory SET quantity = quantity + $1 WHERE id = $2",
+            quantity,
+            existing_item["id"],
+        )
+      else:
+        await conn.execute(
+            "INSERT INTO public.inventory (discord_id, item_name, category,"
+            " weight, quantity) VALUES ($1, $2, $3, $4, $5)",
+            str(member.id),
+            item_name,
+            category,
+            unit_weight,
+            quantity,
+        )
+
+      await interaction.response.send_message(
+          f"Aggiunti con successo **{quantity}x {item_name}** a"
+          f" {member.mention}.",
+          ephemeral=True,
+      )
+
+  # 2. Rimuovi Item
+  @bot.tree.command(
+      name="staff_remove_item",
+      description="Rimuove un item dall'inventario di un utente.",
+  )
+  @app_commands.describe(
+      member="L'utente da cui rimuovere l'item",
+      item_name="Nome esatto dell'item",
+      quantity="Quantità da rimuovere",
+  )
+  @is_staff()
+  async def staff_remove_item(
+      self,
+      interaction: discord.Interaction,
+      member: discord.Member,
+      item_name: str,
+      quantity: int,
+  ):
+    if quantity <= 0:
+      await interaction.response.send_message(
+          "La quantità deve essere maggiore di 0.", ephemeral=True
+      )
+      return
+
+    async with self.db_pool.acquire() as conn:
+      existing_item = await conn.fetchrow(
+          "SELECT id, quantity FROM public.inventory WHERE discord_id = $1 AND"
+          " item_name = $2",
+          str(member.id),
+          item_name,
+      )
+
+      if not existing_item:
+        await interaction.response.send_message(
+            f"L'utente non possiede l'item **{item_name}**.", ephemeral=True
+        )
+        return
+
+      current_qty = existing_item["quantity"]
+
+      if quantity >= current_qty:
+        await conn.execute(
+            "DELETE FROM public.inventory WHERE id = $1", existing_item["id"]
+        )
+      else:
+        await conn.execute(
+            "UPDATE public.inventory SET quantity = quantity - $1 WHERE id = $2",
+            quantity,
+            existing_item["id"],
+        )
+
+      await interaction.response.send_message(
+          f"Rimossi **{quantity}x {item_name}** dall'inventario di"
+          f" {member.mention}.",
+          ephemeral=True,
+      )
+
+  # 3. Aggiungi / Rimuovi Soldi Staff
+  @bot.tree.command(
+      name="staff_money",
+      description="Aggiunge o rimuove soldi (Contanti o Banca) a un utente.",
+  )
+  @app_commands.choices(
+      action=[
+          app_commands.Choice(name="Aggiungi", value="add"),
+          app_commands.Choice(name="Rimuovi", value="remove"),
+      ],
+      account_type=[
+          app_commands.Choice(name="Contanti (Wallet)", value="wallet"),
+          app_commands.Choice(name="Banca", value="bank"),
+      ],
+  )
+  @app_commands.describe(
+      member="L'utente interessato",
+      action="Aggiungi o Rimuovi",
+      account_type="Contanti o Banca",
+      amount="Importo",
+  )
+  @is_staff()
+  async def staff_money(
+      self,
+      interaction: discord.Interaction,
+      member: discord.Member,
+      action: str,
+      account_type: str,
+      amount: float,
+  ):
+    if amount <= 0:
+      await interaction.response.send_message(
+          "L'importo deve essere maggiore di zero.", ephemeral=True
+      )
+      return
+
+    multiplier = 1 if action == "add" else -1
+    final_amount = amount * multiplier
+
+    async with self.db_pool.acquire() as conn:
+      user_data = await conn.fetchrow(
+          "SELECT wallet, bank FROM public.users WHERE discord_id = $1",
+          str(member.id),
+      )
+      if not user_data:
+        await interaction.response.send_message(
+            "L'utente non è registrato nel database.", ephemeral=True
+        )
+        return
+
+      if action == "remove":
+        current_bal = (
+            user_data["wallet"]
+            if account_type == "wallet"
+            else user_data["bank"]
+        )
+        if current_bal < amount:
+          await interaction.response.send_message(
+              f"L'utente non ha abbastanza fondi ({current_bal}€ disponibili).",
+              ephemeral=True,
+          )
+          return
+
+      query = f"UPDATE public.users SET {account_type} = {account_type} + $1 WHERE discord_id = $2"
+      await conn.execute(query, final_amount, str(member.id))
+
+      await conn.execute(
+          "INSERT INTO public.transactions_log (discord_id, type, amount,"
+          " description) VALUES ($1, $2, $3, $4)",
+          str(member.id),
+          f"staff_{action}_{account_type}",
+          amount,
+          f"Azione staff di {interaction.user}",
+      )
+
+      await interaction.response.send_message(
+          f"Modificato il saldo di {member.mention} con successo.",
+          ephemeral=True,
+      )
+
+  # 4. Passa Contanti a un'altra persona
+  @bot.tree.command(
+      name="paga",
+      description="Paga o trasferisci soldi in contanti (Wallet) ad un utente.",
+  )
+  @app_commands.describe(
+      recipient="La persona a cui dare i contanti",
+      amount="Quantità di soldi da inviare",
+  )
+  async def paga(
+      self,
+      interaction: discord.Interaction,
+      recipient: discord.Member,
+      amount: float,
+  ):
+    if recipient.id == interaction.user.id:
+      await interaction.response.send_message(
+          "Non puoi inviare soldi a te stesso.", ephemeral=True
+      )
+      return
+
+    if amount <= 0:
+      await interaction.response.send_message(
+          "L'importo deve essere maggiore di zero.", ephemeral=True
+      )
+      return
+
+    sender_id = str(interaction.user.id)
+    recipient_id = str(recipient.id)
+
+    async with self.db_pool.acquire() as conn:
+      async with conn.transaction():
+        sender_data = await conn.fetchrow(
+            "SELECT wallet FROM public.users WHERE discord_id = $1", sender_id
+        )
+        if not sender_data or sender_data["wallet"] < amount:
+          await interaction.response.send_message(
+              "Non hai abbastanza contanti nel portafoglio.", ephemeral=True
+          )
+          return
+
+        recipient_data = await conn.fetchrow(
+            "SELECT wallet FROM public.users WHERE discord_id = $1",
+            recipient_id,
+        )
+        if not recipient_data:
+          await interaction.response.send_message(
+              "Il destinatario non è registrato nel sistema.", ephemeral=True
+          )
+          return
+
+        await conn.execute(
+            "UPDATE public.users SET wallet = wallet - $1 WHERE discord_id = $2",
+            amount,
+            sender_id,
+        )
+        await conn.execute(
+            "UPDATE public.users SET wallet = wallet + $1 WHERE discord_id = $2",
+            amount,
+            recipient_id,
+        )
+
+        await conn.execute(
+            "INSERT INTO public.transactions_log (discord_id, type, amount,"
+            " description) VALUES ($1, $2, $3, $4)",
+            sender_id,
+            "transfer_out",
+            amount,
+            f"Pagamento a {recipient.display_name}",
+        )
+        await conn.execute(
+            "INSERT INTO public.transactions_log (discord_id, type, amount,"
+            " description) VALUES ($1, $2, $3, $4)",
+            recipient_id,
+            "transfer_in",
+            amount,
+            f"Ricevuto da {interaction.user.display_name}",
+        )
+
+    await interaction.response.send_message(
+        f"Hai inviato **{amount}€** in contanti a {recipient.mention}.",
+        ephemeral=True,
+    )
 
 # --- CONFIGURAZIONE ---
 ID_RUOLO_AUTORIZZATO = 1253460150141059198  # ID del ruolo che può usare il comando
@@ -4819,9 +5161,11 @@ import io
 import discord
 
 # --- FUNZIONE HTML TO IMAGE (Compatibile con PebbleHost, usa API di rendering) ---
-import base64
+import io
+import aiohttp
+import discord
 
-async def renderizza_fattura_immagine(fattura):
+async def renderizza_fattura_immagine(fattura) -> discord.File:
     html = await genera_fattura_html(
         invoice_id=fattura["id"],
         azienda=fattura["azienda"],
@@ -4835,38 +5179,39 @@ async def renderizza_fattura_immagine(fattura):
     
     payload = {
         "html": html,
-        "viewport_width": "794",
-        "viewport_height": "1123",
-        "device_scale_factor": "2"
+        "viewport_width": 794,
+        "viewport_height": 1123,
+        "device_scale": 2
     }
 
-    # Se hai due codici separati (User ID e API Key), metti qui sotto i tuoi dati reali:
-    user_id = "01KZPCE84PPV7VR108CEEE4SCG"     # es. d3b07384-...
-    api_key = "019fecc7-2096-7cab-9a5f-b984c4061b51" # La chiave che hai usato prima
+    # Inserisci qui il tuo User ID di HCTI e la tua API key
+    user_id = "01KZPCE84PPV7VR108CEEE4SCG"
+    api_key = "019fecc7-2096-7cab-9a5f-b984c4061b51"
     
-    # Se HCTI richiede la codifica Base64 della coppia User ID:API Key:
-    credentials = f"{user_id}:{api_key}"
-    encoded_credentials = base64.b64encode(credentials.encode()).decode()
-
-    headers = {
-        "Authorization": f"Basic {encoded_credentials}"
-    }
+    auth = aiohttp.BasicAuth(user_id, api_key)
 
     async with aiohttp.ClientSession() as session:
-        async with session.post("https://hcti.io/v1/image", json=payload, headers=headers) as response:
+        async with session.post("https://hcti.io/v1/image", json=payload, auth=auth) as response:
             if response.status == 200:
                 result = await response.json()
                 image_url = result.get("url")
                 
+                if not image_url:
+                    raise Exception("L'API non ha restituito alcun URL per l'immagine della fattura.")
+                
+                # Scarichiamo l'immagine generata dal cloud
                 async with session.get(image_url) as img_resp:
-                    screenshot_bytes = await img_resp.read()
+                    if img_resp.status == 200:
+                        screenshot_bytes = await img_resp.read()
+                    else:
+                        raise Exception(f"Errore nel download dell'immagine della fattura: {img_resp.status}")
             else:
                 error_text = await response.text()
-                raise Exception(f"Errore nel rendering HTML: {error_text}")
+                raise Exception(f"Errore nel rendering HTML della fattura (Status {response.status}): {error_text}")
 
     buffer = io.BytesIO(screenshot_bytes)
     buffer.seek(0)
-    return discord.File(buffer, filename="carta_identita.png")
+    return discord.File(buffer, filename="fattura.png")
 
 
 @bot.tree.command(
@@ -5142,43 +5487,46 @@ import io
 import discord
 import aiohttp
 
-import aiohttp
 import io
+import aiohttp
 import discord
-import base64
 
 async def renderizza_html_in_immagine(html_content: str) -> discord.File:
-    # INSERISCI QUI I TUOI DATI REALI PRESI DALLA DASHBOARD DI HCTI:
-    user_id = "01KZPCE84PPV7VR108CEEE4SCG"     # Es. una stringa o un UUID identificativo
-    api_key = "019fecc7-2096-7cab-9a5f-b984c4061b51" # La chiave che stavi usando
+    # Inserisci qui le tue credenziali prese dalla dashboard di HCTI
+    user_id = "01KZPCE84PPV7VR108CEEE4SCG"   # Esempio: "123456ab-..."
+    api_key = "019fecc7-2096-7cab-9a5f-b984c4061b51"
     
     payload = {
         "html": html_content,
-        "viewport_width": "820",
-        "viewport_height": "520",
+        "viewport_width": 820,
+        "viewport_height": 520,
         "device_scale": 2
     }
 
-    # Codifica corretta in Base64 della coppia User ID e API Key per l'HTTP Basic Auth
-    credentials = f"{user_id}:{api_key}"
-    encoded_credentials = base64.b64encode(credentials.encode()).decode()
-
-    headers = {
-        "Authorization": f"Basic {encoded_credentials}",
-        "Content-Type": "application/json"
-    }
+    # Configurazione corretta dell'autenticazione Basic Auth per aiohttp
+    auth = aiohttp.BasicAuth(user_id, api_key)
 
     async with aiohttp.ClientSession() as session:
-        async with session.post("https://hcti.io/v1/image", json=payload, headers=headers) as response:
+        async with session.post(
+            "https://hcti.io/v1/image", 
+            json=payload, 
+            auth=auth
+        ) as response:
             if response.status == 200:
                 result = await response.json()
                 image_url = result.get("url")
                 
+                if not image_url:
+                    raise Exception("L'API non ha restituito alcun URL per l'immagine.")
+                
                 async with session.get(image_url) as img_resp:
-                    screenshot_bytes = await img_resp.read()
+                    if img_resp.status == 200:
+                        screenshot_bytes = await img_resp.read()
+                    else:
+                        raise Exception(f"Errore nel download dell'immagine generata: {img_resp.status}")
             else:
                 error_text = await response.text()
-                raise Exception(f"Errore nel rendering HTML: {error_text}")
+                raise Exception(f"Errore nel rendering HTML (Status {response.status}): {error_text}")
 
     buffer = io.BytesIO(screenshot_bytes)
     buffer.seek(0)
