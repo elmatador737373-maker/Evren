@@ -1182,15 +1182,12 @@ class CreaDocumentiStep1Modal(ui.Modal, title="🪪 ┃ ʀᴇɢɪsᴛʀᴏ (1/2:
         self.data_nascita = ui.TextInput(label="ᴅᴀᴛᴀ ᴅɪ ɴᴀsᴄɪᴛᴀ", placeholder="Es. 15/05/1998", required=True, max_length=20)
         self.luogo_nascita = ui.TextInput(label="ʟᴜᴏɢᴏ ᴅɪ ɴᴀsᴄɪᴛᴀ", placeholder="Es. Los Angeles", required=True, max_length=50)
         
-        # Selezione della residenza
-        self.residenza = ui.Select(
-            placeholder="🌍 ┃ Seleziona la tua residenza",
-            options=[
-                discord.SelectOption(label="Los Angeles", value="Los Angeles", emoji="🇺🇸"),
-                discord.SelectOption(label="Messico", value="Messico", emoji="🇲🇽")
-            ],
-            min_values=1,
-            max_values=1
+        # Sostituito il ui.Select con un ui.TextInput perché i Moduli accettano solo campi di testo
+        self.residenza = ui.TextInput(
+            label="ʀᴇsɪᴅᴇɴᴢᴀ", 
+            placeholder="Scrivi: Los Angeles oppure Messico", 
+            required=True, 
+            max_length=50
         )
 
         self.add_item(self.nome)
@@ -1204,14 +1201,18 @@ class CreaDocumentiStep1Modal(ui.Modal, title="🪪 ┃ ʀᴇɢɪsᴛʀᴏ (1/2:
         cognome_val = self.cognome.value.strip()
         data_val = self.data_nascita.value.strip()
         luogo_val = self.luogo_nascita.value.strip()
-        residenza_val = self.residenza.values[0]
+        
+        # Pulisce e normalizza il testo inserito dall'utente per la residenza
+        residenza_val = self.residenza.value.strip().title()
 
         try:
-            # Assegnazione del ruolo corrispondente in base alla residenza
-            if residenza_val == "Los Angeles":
+            # Assegnazione del ruolo corrispondente in base alla residenza digitata
+            if "Los Angeles" in residenza_val:
                 ruolo = interaction.guild.get_role(RUOLO_LOS_ANGELES)
-            elif residenza_val == "Messico":
+            elif "Messico" in residenza_val:
                 ruolo = interaction.guild.get_role(RUOLO_MESSICO)
+            else:
+                ruolo = None
             
             if ruolo:
                 await interaction.user.add_roles(ruolo)
@@ -1226,7 +1227,6 @@ class CreaDocumentiStep1Modal(ui.Modal, title="🪪 ┃ ʀᴇɢɪsᴛʀᴏ (1/2:
             view=view,
             ephemeral=True
         )
-
 
 # =======================================================
 #  GENERATORE DOCUMENTI REALISTICI (HTML Personalizzato)
