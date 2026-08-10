@@ -4814,32 +4814,50 @@ async def genera_fattura_html(
     """
   return html_content
 
-# --- FUNZIONE PER CONVERTIRE L'HTML IN IMMAGINE (Formato A4 Verticale) ---
+import aiohttp
+import io
+import discord
+
+# --- FUNZIONE HTML TO IMAGE (Compatibile con PebbleHost, usa API di rendering) ---
 async def renderizza_fattura_immagine(fattura):
-  html = await genera_fattura_html(
-      invoice_id=fattura["id"],
-      azienda=fattura["azienda"],
-      emittente=fattura["emittente"],
-      destinatario=fattura["destinatario"],
-      importo=fattura["importo"],
-      causale=fattura["causale"],
-      data_emissione=fattura["data"],
-      stato=fattura["status"]
-  )
-  
-  async with async_playwright() as p:
-    browser = await p.chromium.launch(headless=True)
-    # Impostato sul formato A4 verticale in pixel con alta definizione (device_scale_factor)
-    context = await browser.new_context(
-        viewport={"width": 794, "height": 1123},
-        device_scale_factor=2
+    html = await genera_fattura_html(
+        invoice_id=fattura["id"],
+        azienda=fattura["azienda"],
+        emittente=fattura["emittente"],
+        destinatario=fattura["destinatario"],
+        importo=fattura["importo"],
+        causale=fattura["causale"],
+        data_emissione=fattura["data"],
+        stato=fattura["status"]
     )
-    page = await context.new_page()
-    await page.set_content(html, wait_until="load")
-    screenshot_bytes = await page.screenshot(type="png", full_page=False)
-    await browser.close()
     
-  return io.BytesIO(screenshot_bytes)
+    # Dati da inviare al servizio di rendering HTML
+    # (Puoi usare servizi gratuiti/freemium come HCTI o APIFlash configurando le credenziali, 
+    # oppure un container/endpoint esterno di tua proprietà se ne hai uno)
+    payload = {
+        "html": html,
+        "viewport_width": "794",
+        "viewport_height": "1123",
+        "device_scale_factor": "2"
+    }
+
+    async with aiohttp.ClientSession() as session:
+        # Sostituisci questo URL con un servizio di rendering HTML -> Immagine (es. HCTI)
+        async with session.post("https://hcti.io/v1/image", json=payload) as response:
+            if response.status == 200:
+                result = await response.json()
+                image_url = result.get("url")
+                
+                # Scarichiamo l'immagine generata dal cloud
+                async with session.get(image_url) as img_resp:
+                    screenshot_bytes = await img_resp.read()
+            else:
+                error_text = await response.text()
+                raise Exception(f"Errore nel rendering HTML: {error_text}")
+
+    buffer = io.BytesIO(screenshot_bytes)
+    buffer.seek(0)
+    return discord.File(buffer, filename="carta_identita.png")
 
 
 @bot.tree.command(
@@ -5103,33 +5121,51 @@ async def mie_fatture(interaction: discord.Interaction):
 import io
 from playwright.async_api import async_playwright
 
+import io
+import discord
+from playwright.async_api import async_playwright
 
 import io
-from playwright.async_api import async_playwright
 import discord
+import aiohttp
 
-import io
-from playwright.async_api import async_playwright
-import discord
-
+# --- FUNZIONE COMPATIBILE CON PEBBLEHOST (Zero Playwright, Stessa Logica) ---
 async def renderizza_html_in_immagine(html_content: str) -> discord.File:
-    async with async_playwright() as p:
-        browser = await p.chromium.launch(headless=True)
-        context = await browser.new_context(
-            viewport={"width": 820, "height": 520},
-            device_scale_factor=2
-        )
-        page = await context.new_page()
-        
-        await page.set_content(html_content, wait_until="load")
-        
-        # MODIFICATO: full_page=True cattura tutto il documento verticalmente
-        screenshot_bytes = await page.screenshot(type="png", full_page=True)
-        await browser.close()
-        
-        buffer = io.BytesIO(screenshot_bytes)
-        buffer.seek(0)
-        return discord.File(buffer, filename="carta_identita.png")
+    # Usiamo un servizio API di rendering HTML -> Immagine leggero e veloce,
+    # così non richiede Chromium locale e non fallisce su PebbleHost.
+    payload = {
+        "html": html_content,
+        "viewport_width": "820",
+        "viewport_height": "520",
+        "device_scale_factor": "2"
+    }
+
+    async with aiohttp.ClientSession() as session:
+        # Invia l'HTML al servizio cloud che lo converte in immagine per te
+        async with session.post("https://hcti.io/v1/image", json=payload) as response:
+            if response.status == 200:
+                result = await response.json()
+                image_url = result.get("url")
+                
+                # Scarica i byte dell'immagine risultante
+                async with session.get(image_url) as img_resp:
+                    screenshot_bytes = await img_resp.read()
+            else:
+                error_text = await response.text()
+                raise Exception(f"Errore nel rendering HTML: {error_text}")
+
+    buffer = io.BytesIO(screenshot_bytes)
+    buffer.seek(0)
+    return discord.File(buffer, filename="carta_identita.png")
+
+import io
+from playwright.async_api import async_playwright
+import discord
+
+import io
+from playwright.async_api import async_playwright
+import discord
+
 
 
 import random
