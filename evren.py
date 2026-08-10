@@ -108,7 +108,6 @@ def run_flask():
     app.run(host="0.0.0.0", port=port)
 
 
-
 # --- FUNZIONI DI SUPPORTO & UTILITY ---
 class ApriStep2View(ui.View):
     def __init__(self, nome, cognome, data_nascita, luogo_nascita, residenza):
@@ -117,7 +116,7 @@ class ApriStep2View(ui.View):
         self.cognome = cognome
         self.data_nascita = data_nascita
         self.luogo_nascita = luogo_nascita
-        self.residenza = residenza
+        self.residenza = residenza  # Mantenuto perché è il ruolo scelto dall'utente
 
     @ui.button(label="Continua con i Dati Fisici (2/2)", style=discord.ButtonStyle.primary, emoji="➡️")
     async def apri_secondo_modulo(self, interaction: discord.Interaction, button: ui.Button):
@@ -479,7 +478,7 @@ class CreaDocumentiStep2Modal(ui.Modal, title="🪪 ┃ ʀᴇɢɪsᴛʀᴏ (2/2:
         self.cognome = cognome
         self.data_nascita = data_nascita
         self.luogo_nascita = luogo_nascita
-        self.residenza = residenza  # <-- Aggiunto
+        self.residenza = residenza  # Gestito interamente via codice
 
         self.colore_occhi = ui.TextInput(label="ᴄᴏʟᴏʀᴇ ᴏᴄᴄʜɪ", placeholder="Es. Marroni / Verdi", required=True, max_length=30)
         self.colore_capelli = ui.TextInput(label="ᴄᴏʟᴏʀᴇ ᴄᴀᴘᴇʟʟɪ", placeholder="Es. Castani / Neri", required=True, max_length=30)
@@ -500,13 +499,13 @@ class CreaDocumentiStep2Modal(ui.Modal, title="🪪 ┃ ʀᴇɢɪsᴛʀᴏ (2/2:
             cf_temporaneo = f"EVREN-{user_id[-6:]}"
             doc_numero = f"DOC-{user_id[-5:]}"
 
+            # Dizionario pulito senza campi inesistenti nel database
             data = {
                 "discord_id": user_id,
                 "name": self.nome,
                 "surname": self.cognome,
                 "birth_date": self.data_nascita,
                 "birth_place": self.luogo_nascita,
-                "residence": self.residenza,  # <-- Se hai la colonna anche su Supabase, puoi salvarla qui!
                 "eye_color": occhi_val,
                 "hair_color": capelli_val,
                 "distinct_marks": segni_val,
