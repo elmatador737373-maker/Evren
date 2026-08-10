@@ -473,12 +473,13 @@ async def item_give(interaction: discord.Interaction, utente: discord.Member, it
 #  SECONDO MODULO: DETTAGLI FISICI E SALVATAGGIO
 # =======================================================
 class CreaDocumentiStep2Modal(ui.Modal, title="🪪 ┃ ʀᴇɢɪsᴛʀᴏ (2/2: Dati Fisici)"):
-    def __init__(self, nome, cognome, data_nascita, luogo_nascita):
+    def __init__(self, nome, cognome, data_nascita, luogo_nascita, residenza):
         super().__init__()
         self.nome = nome
         self.cognome = cognome
         self.data_nascita = data_nascita
         self.luogo_nascita = luogo_nascita
+        self.residenza = residenza  # <-- Aggiunto
 
         self.colore_occhi = ui.TextInput(label="ᴄᴏʟᴏʀᴇ ᴏᴄᴄʜɪ", placeholder="Es. Marroni / Verdi", required=True, max_length=30)
         self.colore_capelli = ui.TextInput(label="ᴄᴏʟᴏʀᴇ ᴄᴀᴘᴇʟʟɪ", placeholder="Es. Castani / Neri", required=True, max_length=30)
@@ -505,6 +506,7 @@ class CreaDocumentiStep2Modal(ui.Modal, title="🪪 ┃ ʀᴇɢɪsᴛʀᴏ (2/2:
                 "surname": self.cognome,
                 "birth_date": self.data_nascita,
                 "birth_place": self.luogo_nascita,
+                "residence": self.residenza,  # <-- Se hai la colonna anche su Supabase, puoi salvarla qui!
                 "eye_color": occhi_val,
                 "hair_color": capelli_val,
                 "distinct_marks": segni_val,
