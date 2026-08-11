@@ -786,28 +786,33 @@ class DistributoreCog(commands.Cog):
         self.bot = bot
         self.supabase = supabase_client
 
-    @bot.tree.command(
+      @app_commands.command(
         name="pannello_distributore",
-        description="Invia il pannello interattivo del distributore braccialetti ospedalieri.",
+        description="Invia il pannello interattivo del distributore braccialetti di emergenza.",
     )
     @is_staff()
     async def pannello_distributore(self, interaction: discord.Interaction):
-        embed = discord.Embed(
-            title="🏥 Distributore Automatico Braccialetti Ospedalieri",
-            description=(
-                "Benvenuto presso la sede ospedaliera.\n\n"
-                "Se ti sei registrato o devi ritirare il tuo braccialetto di ricovero/accesso:\n"
-                "1. Clicca sul pulsante sottostante **'Ritira Braccialetto'**.\n"
-                "2. Inserisci il tuo **Documento d'Identità** o **Codice Fiscale**.\n"
-                "3. Il distributore verificherà i dati e ti assegnerà il **Braccialetto (Ruolo)**."
-            ),
-            color=discord.Color.blue(),
+        # Rispondi subito all'interazione per evitare il timeout di Discord
+        await interaction.response.send_message(
+            "Pannello distributore inviato con successo!", ephemeral=True
         )
-        embed.set_footer(text="Azienda Ospedaliera - Servizio Automatizzato 24/7")
+
+        embed = discord.Embed(
+            title="🆘 Distributore Braccialetti di Emergenza",
+            description=(
+                "Benvenuto presso il punto di distribuzione dispositivi medici.\n\n"
+                "Questo dispositivo consente di inviare un **segnale SOS immediato** ai soccorsi in caso di malore o pericolo.\n\n"
+                "**Come ritirarlo:**\n"
+                "1. Clicca sul pulsante **'Ritira Braccialetto'** qui sotto.\n"
+                "2. Inserisci il tuo **Documento d'Identità** o **Codice Fiscale**.\n"
+                "3. Il distributore verificherà i dati e ti assegnerà il **Braccialetto SOS Medicale**."
+            ),
+            color=discord.Color.red(), # Cambiato in rosso per richiamare l'emergenza
+        )
+        embed.set_footer(text="Servizio Sanitario di Emergenza 24/7 - Dispositivi Salvavita")
 
         view = DistributorePannelloView(self.supabase)
         await interaction.channel.send(embed=embed, view=view)
-        await interaction.response.send_message("Pannello distributore inviato con successo!", ephemeral=True)
 
 
 
