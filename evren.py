@@ -574,6 +574,145 @@ async def delete_message(ctx):
         except Exception as e:
             print(f"[LOG ERROR] Impossibile inviare il log di eliminazione: {e}")
 
+import discord
+from discord import app_commands
+from discord.ext import commands
+
+RUOLO_BRACCIALETTO_ID = 1394274707691536394  # Sostituisci con l'ID del ruolo "Braccialetto"
+
+
+# --- 1. MODAL PER L'INSERIMENTO DEL DOCUMENTO ---
+class DistributoreModal(discord.ui.Modal, title="Distributore Braccialetti Ospedalieri"):
+    documento = discord.ui.TextInput(
+        label="Numero Documento d'Identità / Codice Fiscale",
+        placeholder="Es: CA12345AA oppure ABCDEF80A01H501Z",
+        min_length=5,
+        max_length=20,
+        required=True,
+    )
+
+    def __init__(self, supabase_client):
+        super().__init__()
+        self.supabase = supabase_client
+
+    async def on_submit(self, interaction: discord.Interaction):
+        doc_val = self.documento.value.strip().upper()
+        user_id = str(interaction.user.id)
+
+        # Controlla se l'utente è registrato nel database Supabase
+        user_res = (
+            self.supabase.table("users")
+            .select("*")
+            .eq("discord_id", user_id)
+            .execute()
+        )
+
+        if not user_res.data:
+            await interaction.response.send_message(
+                "❌ **Errore:** Non risulti registrato nel sistema anagrafico dell'ospedale. Registrati prima allo sportello!",
+                ephemeral=True,
+            )
+            return
+
+        # Controlla se possiede già il braccialetto/ruolo
+        role_braccialetto = interaction.guild.get_role(RUOLO_BRACCIALETTO_ID)
+        if role_braccialetto and role_braccialetto in interaction.user.roles:
+            await interaction.response.send_message(
+                "⚠️ Hai già ritirato e indossato il braccialetto ospedaliero!",
+                ephemeral=True,
+            )
+            return
+
+        # Salva i dati su Supabase
+        self.supabase.table("users").update({
+            "documento_identita": doc_val,
+            "braccialetto_ritirato": True
+        }).eq("discord_id", user_id).execute()
+
+        # Assegna il ruolo Discord
+        if role_braccialetto:
+            try:
+                await interaction.user.add_roles(
+                    role_braccialetto,
+                    reason="Ritiro braccialetto al distributore ospedaliero"
+                )
+            except discord.Forbidden:
+                await interaction.response.send_message(
+                    "⚠️ Braccialetto registrato, ma il bot non ha i permessi per assegnarti il ruolo. Avvisa uno staffer.",
+                    ephemeral=True,
+                )
+                return
+
+        # Registra la transazione nei log
+        self.supabase.table("transactions_log").insert({
+            "discord_id": user_id,
+            "type": "ritiro_braccialetto",
+            "amount": 0,
+            "description": f"Ritirato braccialetto presso distributore ospedaliero con doc: {doc_val}"
+        }).execute()
+
+        embed = discord.Embed(
+            title="🏥 Braccialetto Erogato con Successo!",
+            description=(
+                f"Il distributore automatizzato ti ha erogato il **Braccialetto Ospedaliero**.\n\n"
+                f"👤 **Paziente:** {interaction.user.mention}\n"
+                f"🪪 **Documento Registrato:** `{doc_val}`\n"
+                f"🏷️ **Ruolo Assegnato:** {role_braccialetto.mention if role_braccialetto else 'N/A'}\n\n"
+                f"Ora puoi accedere liberamente ai reparti."
+            ),
+            color=discord.Color.green(),
+        )
+        await interaction.response.send_message(embed=embed, ephemeral=True)
+
+
+# --- 2. VIEW PERSISTENTE CON IL BOTTONE ---
+class DistributorePannelloView(discord.ui.View):
+    def __init__(self, supabase_client):
+        super().__init__(timeout=None)  # timeout=None rende il bottone persistente ai riavvii
+        self.supabase = supabase_client
+
+    @discord.ui.button(
+        label="Ritira Braccialetto Ospedaliero",
+        style=discord.ButtonStyle.success,
+        emoji="🏷️",
+        custom_id="distributore_ritira_braccialetto",
+    )
+    async def ritira_braccialetto_btn(self, interaction: discord.Interaction, button: discord.ui.Button):
+        modal = DistributoreModal(self.supabase)
+        await interaction.response.send_modal(modal)
+
+
+# --- 3. COG / COMANDO STAFF PER CREARE IL PANNELLO ---
+class DistributoreCog(commands.Cog):
+
+    def __init__(self, bot, supabase_client):
+        self.bot = bot
+        self.supabase = supabase_client
+
+    @bot.tree.command(
+        name="pannello_distributore",
+        description="Invia il pannello interattivo del distributore braccialetti ospedalieri.",
+    )
+    @is_staff()
+    async def pannello_distributore(self, interaction: discord.Interaction):
+        embed = discord.Embed(
+            title="🏥 Distributore Automatico Braccialetti Ospedalieri",
+            description=(
+                "Benvenuto presso la sede ospedaliera.\n\n"
+                "Se ti sei registrato o devi ritirare il tuo braccialetto di ricovero/accesso:\n"
+                "1. Clicca sul pulsante sottostante **'Ritira Braccialetto'**.\n"
+                "2. Inserisci il tuo **Documento d'Identità** o **Codice Fiscale**.\n"
+                "3. Il distributore verificherà i dati e ti assegnerà il **Braccialetto (Ruolo)**."
+            ),
+            color=discord.Color.blue(),
+        )
+        embed.set_footer(text="Azienda Ospedaliera - Servizio Automatizzato 24/7")
+
+        view = DistributorePannelloView(self.supabase)
+        await interaction.channel.send(embed=embed, view=view)
+        await interaction.response.send_message("Pannello distributore inviato con successo!", ephemeral=True)
+
+
 
 import asyncio
 import os
@@ -5632,6 +5771,8 @@ async def on_ready():
     await bot.tree.sync()
     bot.add_view(PannelloAnagrafeView())
     bot.add_view(MaterialiView())
+    bot.add_cog(DistributoreCog(bot, bot.supabase))
+    bot.add_view(DistributorePannelloView())
     bot.add_cog(StaffAndEconomy(bot, bot.supabase))
     print(f"✅ Bot online come {bot.user}")
 
