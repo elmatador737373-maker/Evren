@@ -1013,12 +1013,36 @@ import time
 # RUOLO_STAFF_ID = 123456789012345678  # Sostituisci con l'ID reale del tuo ruolo staff
 
 # --- COMANDO /item give (Solo Staff) ---
+import discord
+from discord import app_commands
+from typing import List
+import random
+import string
+
+# ------------------------------------------------------------------
+# AUTOCOMPLETE HELPER
+# ------------------------------------------------------------------
+async def custom_items_give_autocomplete(
+    interaction: discord.Interaction,
+    current: str
+) -> List[app_commands.Choice[str]]:
+    # Cerca gli oggetti presenti nella tabella custom_items
+    res = supabase.table("custom_items").select("name").ilike("name", f"%{current}%").limit(25).execute()
+    if not res.data:
+        return []
+    return [app_commands.Choice(name=item["name"], value=item["name"]) for item in res.data]
+
+
+# ------------------------------------------------------------------
+# COMANDO ITEM-GIVE
+# ------------------------------------------------------------------
 @bot.tree.command(name="item-give", description="Aggiunge un oggetto direttamente all'inventario di un utente (Riservato allo Staff)")
 @app_commands.describe(
     utente="L'utente a cui dare l'oggetto",
     item="Nome dell'oggetto",
     quantita="Quantità da aggiungere (default: 1)"
 )
+@app_commands.autocomplete(item=custom_items_give_autocomplete)
 async def item_give(interaction: discord.Interaction, utente: discord.Member, item: str, quantita: int = 1):
     has_role = any(role.id == RUOLO_STAFF_ID for role in interaction.user.roles)
     if not has_role and not interaction.user.guild_permissions.administrator:
@@ -1031,19 +1055,21 @@ async def item_give(interaction: discord.Interaction, utente: discord.Member, it
 
     user_id = str(utente.id)
 
-    # Verifica se l'oggetto esiste nella tabella custom_items per ricavare categoria e peso
+    # Verifica se l'oggetto esiste nella tabella custom_items
     res_item = supabase.table("custom_items").select("*").ilike("name", item).execute()
     
-    if res_item.data:
-        item_data = res_item.data[0]
-        item_name = item_data.get("name")
-        category = item_data.get("category", "Generale")
-        weight = item_data.get("weight", 0.1)
-    else:
-        # Fallback se l'oggetto non è registrato nello shop/custom_items
-        item_name = item
-        category = "Generale"
-        weight = 0.1
+    # Blocco se l'oggetto non esiste nel database (impossibile inventare oggetti)
+    if not res_item.data:
+        await interaction.response.send_message(
+            f"❌ **Errore:** L'oggetto `{item}` non esiste nel database `custom_items` e non può essere assegnato.",
+            ephemeral=True
+        )
+        return
+
+    item_data = res_item.data[0]
+    item_name = item_data.get("name")
+    category = item_data.get("category", "Generale")
+    weight = item_data.get("weight", 0.1)
 
     nome_finale_oggetto = item_name
     matricola_testo = ""
