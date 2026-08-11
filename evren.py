@@ -210,318 +210,213 @@ from discord.ext import commands
 
 # Inserisci l'ID del tuo ruolo Staff
 
+# ------------------------------------------------------------------
+# AUTOCOMPLETE HELPERS
+# ------------------------------------------------------------------
+
+# 1. Autocomplete per tutti gli oggetti esistenti nel DB (per dai_oggetto)
+async def custom_items_autocomplete(
+    interaction: discord.Interaction,
+    current: str
+) -> List[app_commands.Choice[str]]:
+    res = supabase.table("custom_items").select("name").ilike("name", f"%{current}%").limit(25).execute()
+    if not res.data:
+        return []
+    return [app_commands.Choice(name=item["name"], value=item["name"]) for item in res.data]
 
 
-def is_staff():
-    async def predicate(interaction: discord.Interaction):
-        if not any(role.id == RUOLO_STAFF_ID for role in interaction.user.roles):
-            await interaction.response.send_message(
-                "Non hai i permessi necessari per usare questo comando.",
-                ephemeral=True,
-            )
-            return False
-        return True
+# 2. Autocomplete per gli oggetti dell'utente DESTINATARIO (per rimuovi_oggetto)
+async def target_user_inventory_autocomplete(
+    interaction: discord.Interaction,
+    current: str
+) -> List[app_commands.Choice[str]]:
+    target_user = interaction.namespace.utente
+    if not target_user:
+        return []
 
-    return app_commands.check(predicate)
+    res = supabase.table("inventory") \
+        .select("item_name, quantity") \
+        .eq("discord_id", str(target_user.id)) \
+        .ilike("item_name", f"%{current}%") \
+        .gt("quantity", 0) \
+        .limit(25) \
+        .execute()
+
+    if not res.data:
+        return []
+
+    return [
+        app_commands.Choice(name=f"{row['item_name']} (x{row['quantity']})", value=row["item_name"])
+        for row in res.data
+    ]
 
 
-class StaffAndEconomy(commands.Cog):
+# 3. Autocomplete per gli oggetti posseduti da CHI ESEGUE il comando (per passa)
+async def sender_inventory_autocomplete(
+    interaction: discord.Interaction,
+    current: str
+) -> List[app_commands.Choice[str]]:
+    res = supabase.table("inventory") \
+        .select("item_name, quantity") \
+        .eq("discord_id", str(interaction.user.id)) \
+        .ilike("item_name", f"%{current}%") \
+        .gt("quantity", 0) \
+        .limit(25) \
+        .execute()
 
-    def __init__(self, bot, supabase_client):
-        self.bot = bot
-        self.supabase = supabase_client
+    if not res.data:
+        return []
 
-    # 1. Dai Oggetto (Staff)
-    @app_commands.command(
-        name="dai_oggetto",
-        description="Aggiunge un oggetto all'inventario di un utente gestendo il peso.",
-    )
-    @app_commands.describe(
-        utente="L'utente a cui dare l'oggetto",
-        nome_oggetto="Nome esatto dell'oggetto",
-        quantita="Quantità da aggiungere",
-    )
-    @is_staff()
-    async def dai_oggetto(
-        self,
-        interaction: discord.Interaction,
-        utente: discord.Member,
-        nome_oggetto: str,
-        quantita: int,
-    ):
-        if quantita <= 0:
-            await interaction.response.send_message(
-                "La quantità deve essere maggiore di 0.", ephemeral=True
-            )
-            return
+    return [
+        app_commands.Choice(name=f"{row['item_name']} (x{row['quantity']})", value=row["item_name"])
+        for row in res.data
+    ]
 
-        # Recupera dettagli oggetto
-        item_res = self.supabase.table("custom_items").select("category, weight").eq("name", nome_oggetto).execute()
-        if not item_res.data:
-            await interaction.response.send_message(
-                f"L'oggetto **{nome_oggetto}** non esiste nel database.", ephemeral=True
-            )
-            return
 
-        category = item_res.data[0]["category"]
-        unit_weight = item_res.data[0]["weight"]
-        total_item_weight = unit_weight * quantita
+# ------------------------------------------------------------------
+# COMANDI BOT.TREE
+# ------------------------------------------------------------------
 
-        # Recupera peso massimo utente
-        user_res = self.supabase.table("users").select("max_weight").eq("discord_id", str(utente.id)).execute()
-        if not user_res.data:
-            await interaction.response.send_message(
-                "L'utente non è registrato nel database.", ephemeral=True
-            )
-            return
-
-        max_weight = user_res.data[0]["max_weight"]
-
-        # Calcola peso attuale inventario
-        inv_res = self.supabase.table("inventory").select("weight, quantity").eq("discord_id", str(utente.id)).execute()
-        current_inv = inv_res.data if inv_res.data else []
-        current_total_weight = sum(row["weight"] * row["quantity"] for row in current_inv)
-
-        if current_total_weight + total_item_weight > max_weight:
-            await interaction.response.send_message(
-                f"Impossibile aggiungere l'oggetto. Limite di peso superato"
-                f" ({current_total_weight + total_item_weight:.2f}/{max_weight:.2f}).",
-                ephemeral=True,
-            )
-            return
-
-        # Controlla se possiede già l'oggetto
-        exist_res = self.supabase.table("inventory").select("id, quantity").eq("discord_id", str(utente.id)).eq("item_name", nome_oggetto).execute()
-
-        if exist_res.data:
-            item_id = exist_res.data[0]["id"]
-            new_qty = exist_res.data[0]["quantity"] + quantita
-            self.supabase.table("inventory").update({"quantity": new_qty}).eq("id", item_id).execute()
-        else:
-            self.supabase.table("inventory").insert({
-                "discord_id": str(utente.id),
-                "item_name": nome_oggetto,
-                "category": category,
-                "weight": unit_weight,
-                "quantity": quantita
-            }).execute()
-
+# 1. Dai Oggetto (Staff)
+@bot.tree.command(
+    name="dai_oggetto",
+    description="Aggiunge un oggetto all'inventario di un utente gestendo il peso.",
+)
+@app_commands.describe(
+    utente="L'utente a cui dare l'oggetto",
+    nome_oggetto="Nome esatto dell'oggetto",
+    quantita="Quantità da aggiungere",
+)
+@app_commands.autocomplete(nome_oggetto=custom_items_autocomplete)
+async def dai_oggetto(
+    interaction: discord.Interaction,
+    utente: discord.Member,
+    nome_oggetto: str,
+    quantita: int,
+):
+    # Controllo Staff direttamente nel comando
+    if not any(role.id == RUOLO_STAFF_ID for role in interaction.user.roles):
         await interaction.response.send_message(
-            f"Aggiunti con successo **{quantita}x {nome_oggetto}** a {utente.mention}.",
+            "Non hai i permessi necessari per usare questo comando.", ephemeral=True
+        )
+        return
+
+    if quantita <= 0:
+        await interaction.response.send_message(
+            "La quantità deve essere maggiore di 0.", ephemeral=True
+        )
+        return
+
+    # Recupera dettagli oggetto
+    item_res = supabase.table("custom_items").select("category, weight").eq("name", nome_oggetto).execute()
+    if not item_res.data:
+        await interaction.response.send_message(
+            f"L'oggetto **{nome_oggetto}** non esiste nel database.", ephemeral=True
+        )
+        return
+
+    category = item_res.data[0]["category"]
+    unit_weight = item_res.data[0]["weight"]
+    total_item_weight = unit_weight * quantita
+
+    # Recupera peso massimo utente
+    user_res = supabase.table("users").select("max_weight").eq("discord_id", str(utente.id)).execute()
+    if not user_res.data:
+        await interaction.response.send_message(
+            "L'utente non è registrato nel database.", ephemeral=True
+        )
+        return
+
+    max_weight = user_res.data[0]["max_weight"]
+
+    # Calcola peso attuale inventario
+    inv_res = supabase.table("inventory").select("weight, quantity").eq("discord_id", str(utente.id)).execute()
+    current_inv = inv_res.data if inv_res.data else []
+    current_total_weight = sum(row["weight"] * row["quantity"] for row in current_inv)
+
+    if current_total_weight + total_item_weight > max_weight:
+        await interaction.response.send_message(
+            f"Impossibile aggiungere l'oggetto. Limite di peso superato"
+            f" ({current_total_weight + total_item_weight:.2f}/{max_weight:.2f}).",
             ephemeral=True,
         )
+        return
 
-    # 2. Rimuovi Oggetto (Staff)
-    @app_commands.command(
-        name="rimuovi_oggetto",
-        description="Rimuove un oggetto dall'inventario di un utente.",
-    )
-    @app_commands.describe(
-        utente="L'utente da cui rimuovere l'oggetto",
-        nome_oggetto="Nome esatto dell'oggetto",
-        quantita="Quantità da rimuovere",
-    )
-    @is_staff()
-    async def rimuovi_oggetto(
-        self,
-        interaction: discord.Interaction,
-        utente: discord.Member,
-        nome_oggetto: str,
-        quantita: int,
-    ):
-        if quantita <= 0:
-            await interaction.response.send_message(
-                "La quantità deve essere maggiore di 0.", ephemeral=True
-            )
-            return
+    # Controlla se possiede già l'oggetto
+    exist_res = supabase.table("inventory").select("id, quantity").eq("discord_id", str(utente.id)).eq("item_name", nome_oggetto).execute()
 
-        exist_res = self.supabase.table("inventory").select("id, quantity").eq("discord_id", str(utente.id)).eq("item_name", nome_oggetto).execute()
-
-        if not exist_res.data:
-            await interaction.response.send_message(
-                f"L'utente non possiede l'oggetto **{nome_oggetto}**.", ephemeral=True
-            )
-            return
-
+    if exist_res.data:
         item_id = exist_res.data[0]["id"]
-        current_qty = exist_res.data[0]["quantity"]
-
-        if quantita >= current_qty:
-            self.supabase.table("inventory").delete().eq("id", item_id).execute()
-        else:
-            self.supabase.table("inventory").update({"quantity": current_qty - quantita}).eq("id", item_id).execute()
-
-        await interaction.response.send_message(
-            f"Rimossi **{quantita}x {nome_oggetto}** dall'inventario di {utente.mention}.",
-            ephemeral=True,
-        )
-
-    # 3. Gestione Soldi Staff
-    @app_commands.command(
-        name="gestisci_soldi",
-        description="Aggiunge o rimuove soldi (Contanti o Banca) a un utente.",
-    )
-    @app_commands.choices(
-        azione=[
-            app_commands.Choice(name="Aggiungi", value="add"),
-            app_commands.Choice(name="Rimuovi", value="remove"),
-        ],
-        tipo_conto=[
-            app_commands.Choice(name="Contanti (Portafoglio)", value="wallet"),
-            app_commands.Choice(name="Banca", value="bank"),
-        ],
-    )
-    @app_commands.describe(
-        utente="L'utente interessato",
-        azione="Aggiungi o Rimuovi",
-        tipo_conto="Contanti o Banca",
-        importo="Importo di denaro",
-    )
-    @is_staff()
-    async def gestisci_soldi(
-        self,
-        interaction: discord.Interaction,
-        utente: discord.Member,
-        azione: str,
-        tipo_conto: str,
-        importo: float,
-    ):
-        if importo <= 0:
-            await interaction.response.send_message(
-                "L'importo deve essere maggiore di zero.", ephemeral=True
-            )
-            return
-
-        user_res = self.supabase.table("users").select("wallet, bank").eq("discord_id", str(utente.id)).execute()
-        if not user_res.data:
-            await interaction.response.send_message(
-                "L'utente non è registrato nel database.", ephemeral=True
-            )
-            return
-
-        current_bal = user_res.data[0][tipo_conto]
-
-        if azione == "remove":
-            if current_bal < importo:
-                await interaction.response.send_message(
-                    f"L'utente non ha abbastanza fondi ({current_bal}€ disponibili).",
-                    ephemeral=True,
-                )
-                return
-            new_bal = current_bal - importo
-        else:
-            new_bal = current_bal + importo
-
-        # Aggiorna il bilancio
-        self.supabase.table("users").update({tipo_conto: new_bal}).eq("discord_id", str(utente.id)).execute()
-
-        # Log della transazione
-        self.supabase.table("transactions_log").insert({
+        new_qty = exist_res.data[0]["quantity"] + quantita
+        supabase.table("inventory").update({"quantity": new_qty}).eq("id", item_id).execute()
+    else:
+        supabase.table("inventory").insert({
             "discord_id": str(utente.id),
-            "type": f"staff_{azione}_{tipo_conto}",
-            "amount": importo,
-            "description": f"Azione staff di {interaction.user}"
+            "item_name": nome_oggetto,
+            "category": category,
+            "weight": unit_weight,
+            "quantity": quantita
         }).execute()
 
-        await interaction.response.send_message(
-            f"Modificato il saldo di {utente.mention} con successo.",
-            ephemeral=True,
-        )
-
-    # 4. Passa Contanti (Paga)
-    @app_commands.command(
-        name="paga",
-        description="Paga o trasferisci soldi in contanti (Portafoglio) ad un utente.",
+    await interaction.response.send_message(
+        f"Aggiunti con successo **{quantita}x {nome_oggetto}** a {utente.mention}.",
+        ephemeral=True,
     )
-    @app_commands.describe(
-        destinatario="La persona a cui dare i contanti",
-        importo="Quantità di soldi da inviare",
-    )
-    async def paga(
-        self,
-        interaction: discord.Interaction,
-        destinatario: discord.Member,
-        importo: float,
-    ):
-        if destinatario.id == interaction.user.id:
-            await interaction.response.send_message(
-                "Non puoi inviare soldi a te stesso.", ephemeral=True
-            )
-            return
 
-        if importo <= 0:
-            await interaction.response.send_message(
-                "L'importo deve essere maggiore di zero.", ephemeral=True
-            )
-            return
 
-        sender_id = str(interaction.user.id)
-        recipient_id = str(destinatario.id)
-
-        # Mittente
-        sender_res = self.supabase.table("users").select("wallet").eq("discord_id", sender_id).execute()
-        if not sender_res.data or sender_res.data[0]["wallet"] < importo:
-            await interaction.response.send_message(
-                "Non hai abbastanza contanti nel portafoglio.", ephemeral=True
-            )
-            return
-
-        # Destinatario
-        recipient_res = self.supabase.table("users").select("wallet").eq("discord_id", recipient_id).execute()
-        if not recipient_res.data:
-            await interaction.response.send_message(
-                "Il destinatario non è registrato nel sistema.", ephemeral=True
-            )
-            return
-
-        new_sender_wallet = sender_res.data[0]["wallet"] - importo
-        new_recipient_wallet = recipient_res.data[0]["wallet"] + importo
-
-        # Aggiorna i saldi
-        self.supabase.table("users").update({"wallet": new_sender_wallet}).eq("discord_id", sender_id).execute()
-        self.supabase.table("users").update({"wallet": new_recipient_wallet}).eq("discord_id", recipient_id).execute()
-
-        # Log Transazioni
-        self.supabase.table("transactions_log").insert([
-            {
-                "discord_id": sender_id,
-                "type": "transfer_out",
-                "amount": importo,
-                "description": f"Pagamento a {destinatario.display_name}"
-            },
-            {
-                "discord_id": recipient_id,
-                "type": "transfer_in",
-                "amount": importo,
-                "description": f"Ricevuto da {interaction.user.display_name}"
-            }
-        ]).execute()
-
+# 2. Rimuovi Oggetto (Staff)
+@bot.tree.command(
+    name="rimuovi_oggetto",
+    description="Rimuove un oggetto dall'inventario di un utente.",
+)
+@app_commands.describe(
+    utente="L'utente da cui rimuovere l'oggetto",
+    nome_oggetto="Nome esatto dell'oggetto",
+    quantita="Quantità da rimuovere",
+)
+@app_commands.autocomplete(nome_oggetto=target_user_inventory_autocomplete)
+async def rimuovi_oggetto(
+    interaction: discord.Interaction,
+    utente: discord.Member,
+    nome_oggetto: str,
+    quantita: int,
+):
+    # Controllo Staff direttamente nel comando
+    if not any(role.id == RUOLO_STAFF_ID for role in interaction.user.roles):
         await interaction.response.send_message(
-            f"Hai inviato **{importo}€** in contanti a {destinatario.mention}.",
-            ephemeral=True,
+            "Non hai i permessi necessari per usare questo comando.", ephemeral=True
         )
+        return
+
+    if quantita <= 0:
+        await interaction.response.send_message(
+            "La quantità deve essere maggiore di 0.", ephemeral=True
+        )
+        return
+
+    exist_res = supabase.table("inventory").select("id, quantity").eq("discord_id", str(utente.id)).eq("item_name", nome_oggetto).execute()
+
+    if not exist_res.data:
+        await interaction.response.send_message(
+            f"L'utente non possiede l'oggetto **{nome_oggetto}**.", ephemeral=True
+        )
+        return
+
+    item_id = exist_res.data[0]["id"]
+    current_qty = exist_res.data[0]["quantity"]
+
+    if quantita >= current_qty:
+        supabase.table("inventory").delete().eq("id", item_id).execute()
+    else:
+        supabase.table("inventory").update({"quantity": current_qty - quantita}).eq("id", item_id).execute()
+
+    await interaction.response.send_message(
+        f"Rimossi **{quantita}x {nome_oggetto}** dall'inventario di {utente.mention}.",
+        ephemeral=True,
+    )
 
 
-import discord
-from discord import app_commands
-
-
-# Controllo permessi Staff
-def is_staff():
-    async def predicate(interaction: discord.Interaction):
-        if not any(role.id == RUOLO_STAFF_ID for role in interaction.user.roles):
-            await interaction.response.send_message(
-                "Non hai i permessi necessari per usare questo comando.",
-                ephemeral=True,
-            )
-            return False
-        return True
-
-    return app_commands.check(predicate)
-
-
-# Registrazione comando direttamente sul tree del bot
+# 3. Gestione Soldi Staff
 @bot.tree.command(
     name="gestisci_soldi",
     description="Aggiunge o rimuove soldi (Contanti o Banca) a un utente.",
@@ -542,7 +437,6 @@ def is_staff():
     tipo_conto="Contanti o Banca",
     importo="Importo di denaro",
 )
-@is_staff()
 async def gestisci_soldi(
     interaction: discord.Interaction,
     utente: discord.Member,
@@ -550,20 +444,20 @@ async def gestisci_soldi(
     tipo_conto: str,
     importo: float,
 ):
+    # Controllo Staff direttamente nel comando
+    if not any(role.id == RUOLO_STAFF_ID for role in interaction.user.roles):
+        await interaction.response.send_message(
+            "Non hai i permessi necessari per usare questo comando.", ephemeral=True
+        )
+        return
+
     if importo <= 0:
         await interaction.response.send_message(
             "L'importo deve essere maggiore di zero.", ephemeral=True
         )
         return
 
-    # Recupera i dati utente da Supabase
-    user_res = (
-        supabase.table("users")
-        .select("wallet, bank")
-        .eq("discord_id", str(utente.id))
-        .execute()
-    )
-
+    user_res = supabase.table("users").select("wallet, bank").eq("discord_id", str(utente.id)).execute()
     if not user_res.data:
         await interaction.response.send_message(
             "L'utente non è registrato nel database.", ephemeral=True
@@ -583,23 +477,197 @@ async def gestisci_soldi(
     else:
         new_bal = current_bal + importo
 
-    # Aggiorna il saldo su Supabase
-    supabase.table("users").update({tipo_conto: new_bal}).eq(
-        "discord_id", str(utente.id)
-    ).execute()
+    # Aggiorna il bilancio
+    supabase.table("users").update({tipo_conto: new_bal}).eq("discord_id", str(utente.id)).execute()
 
-    # Registra la transazione nei log
+    # Log della transazione
     supabase.table("transactions_log").insert({
         "discord_id": str(utente.id),
         "type": f"staff_{azione}_{tipo_conto}",
         "amount": importo,
-        "description": f"Azione staff di {interaction.user}",
+        "description": f"Azione staff di {interaction.user}"
     }).execute()
 
     await interaction.response.send_message(
         f"Modificato il saldo di {utente.mention} con successo.",
         ephemeral=True,
     )
+
+
+# 4. Passa Contanti (Paga)
+@bot.tree.command(
+    name="paga",
+    description="Paga o trasferisci soldi in contanti (Portafoglio) ad un utente.",
+)
+@app_commands.describe(
+    destinatario="La persona a cui dare i contanti",
+    importo="Quantità di soldi da inviare",
+)
+async def paga(
+    interaction: discord.Interaction,
+    destinatario: discord.Member,
+    importo: float,
+):
+    if destinatario.id == interaction.user.id:
+        await interaction.response.send_message(
+            "Non puoi inviare soldi a te stesso.", ephemeral=True
+        )
+        return
+
+    if importo <= 0:
+        await interaction.response.send_message(
+            "L'importo deve essere maggiore di zero.", ephemeral=True
+        )
+        return
+
+    sender_id = str(interaction.user.id)
+    recipient_id = str(destinatario.id)
+
+    # Mittente
+    sender_res = supabase.table("users").select("wallet").eq("discord_id", sender_id).execute()
+    if not sender_res.data or sender_res.data[0]["wallet"] < importo:
+        await interaction.response.send_message(
+            "Non hai abbastanza contanti nel portafoglio.", ephemeral=True
+        )
+        return
+
+    # Destinatario
+    recipient_res = supabase.table("users").select("wallet").eq("discord_id", recipient_id).execute()
+    if not recipient_res.data:
+        await interaction.response.send_message(
+            "Il destinatario non è registrato nel sistema.", ephemeral=True
+        )
+        return
+
+    new_sender_wallet = sender_res.data[0]["wallet"] - importo
+    new_recipient_wallet = recipient_res.data[0]["wallet"] + importo
+
+    # Aggiorna i saldi
+    supabase.table("users").update({"wallet": new_sender_wallet}).eq("discord_id", sender_id).execute()
+    supabase.table("users").update({"wallet": new_recipient_wallet}).eq("discord_id", recipient_id).execute()
+
+    # Log Transazioni
+    supabase.table("transactions_log").insert([
+        {
+            "discord_id": sender_id,
+            "type": "transfer_out",
+            "amount": importo,
+            "description": f"Pagamento a {destinatario.display_name}"
+        },
+        {
+            "discord_id": recipient_id,
+            "type": "transfer_in",
+            "amount": importo,
+            "description": f"Ricevuto da {interaction.user.display_name}"
+        }
+    ]).execute()
+
+    await interaction.response.send_message(
+        f"Hai inviato **{importo}€** in contanti a {destinatario.mention}.",
+        ephemeral=True,
+    )
+
+
+# 5. Passa Oggetti ad un altro utente
+@bot.tree.command(
+    name="passa",
+    description="Trasferisci un oggetto dal tuo inventario a quello di un altro utente.",
+)
+@app_commands.describe(
+    destinatario="L'utente a cui passare l'oggetto",
+    nome_oggetto="Seleziona l'oggetto dal tuo inventario",
+    quantita="Quantità da trasferire",
+)
+@app_commands.autocomplete(nome_oggetto=sender_inventory_autocomplete)
+async def passa(
+    interaction: discord.Interaction,
+    destinatario: discord.Member,
+    nome_oggetto: str,
+    quantita: int = 1,
+):
+    if destinatario.id == interaction.user.id:
+        await interaction.response.send_message(
+            "Non puoi passare oggetti a te stesso.", ephemeral=True
+        )
+        return
+
+    if destinatario.bot:
+        await interaction.response.send_message(
+            "Non puoi passare oggetti ai bot.", ephemeral=True
+        )
+        return
+
+    if quantita <= 0:
+        await interaction.response.send_message(
+            "La quantità deve essere maggiore di 0.", ephemeral=True
+        )
+        return
+
+    sender_id = str(interaction.user.id)
+    recipient_id = str(destinatario.id)
+
+    # Verifica possesso dell'oggetto nel mittente
+    sender_item_res = supabase.table("inventory").select("id, quantity, category, weight").eq("discord_id", sender_id).eq("item_name", nome_oggetto).execute()
+    if not sender_item_res.data or sender_item_res.data[0]["quantity"] < quantita:
+        await interaction.response.send_message(
+            f"Non possiedi abbastanza quantità dell'oggetto **{nome_oggetto}**.", ephemeral=True
+        )
+        return
+
+    sender_item = sender_item_res.data[0]
+    unit_weight = sender_item["weight"]
+    total_transfer_weight = unit_weight * quantita
+
+    # Controllo se il destinatario esiste e ha spazio peso nell'inventario
+    recipient_user_res = supabase.table("users").select("max_weight").eq("discord_id", recipient_id).execute()
+    if not recipient_user_res.data:
+        await interaction.response.send_message(
+            "Il destinatario non è registrato nel sistema.", ephemeral=True
+        )
+        return
+
+    recipient_max_weight = recipient_user_res.data[0]["max_weight"]
+    recipient_inv_res = supabase.table("inventory").select("weight, quantity").eq("discord_id", recipient_id).execute()
+    current_recipient_inv = recipient_inv_res.data if recipient_inv_res.data else []
+    current_recipient_weight = sum(row["weight"] * row["quantity"] for row in current_recipient_inv)
+
+    if current_recipient_weight + total_transfer_weight > recipient_max_weight:
+        await interaction.response.send_message(
+            f"L'utente {destinatario.mention} non ha abbastanza spazio nell'inventario per questo peso "
+            f"({current_recipient_weight + total_transfer_weight:.2f}/{recipient_max_weight:.2f}).",
+            ephemeral=True
+        )
+        return
+
+    # Sottrazione dall'inventario del mittente
+    if sender_item["quantity"] == quantita:
+        supabase.table("inventory").delete().eq("id", sender_item["id"]).execute()
+    else:
+        supabase.table("inventory").update({"quantity": sender_item["quantity"] - quantita}).eq("id", sender_item["id"]).execute()
+
+    # Aggiunta all'inventario del destinatario
+    recipient_exist_res = supabase.table("inventory").select("id, quantity").eq("discord_id", recipient_id).eq("item_name", nome_oggetto).execute()
+    if recipient_exist_res.data:
+        r_item_id = recipient_exist_res.data[0]["id"]
+        new_r_qty = recipient_exist_res.data[0]["quantity"] + quantita
+        supabase.table("inventory").update({"quantity": new_r_qty}).eq("id", r_item_id).execute()
+    else:
+        supabase.table("inventory").insert({
+            "discord_id": recipient_id,
+            "item_name": nome_oggetto,
+            "category": sender_item["category"],
+            "weight": unit_weight,
+            "quantity": quantita
+        }).execute()
+
+    await interaction.response.send_message(
+        f"Hai trasferito con successo **{quantita}x {nome_oggetto}** a {destinatario.mention}!"
+    )
+
+
+# Avvio Bot
+# bot.run("IL_TUO_TOKEN_QUI")
+
 
 # --- CONFIGURAZIONE ---
 ID_RUOLO_AUTORIZZATO = 1253460150141059198  # ID del ruolo che può usare il comando
