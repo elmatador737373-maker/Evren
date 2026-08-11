@@ -218,7 +218,7 @@ from discord.ext import commands
 async def custom_items_autocomplete(
     interaction: discord.Interaction,
     current: str
-) -> List[app_commands.Choice[str]]:
+) -> list[app_commands.Choice[str]]:
     res = supabase.table("custom_items").select("name").ilike("name", f"%{current}%").limit(25).execute()
     if not res.data:
         return []
