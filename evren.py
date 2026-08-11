@@ -503,7 +503,104 @@ class StaffAndEconomy(commands.Cog):
         )
 
 
- 
+import discord
+from discord import app_commands
+
+
+# Controllo permessi Staff
+def is_staff():
+    async def predicate(interaction: discord.Interaction):
+        if not any(role.id == RUOLO_STAFF_ID for role in interaction.user.roles):
+            await interaction.response.send_message(
+                "Non hai i permessi necessari per usare questo comando.",
+                ephemeral=True,
+            )
+            return False
+        return True
+
+    return app_commands.check(predicate)
+
+
+# Registrazione comando direttamente sul tree del bot
+@bot.tree.command(
+    name="gestisci_soldi",
+    description="Aggiunge o rimuove soldi (Contanti o Banca) a un utente.",
+)
+@app_commands.choices(
+    azione=[
+        app_commands.Choice(name="Aggiungi", value="add"),
+        app_commands.Choice(name="Rimuovi", value="remove"),
+    ],
+    tipo_conto=[
+        app_commands.Choice(name="Contanti (Portafoglio)", value="wallet"),
+        app_commands.Choice(name="Banca", value="bank"),
+    ],
+)
+@app_commands.describe(
+    utente="L'utente interessato",
+    azione="Aggiungi o Rimuovi",
+    tipo_conto="Contanti o Banca",
+    importo="Importo di denaro",
+)
+@is_staff()
+async def gestisci_soldi(
+    interaction: discord.Interaction,
+    utente: discord.Member,
+    azione: str,
+    tipo_conto: str,
+    importo: float,
+):
+    if importo <= 0:
+        await interaction.response.send_message(
+            "L'importo deve essere maggiore di zero.", ephemeral=True
+        )
+        return
+
+    # Recupera i dati utente da Supabase
+    user_res = (
+        supabase.table("users")
+        .select("wallet, bank")
+        .eq("discord_id", str(utente.id))
+        .execute()
+    )
+
+    if not user_res.data:
+        await interaction.response.send_message(
+            "L'utente non è registrato nel database.", ephemeral=True
+        )
+        return
+
+    current_bal = user_res.data[0][tipo_conto]
+
+    if azione == "remove":
+        if current_bal < importo:
+            await interaction.response.send_message(
+                f"L'utente non ha abbastanza fondi ({current_bal}€ disponibili).",
+                ephemeral=True,
+            )
+            return
+        new_bal = current_bal - importo
+    else:
+        new_bal = current_bal + importo
+
+    # Aggiorna il saldo su Supabase
+    supabase.table("users").update({tipo_conto: new_bal}).eq(
+        "discord_id", str(utente.id)
+    ).execute()
+
+    # Registra la transazione nei log
+    supabase.table("transactions_log").insert({
+        "discord_id": str(utente.id),
+        "type": f"staff_{azione}_{tipo_conto}",
+        "amount": importo,
+        "description": f"Azione staff di {interaction.user}",
+    }).execute()
+
+    await interaction.response.send_message(
+        f"Modificato il saldo di {utente.mention} con successo.",
+        ephemeral=True,
+    )
+
 # --- CONFIGURAZIONE ---
 ID_RUOLO_AUTORIZZATO = 1253460150141059198  # ID del ruolo che può usare il comando
 ID_CANALE_LOGS = 1255868935790657587        # ID del canale dei log
