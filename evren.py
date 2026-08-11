@@ -209,7 +209,7 @@ from discord import app_commands
 from discord.ext import commands
 
 # Inserisci l'ID del tuo ruolo Staff
-RUOLO_STAFF_ID = 123456789012345678 
+
 
 
 def is_staff():
@@ -2308,8 +2308,6 @@ async def anonimo(
 
 @bot.event
 async def on_raw_reaction_add(payload):
-  # 1. Configurazione ID Ruolo Staff
-  ID_RUOLO_STAFF = 1253460150141059198
 
   # 2. Filtro: solo l'emoji corretta e non il bot stesso
   if str(payload.emoji) != "❓" or payload.user_id == bot.user.id:
