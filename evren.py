@@ -15,6 +15,7 @@ from supabase import create_client, Client
 from playwright.async_api import async_playwright
 import imageio_ffmpeg
 import wavelink  # <--- ASSICURATI CHE QUESTO CI SIA IN CIMA AL FILE
+import re
 
 load_dotenv()
 
