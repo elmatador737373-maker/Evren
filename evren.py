@@ -6335,9 +6335,8 @@ async def on_ready():
     await bot.tree.sync()
     bot.add_view(PannelloAnagrafeView())
     bot.add_view(MaterialiView())
-    bot.add_cog(DistributoreCog(bot, bot.supabase))
     bot.add_view(DistributorePannelloView())
-    bot.add_cog(StaffAndEconomy(bot, bot.supabase))
+    bot.add_view(ApprovazioneStipendioView())
     print(f"✅ Bot online come {bot.user}")
 
 if __name__ == "__main__":
