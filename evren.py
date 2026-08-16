@@ -886,6 +886,374 @@ async def pannello_distributore(interaction: discord.Interaction):
     await interaction.channel.send(embed=embed, view=view)
 
 
+CANALE_STIPENDI_ID = 1459566404100686009  # ID canale staff stipendi
+TOLLERANZA_MINUTI = 15                  # Tolleranza minima in minuti
+
+
+# --- HELPER ESTRAZIONE TARIFFA ---
+def estrai_tariffa_da_nome_ruolo(nome_ruolo: str) -> float | None:
+    pattern = r'\[\s*(\d+(?:[\.,]\d+)?)\s*[\$€]?\s*\]'
+    match = re.search(pattern, nome_ruolo)
+    if match:
+        valore_str = match.group(1).replace('.', '').replace(',', '.')
+        try:
+            return float(valore_str)
+        except ValueError:
+            pass
+    return None
+
+
+# --- FUNZIONE ACCREDITO BANCA ---
+async def accredita_in_banca(user_id: int, importo: float):
+    if importo <= 0:
+        return
+        
+    res = supabase.table("users").select("bank").eq("discord_id", str(user_id)).execute()
+    if res.data:
+        saldo_attuale = res.data[0].get("bank") or 0.0
+        nuovo_saldo = saldo_attuale + importo
+        supabase.table("users").update({"bank": nuovo_saldo}).eq("discord_id", str(user_id)).execute()
+
+
+# --- HELPER INVIO DM UTENTE ---
+async def notifica_utente_dm(bot: commands.Bot, user_id: int, embed: discord.Embed):
+    try:
+        utente = bot.get_user(user_id) or await bot.fetch_user(user_id)
+        if utente:
+            await utente.send(embed=embed)
+    except (discord.Forbidden, discord.HTTPException):
+        pass  # L'utente ha i DM disabilitati o bloccati
+
+
+# --- MODALE TARIFFA MANUALE ---
+class TariffaManualeModal(discord.ui.Modal, title="💵 Inserisci Tariffa Oraria"):
+    tariffa_input = discord.ui.TextInput(
+        label="Tariffa Oraria in $",
+        placeholder="Es: 250.00",
+        required=True,
+        max_length=10
+    )
+
+    def __init__(self, ruolo: discord.Role):
+        super().__init__()
+        self.ruolo = ruolo
+
+    async def on_submit(self, interaction: discord.Interaction):
+        try:
+            tariffa = float(self.tariffa_input.value.replace(',', '.'))
+            if tariffa <= 0:
+                raise ValueError()
+        except ValueError:
+            return await interaction.response.send_message("❌ Inserisci una cifra valida superiore a 0.", ephemeral=True)
+
+        await avvia_turno_database(interaction, self.ruolo, tariffa)
+
+
+# --- DROPDOWN SELEZIONE RUOLO ---
+class SelezioneRuoloSelect(discord.ui.Select):
+    def __init__(self, ruoli: list[discord.Role]):
+        options = []
+        for ruolo in ruoli[:25]:
+            tariffa = estrai_tariffa_da_nome_ruolo(ruolo.name)
+            desc = f"Tariffa: {tariffa:,.2f}$/h" if tariffa is not None else "Tariffa non trovata (inserimento manuale)"
+            options.append(discord.SelectOption(
+                label=ruolo.name[:100],
+                value=str(ruolo.id),
+                description=desc,
+                emoji="💼"
+            ))
+
+        super().__init__(placeholder="Seleziona il ruolo con cui intendi lavorare...", options=options)
+
+    async def callback(self, interaction: discord.Interaction):
+        ruolo_id = int(self.values[0])
+        ruolo = interaction.guild.get_role(ruolo_id)
+        tariffa = estrai_tariffa_da_nome_ruolo(ruolo.name)
+
+        if tariffa is not None:
+            await avvia_turno_database(interaction, ruolo, tariffa)
+        else:
+            await interaction.response.send_modal(TariffaManualeModal(ruolo))
+
+
+class SelezioneRuoloView(discord.ui.View):
+    def __init__(self, ruoli: list[discord.Role]):
+        super().__init__(timeout=60)
+        self.add_item(SelezioneRuoloSelect(ruoli))
+
+
+# --- FUNZIONE AVVIO TURNO SU DB ---
+async def avvia_turno_database(interaction: discord.Interaction, ruolo: discord.Role, tariffa: float):
+    now_iso = datetime.datetime.now(datetime.timezone.utc).isoformat()
+    supabase.table("turni_attivi").upsert({
+        "user_id": str(interaction.user.id),
+        "role_id": str(ruolo.id),
+        "role_name": ruolo.name,
+        "tariffa": tariffa,
+        "ora_inizio": now_iso
+    }).execute()
+
+    embed = discord.Embed(
+        title="⏱️ Turno Iniziato",
+        description=f"Buon lavoro {interaction.user.mention}! Il tuo turno è stato registrato.",
+        color=discord.Color.blue(),
+        timestamp=datetime.datetime.now()
+    )
+    embed.add_field(name="💼 Mansione Selezionata", value=f"```{ruolo.name}```", inline=False)
+    embed.add_field(name="💵 Tariffa Oraria", value=f"**{tariffa:,.2f}$/h**", inline=True)
+    embed.set_thumbnail(url=interaction.user.display_avatar.url)
+
+    if interaction.response.is_done():
+        await interaction.followup.send(embed=embed, ephemeral=True)
+    else:
+        await interaction.response.send_message(embed=embed, ephemeral=True)
+
+
+# --- MODALE MODIFICA STIPENDIO (STAFF) ---
+class ModificaStipendioModal(discord.ui.Modal, title="✏️ Modifica Importo Stipendio"):
+    nuovo_importo = discord.ui.TextInput(
+        label="Nuovo Importo ($)",
+        placeholder="Es: 750.00",
+        required=True
+    )
+
+    def __init__(self, dipendente_id: int, embed_originale: discord.Embed):
+        super().__init__()
+        self.dipendente_id = dipendente_id
+        self.embed_originale = embed_originale
+
+    async def on_submit(self, interaction: discord.Interaction):
+        try:
+            importo = float(self.nuovo_importo.value.replace(',', '.'))
+        except ValueError:
+            return await interaction.response.send_message("❌ Inserisci una cifra numerica valida.", ephemeral=True)
+
+        supabase.table("transazioni").insert({
+            "user_id": str(self.dipendente_id),
+            "importo": importo,
+            "stato": "MODIFICATO",
+            "approvato_da": str(interaction.user.id)
+        }).execute()
+
+        # Accredito in banca lato codice
+        await accredita_in_banca(self.dipendente_id, importo)
+
+        embed = self.embed_originale
+        embed.color = discord.Color.gold()
+        embed.title = "📝 Stipendio Modificato & Approvato"
+        embed.set_field_at(1, name="💰 Stipendio Finale", value=f"```fix\n{importo:,.2f}$```", inline=True)
+        embed.add_field(name="🛡️ Gestito da", value=f"{interaction.user.mention} *(Modificato)*", inline=False)
+
+        view = discord.ui.View.from_message(interaction.message)
+        for item in view.children:
+            item.disabled = True
+
+        await interaction.message.edit(embed=embed, view=view)
+        await interaction.response.send_message(f"✅ Stipendio modificato a **{importo:,.2f}$** ed accreditato in banca per <@{self.dipendente_id}>.", ephemeral=True)
+
+        # Notifica DM Utente
+        dm_embed = discord.Embed(
+            title="✏️ Stipendio Modificato ed Accreditato",
+            description=f"Il tuo turno è stato revisionato da **{interaction.user.display_name}**.",
+            color=discord.Color.gold(),
+            timestamp=datetime.datetime.now()
+        )
+        dm_embed.add_field(name="💰 Importo Accredito in Banca", value=f"```fix\n{importo:,.2f}$```", inline=False)
+        await notifica_utente_dm(interaction.client, self.dipendente_id, dm_embed)
+
+
+# --- VIEW PERSISTENTE STAFF ---
+class ApprovazioneStipendioView(discord.ui.View):
+    def __init__(self, dipendente_id: int = None, importo_calcolato: float = None):
+        super().__init__(timeout=None)
+        self.dipendente_id = dipendente_id
+        self.importo_calcolato = importo_calcolato
+
+    @discord.ui.button(label="Approva", style=discord.ButtonStyle.success, emoji="✅", custom_id="stipendio_approva")
+    async def approva(self, interaction: discord.Interaction, button: discord.ui.Button):
+        embed = interaction.message.embeds[0]
+        dipendente_id = self.dipendente_id or int(embed.footer.text.split("ID: ")[1])
+        
+        importo = self.importo_calcolato
+        if importo is None:
+            raw_val = embed.fields[1].value.replace("```fix\n", "").replace("```", "").replace("$", "").replace(",", "")
+            importo = float(raw_val)
+
+        supabase.table("transazioni").insert({
+            "user_id": str(dipendente_id),
+            "importo": importo,
+            "stato": "APPROVATO",
+            "approvato_da": str(interaction.user.id)
+        }).execute()
+
+        # Accredito in banca lato codice
+        await accredita_in_banca(dipendente_id, importo)
+
+        embed.color = discord.Color.brand_green()
+        embed.title = "✅ Stipendio Approvato"
+        embed.add_field(name="🛡️ Gestito da", value=interaction.user.mention, inline=False)
+
+        for child in self.children:
+            child.disabled = True
+
+        await interaction.message.edit(embed=embed, view=self)
+        await interaction.response.send_message(f"🎉 Stipendio di **{importo:,.2f}$** approvato ed accreditato in banca per <@{dipendente_id}>.", ephemeral=True)
+
+        # Notifica DM Utente
+        dm_embed = discord.Embed(
+            title="🎉 Stipendio Approvato!",
+            description=f"Il tuo stipendio è stato approvato da **{interaction.user.display_name}**.",
+            color=discord.Color.brand_green(),
+            timestamp=datetime.datetime.now()
+        )
+        dm_embed.add_field(name="💰 Importo Accredito in Banca", value=f"```fix\n{importo:,.2f}$```", inline=False)
+        await notifica_utente_dm(interaction.client, dipendente_id, dm_embed)
+
+    @discord.ui.button(label="Modifica", style=discord.ButtonStyle.primary, emoji="✏️", custom_id="stipendio_modifica")
+    async def modifica(self, interaction: discord.Interaction, button: discord.ui.Button):
+        embed = interaction.message.embeds[0]
+        dipendente_id = self.dipendente_id or int(embed.footer.text.split("ID: ")[1])
+        await interaction.response.send_modal(ModificaStipendioModal(dipendente_id, embed))
+
+    @discord.ui.button(label="Rifiuta", style=discord.ButtonStyle.danger, emoji="✖️", custom_id="stipendio_rifiuta")
+    async def rifiuta(self, interaction: discord.Interaction, button: discord.ui.Button):
+        embed = interaction.message.embeds[0]
+        dipendente_id = self.dipendente_id or int(embed.footer.text.split("ID: ")[1])
+
+        supabase.table("transazioni").insert({
+            "user_id": str(dipendente_id),
+            "importo": 0,
+            "stato": "RIFIUTATO",
+            "approvato_da": str(interaction.user.id)
+        }).execute()
+
+        embed.color = discord.Color.brand_red()
+        embed.title = "❌ Stipendio Rifiutato"
+        embed.add_field(name="🛡️ Gestito da", value=interaction.user.mention, inline=False)
+
+        for child in self.children:
+            child.disabled = True
+
+        await interaction.message.edit(embed=embed, view=self)
+        await interaction.response.send_message(f"❌ Stipendio rifiutato per <@{dipendente_id}>.", ephemeral=True)
+
+        # Notifica DM Utente
+        dm_embed = discord.Embed(
+            title="❌ Richiesta Stipendio Rifiutata",
+            description=f"La tua richiesta di stipendio per il turno è stata rifiutata da **{interaction.user.display_name}**.",
+            color=discord.Color.brand_red(),
+            timestamp=datetime.datetime.now()
+        )
+        await notifica_utente_dm(interaction.client, dipendente_id, dm_embed)
+
+
+# --- INVIO RICHIESTA STIPENDIO ---
+async def invia_richiesta_stipendio(bot: commands.Bot, utente: discord.Member, turno_data: dict, motivo: str):
+    ora_inizio = datetime.datetime.fromisoformat(turno_data["ora_inizio"])
+    ora_fine = datetime.datetime.now(datetime.timezone.utc)
+    durata = ora_fine - ora_inizio
+    minuti_totali = durata.total_seconds() / 60
+
+    tariffa = float(turno_data["tariffa"])
+
+    if minuti_totali < TOLLERANZA_MINUTI:
+        stipendio = 0.0
+        nota_tolleranza = f"⚠️ **Sotto Tolleranza** ({int(minuti_totali)}m / {TOLLERANZA_MINUTI}m richiesti)"
+    else:
+        stipendio = round((minuti_totali / 60) * tariffa, 2)
+        nota_tolleranza = "✅ **Soglia Minima Superata**"
+
+    canale = bot.get_channel(CANALE_STIPENDI_ID)
+    if not canale:
+        return
+
+    ore, minuti = divmod(int(minuti_totali), 60)
+
+    embed = discord.Embed(
+        title="📑 Nuova Richiesta di Stipendio",
+        color=discord.Color.dark_gold(),
+        timestamp=datetime.datetime.now()
+    )
+    embed.set_author(name=f"{utente.display_name}", icon_url=utente.display_avatar.url)
+    embed.set_thumbnail(url=utente.display_avatar.url)
+    
+    embed.add_field(name="👤 Dipendente", value=utente.mention, inline=True)
+    embed.add_field(name="💰 Stipendio Calcolato", value=f"```fix\n{stipendio:,.2f}$```", inline=True)
+    embed.add_field(name="💼 Mansione", value=f"`{turno_data['role_name']}`", inline=False)
+    
+    embed.add_field(name="⏳ Durata Effettiva", value=f"**{ore}h {minuti}m**", inline=True)
+    embed.add_field(name="🏷️ Tariffa Rilevata", value=f"**{tariffa:,.2f}$/h**", inline=True)
+    embed.add_field(name="📌 Stato Tolleranza", value=nota_tolleranza, inline=True)
+    
+    embed.add_field(name="📝 Motivo Chiusura", value=f"*{motivo}*", inline=False)
+    embed.set_footer(text=f"ID: {utente.id} • Gestione Turni Roleplay")
+
+    view = ApprovazioneStipendioView(dipendente_id=utente.id, importo_calcolato=stipendio)
+    await canale.send(embed=embed, view=view)
+
+
+# --- COMANDI DISCORD TREE ---
+@bot.tree.command(name="inizia-turno", description="Seleziona la tua mansione e avvia il turno.")
+async def inizia_turno(interaction: discord.Interaction):
+    res = supabase.table("turni_attivi").select("*").eq("user_id", str(interaction.user.id)).execute()
+    if res.data:
+        return await interaction.response.send_message("❌ Hai già un turno attivo!", ephemeral=True)
+
+    ruoli_utente = [r for r in interaction.user.roles if r.name != "@everyone"]
+    if not ruoli_utente:
+        return await interaction.response.send_message("❌ Non possiedi alcun ruolo assegnato per iniziare il turno.", ephemeral=True)
+
+    view = SelezioneRuoloView(ruoli_utente)
+    await interaction.response.send_message("💼 **Seleziona il ruolo** per il quale intendi iniziare il turno:", view=view, ephemeral=True)
+
+@bot.tree.command(name="fine-turno", description="Concludi il tuo turno e inoltra la richiesta di stipendio.")
+async def fine_turno(interaction: discord.Interaction):
+    res = supabase.table("turni_attivi").select("*").eq("user_id", str(interaction.user.id)).execute()
+    if not res.data:
+        return await interaction.response.send_message("❌ Non hai nessun turno attivo al momento.", ephemeral=True)
+
+    turno = res.data[0]
+    supabase.table("turni_attivi").delete().eq("user_id", str(interaction.user.id)).execute()
+
+    await invia_richiesta_stipendio(bot, interaction.user, turno, motivo="Fine Turno Volontaria")
+    await interaction.response.send_message("🏁 **Turno Concluso!** La richiesta di stipendio è stata inoltrata allo staff.", ephemeral=True)
+
+@bot.tree.command(name="staff-chiudi-turno", description="[STAFF] Forza la chiusura del turno di un utente specifico.")
+@app_commands.checks.has_role(RUOLO_STAFF_ID)
+async def staff_chiudi_turno(interaction: discord.Interaction, utente: discord.Member):
+    res = supabase.table("turni_attivi").select("*").eq("user_id", str(utente.id)).execute()
+    if not res.data:
+        return await interaction.response.send_message(f"❌ {utente.mention} non ha alcun turno attivo.", ephemeral=True)
+
+    turno = res.data[0]
+    supabase.table("turni_attivi").delete().eq("user_id", str(utente.id)).execute()
+
+    await invia_richiesta_stipendio(bot, utente, turno, motivo=f"Chiusura Forzata da {interaction.user.mention}")
+    await interaction.response.send_message(f"🔒 **Turno Chiuso:** Il turno di {utente.mention} è stato terminato e la richiesta è stata inviata.", ephemeral=True)
+
+@bot.tree.command(name="staff-chiudi-tutti", description="[STAFF] Chiudi tutti i turni attivi sul server.")
+@app_commands.checks.has_role(RUOLO_STAFF_ID)
+async def staff_chiudi_tutti(interaction: discord.Interaction):
+    res = supabase.table("turni_attivi").select("*").execute()
+    if not res.data:
+        return await interaction.response.send_message("❌ Non ci sono turni attivi da chiudere.", ephemeral=True)
+
+    count = len(res.data)
+    for turno in res.data:
+        user_id = int(turno["user_id"])
+        supabase.table("turni_attivi").delete().eq("user_id", str(user_id)).execute()
+        
+        utente = interaction.guild.get_member(user_id)
+        if utente:
+            await invia_richiesta_stipendio(bot, utente, turno, motivo=f"Chiusura Massiva da {interaction.user.mention}")
+
+    await interaction.response.send_message(f"🚨 **Chiusura Massiva:** Chiusi correttamente tutti i **{count}** turni attivi.", ephemeral=True)
+
+@staff_chiudi_turno.error
+@staff_chiudi_tutti.error
+async def staff_command_error(interaction: discord.Interaction, error: app_commands.AppCommandError):
+    if isinstance(error, app_commands.MissingRole):
+        await interaction.response.send_message("⛔ **Accesso Negato:** Non possiedi il ruolo Staff necessario per eseguire questo comando.", ephemeral=True)
 
 import asyncio
 import os
@@ -1012,7 +1380,6 @@ import asyncio
 import time
 # RUOLO_STAFF_ID = 123456789012345678  # Sostituisci con l'ID reale del tuo ruolo staff
 
-# --- COMANDO /item give (Solo Staff) ---
 import discord
 from discord import app_commands
 from typing import List
