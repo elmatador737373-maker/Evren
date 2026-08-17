@@ -5915,6 +5915,12 @@ async def genera_carta_identita(residenza, nome, cognome, birth_date, birth_plac
     """
     return html_content
 
+import asyncio
+import io
+import discord
+import imgkit
+
+
 async def renderizza_fattura_immagine(fattura) -> discord.File:
     html = await genera_fattura_html(
         invoice_id=fattura["id"],
@@ -5924,44 +5930,24 @@ async def renderizza_fattura_immagine(fattura) -> discord.File:
         importo=fattura["importo"],
         causale=fattura["causale"],
         data_emissione=fattura["data"],
-        stato=fattura["status"]
+        stato=fattura["status"],
     )
-    
-    payload = {
-        "html": html,
-        "viewport_width": 794,
-        "viewport_height": 1123,
-        "device_scale": 2
+
+    # Opzioni di configurazione per wkhtmltoimage (A4 e scala)
+    options = {
+        "page-width": "794px",
+        "page-height": "1123px",
+        "quality": "100",
+        "encoding": "UTF-8",
+        "enable-local-file-access": None,
     }
 
-    # Inserisci qui il tuo User ID di HCTI e la tua API key
-    user_id = "01KZPCE84PPV7VR108CEEE4SCG"
-    api_key = "019fecc7-2096-7cab-9a5f-b984c4061b51"
-    
-    headers = {
-        "Authorization": aiohttp.encode_basic_auth(str(user_id), str(api_key))
-    }
+    # imgkit è sincrono: usiamo asyncio.to_thread per non bloccare il bot Discord
+    img_bytes = await asyncio.to_thread(
+        imgkit.from_string, html, False, options=options
+    )
 
-    async with aiohttp.ClientSession() as session:
-        async with session.post("https://hcti.io/v1/image", json=payload, headers=headers) as response:
-            if response.status == 200:
-                result = await response.json()
-                image_url = result.get("url")
-                
-                if not image_url:
-                    raise Exception("L'API non ha restituito alcun URL per l'immagine della fattura.")
-                
-                # Scarichiamo l'immagine generata dal cloud
-                async with session.get(image_url) as img_resp:
-                    if img_resp.status == 200:
-                        screenshot_bytes = await img_resp.read()
-                    else:
-                        raise Exception(f"Errore nel download dell'immagine della fattura: {img_resp.status}")
-            else:
-                error_text = await response.text()
-                raise Exception(f"Errore nel rendering HTML della fattura (Status {response.status}): {error_text}")
-
-    buffer = io.BytesIO(screenshot_bytes)
+    buffer = io.BytesIO(img_bytes)
     buffer.seek(0)
     return discord.File(buffer, filename="fattura.png")
 
@@ -6226,46 +6212,28 @@ async def mie_fatture(interaction: discord.Interaction):
 
 import aiohttp
 
+import asyncio
+import io
+import discord
+import imgkit
+
+
 async def renderizza_html_in_immagine(html_content: str) -> discord.File:
-    # Inserisci qui le tue credenziali prese dalla dashboard di HCTI
-    user_id = "01KZPCE84PPV7VR108CEEE4SCG"   # Esempio: "123456ab-..."
-    api_key = "019fecc7-2096-7cab-9a5f-b984c4061b51"
-    
-    payload = {
-        "html": html_content,
-        "viewport_width": 820,
-        "viewport_height": 520,
-        "device_scale": 2
+    # Opzioni di configurazione per wkhtmltoimage
+    options = {
+        "width": "820",
+        "height": "520",
+        "quality": "100",
+        "encoding": "UTF-8",
+        "enable-local-file-access": None,
     }
 
-    # Autenticazione aggiornata per evitare il DeprecationWarning di aiohttp
-    headers = {
-        "Authorization": aiohttp.encode_basic_auth(user_id, api_key)
-    }
+    # Eseguiamo la conversione in un thread separato per non bloccare il bot
+    img_bytes = await asyncio.to_thread(
+        imgkit.from_string, html_content, False, options=options
+    )
 
-    async with aiohttp.ClientSession() as session:
-        async with session.post(
-            "https://hcti.io/v1/image", 
-            json=payload, 
-            headers=headers
-        ) as response:
-            if response.status == 200:
-                result = await response.json()
-                image_url = result.get("url")
-                
-                if not image_url:
-                    raise Exception("L'API non ha restituito alcun URL per l'immagine.")
-                
-                async with session.get(image_url) as img_resp:
-                    if img_resp.status == 200:
-                        screenshot_bytes = await img_resp.read()
-                    else:
-                        raise Exception(f"Errore nel download dell'immagine generata: {img_resp.status}")
-            else:
-                error_text = await response.text()
-                raise Exception(f"Errore nel rendering HTML (Status {response.status}): {error_text}")
-
-    buffer = io.BytesIO(screenshot_bytes)
+    buffer = io.BytesIO(img_bytes)
     buffer.seek(0)
     return discord.File(buffer, filename="carta_identita.png")
 
