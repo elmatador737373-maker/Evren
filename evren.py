@@ -5938,10 +5938,12 @@ async def renderizza_fattura_immagine(fattura) -> discord.File:
     user_id = "01KZPCE84PPV7VR108CEEE4SCG"
     api_key = "019fecc7-2096-7cab-9a5f-b984c4061b51"
     
-    auth = aiohttp.BasicAuth(user_id, api_key)
+    headers = {
+        "Authorization": aiohttp.encode_basic_auth(str(user_id), str(api_key))
+    }
 
     async with aiohttp.ClientSession() as session:
-        async with session.post("https://hcti.io/v1/image", json=payload, auth=auth) as response:
+        async with session.post("https://hcti.io/v1/image", json=payload, headers=headers) as response:
             if response.status == 200:
                 result = await response.json()
                 image_url = result.get("url")
@@ -6222,24 +6224,7 @@ async def mie_fatture(interaction: discord.Interaction):
   await interaction.followup.send(embed=embed, file=file, view=view)
 
 
-import io
-from playwright.async_api import async_playwright
-
-import io
-import discord
-from playwright.async_api import async_playwright
-
-import io
-import discord
 import aiohttp
-
-import io
-import discord
-import aiohttp
-
-import io
-import aiohttp
-import discord
 
 async def renderizza_html_in_immagine(html_content: str) -> discord.File:
     # Inserisci qui le tue credenziali prese dalla dashboard di HCTI
@@ -6253,14 +6238,16 @@ async def renderizza_html_in_immagine(html_content: str) -> discord.File:
         "device_scale": 2
     }
 
-    # Configurazione corretta dell'autenticazione Basic Auth per aiohttp
-    auth = aiohttp.BasicAuth(user_id, api_key)
+    # Autenticazione aggiornata per evitare il DeprecationWarning di aiohttp
+    headers = {
+        "Authorization": aiohttp.encode_basic_auth(user_id, api_key)
+    }
 
     async with aiohttp.ClientSession() as session:
         async with session.post(
             "https://hcti.io/v1/image", 
             json=payload, 
-            auth=auth
+            headers=headers
         ) as response:
             if response.status == 200:
                 result = await response.json()
@@ -6282,18 +6269,7 @@ async def renderizza_html_in_immagine(html_content: str) -> discord.File:
     buffer.seek(0)
     return discord.File(buffer, filename="carta_identita.png")
 
-import io
-from playwright.async_api import async_playwright
-import discord
 
-import io
-from playwright.async_api import async_playwright
-import discord
-
-
-
-import random
-import string
 
 import random
 import string
