@@ -1787,8 +1787,43 @@ async def massrole(
             embed.add_field(name="Statistiche", value=f"Aggiornati: `{successi}` | Falliti: `{falliti}` | Tempo: `{tempo_impiegato}s`", inline=False)
             await canale_log.send(embed=embed)
 
-def generate_cantiere_embed(cantiere):
-    # Calcoliamo il progresso basandoci sui materiali consumati finora
+
+import discord
+from discord import app_commands, ui
+import asyncio
+import random
+
+# --- CONFIGURAZIONE ID RUOLO ---
+ID_RUOLO_EDILIZIA = 1534986071211769996  # Sostituisci con l'ID numerico del tuo ruolo
+
+# --- LISTA MATERIALI DISPONIBILI ---
+LISTA_MATERIALI_DISPONIBILI = [
+    "Cemento", 
+    "Mattoni", 
+    "Legno", 
+    "Ferro", 
+    "Vetro", 
+    "Sabbia", 
+    "Pietra", 
+    "Tegole"
+]
+
+
+# --- UTILITY TEMPO ---
+def format_tempo_rimanente(secondi: int) -> str:
+    if secondi <= 0:
+        return "Completato"
+    ore, resto = divmod(secondi, 3600)
+    minuti, sec = divmod(resto, 60)
+    if ore > 0:
+        return f"{ore}h {minuti}m"
+    elif minuti > 0:
+        return f"{minuti}m {sec}s"
+    return f"{sec}s"
+
+
+# --- GENERATORE EMBED ---
+def generate_cantiere_embed(cantiere: dict) -> discord.Embed:
     tot_richiesti = sum(mat["totale"] for mat in cantiere["materiali"])
     tot_consumati = sum(mat.get("consumati", 0) for mat in cantiere["materiali"])
     progresso = int((tot_consumati / tot_richiesti) * 100) if tot_richiesti > 0 else 100
@@ -1806,15 +1841,11 @@ def generate_cantiere_embed(cantiere):
     mat_text = ""
     for mat in cantiere["materiali"]:
         status = "✅" if mat.get("consumati", 0) >= mat["totale"] else "📦"
-        # Mostriamo il deposito attuale e quanto manca al totale dei lavori
         mat_text += f"{status} **{mat['nome']}**: Deposito: `{mat['attuale']}` | Lavorati: `{mat.get('consumati', 0)}/{mat['totale']}`\n"
     embed.add_field(name="Materiali nel Cantiere:", value=mat_text, inline=False)
     
     operai_ids = cantiere.get("operai_ids", [])
-    if operai_ids:
-        operai_tags = ", ".join([f"<@{uid}>" for uid in operai_ids])
-    else:
-        operai_tags = "Nessun operaio assegnato"
+    operai_tags = ", ".join([f"<@{uid}>" for uid in operai_ids]) if operai_ids else "Nessun operaio assegnato"
     embed.add_field(name=f"Operai Assegnati ({len(operai_ids)}/5):", value=operai_tags, inline=False)
     
     embed.add_field(name="Tempo rimanente stimato:", value=f"`{tempo_str}`", inline=False)
@@ -1825,7 +1856,8 @@ def generate_cantiere_embed(cantiere):
         embed.set_footer(text="🔨 Lavori in corso...")
     return embed
 
-# --- VISTA PERSISTENTE PER IL DEPOSITO MATERIALI ---
+
+# --- VISTA PERSISTENTE ---
 class MaterialiView(ui.View):
     def __init__(self):
         super().__init__(timeout=None)
@@ -1842,7 +1874,7 @@ class MaterialiView(ui.View):
         res_cantiere = supabase.table("cantieri").select("*").eq("message_id", msg_id).execute()
 
         if not res_cantiere.data:
-            await interaction.response.send_message("❌ Questo cantiere non esiste più o i lavori sono stati completati.", ephemeral=True)
+            await interaction.response.send_message("❌ Questo cantiere non existe più o i lavori sono stati completati.", ephemeral=True)
             return
 
         cantiere = res_cantiere.data[0]
@@ -1857,35 +1889,39 @@ class MaterialiView(ui.View):
         res_messaggio = ""
 
         for mat in materiali_list:
-            # Calcoliamo quanto manca ancora da consumare in totale per questo materiale
             consumati_attuali = mat.get("consumati", 0)
             mancanti_totali = mat["totale"] - consumati_attuali
             
             if mancanti_totali <= 0:
                 continue
 
-            inv_res = supabase.table("inventory").select("quantity").eq("discord_id", user_id).ilike("item_name", mat["nome"]).execute()
-            disponibili = inv_res.data[0]["quantity"] if inv_res.data else 0
+            # Modifica qui: cerchiamo qualsiasi item nell'inventario il cui nome contenga il materiale richiesto
+            query_nome = f"%{mat['nome']}%"
+            inv_res = supabase.table("inventory").select("item_name, quantity").eq("discord_id", user_id).ilike("item_name", query_nome).execute()
+            
+            if inv_res.data:
+                # Prendiamo il primo oggetto corrispondente
+                item_found = inv_res.data[0]
+                exact_item_name = item_found["item_name"]
+                disponibili = item_found["quantity"]
 
-            if disponibili > 0:
-                # Quanti ne possiamo aggiungere nel deposito del cantiere
-                da_usare = min(disponibili, mancanti_totali)
-                nuova_qta = disponibili - da_usare
+                if disponibili > 0:
+                    da_usare = min(disponibili, mancanti_totali)
+                    nuova_qta = disponibili - da_usare
 
-                if nuova_qta > 0:
-                    supabase.table("inventory").update({"quantity": nuova_qta}).eq("discord_id", user_id).ilike("item_name", mat["nome"]).execute()
-                else:
-                    supabase.table("inventory").delete().eq("discord_id", user_id).ilike("item_name", mat["nome"]).execute()
+                    if nuova_qta > 0:
+                        supabase.table("inventory").update({"quantity": nuova_qta}).eq("discord_id", user_id).eq("item_name", exact_item_name).execute()
+                    else:
+                        supabase.table("inventory").delete().eq("discord_id", user_id).eq("item_name", exact_item_name).execute()
 
-                mat["attuale"] += da_usare
-                depositato = True
-                res_messaggio += f"📥 Depositate **+{da_usare}x {mat['nome']}** nel cantiere\n"
+                    mat["attuale"] += da_usare
+                    depositato = True
+                    res_messaggio += f"📥 Depositate **+{da_usare}x {mat['nome']}** (usando `{exact_item_name}`) nel cantiere\n"
 
         if not depositato:
             await interaction.response.send_message("❌ Non possiedi i materiali necessari nel tuo inventario!", ephemeral=True)
             return
 
-        # Se abbiamo aggiunto materiali, sblocchiamo il cantiere (paused = False)
         paused = False
 
         supabase.table("cantieri").update({
@@ -1899,7 +1935,8 @@ class MaterialiView(ui.View):
         await interaction.response.edit_message(embed=generate_cantiere_embed(cantiere))
         await interaction.followup.send(content=f"✅ **Operazione completata:**\n{res_messaggio}", ephemeral=True)
 
-# --- COROUTINE IN BACKGROUND PER L'AVANZAMENTO TEMPORALE E CONSUMO ---
+
+# --- LOOP DI AVANZAMENTO ---
 async def avvia_loop_cantiere(msg: discord.Message):
     msg_id = str(msg.id)
     
@@ -1912,7 +1949,6 @@ async def avvia_loop_cantiere(msg: discord.Message):
 
         data = res_data.data[0]
 
-        # Se è in pausa (perché sono finiti i materiali), saltiamo il consumo e il decremento tempo
         if data["paused"]:
             continue
 
@@ -1920,8 +1956,6 @@ async def avvia_loop_cantiere(msg: discord.Message):
         tutti_completati = True
         mancano_materiali = False
 
-        # Calcoliamo il consumo per minuto in base al tempo totale e ai materiali da lavorare
-        # Oppure scaliamo 1 unità a intervalli regolari. Per semplicità scaliamo 1 unità per minuto finché c'è scorta nel deposito.
         for mat in materiali_list:
             consumati = mat.get("consumati", 0)
             if consumati < mat["totale"]:
@@ -1930,11 +1964,9 @@ async def avvia_loop_cantiere(msg: discord.Message):
                     mat["attuale"] -= 1
                     mat["consumati"] = consumati + 1
                 else:
-                    # Il deposito di questo materiale è a 0, ma l'opera non è finita -> Mettiamo in pausa
                     mancano_materiali = True
 
         if tutti_completati:
-            # Lavori finiti! Registriamo la proprietà ed eliminiamo il cantiere
             supabase.table("registered_properties").insert({
                 "discord_id": data["builder_id"],
                 "address": data["address"],
@@ -1956,14 +1988,12 @@ async def avvia_loop_cantiere(msg: discord.Message):
                 pass
             break
 
-        # Se mancano materiali nel deposito, mettiamo in pausa il cantiere
         paused = mancano_materiali
         nuovo_tempo = data["tempo_rimanente"]
         
         if not paused:
             nuovo_tempo = max(0, nuovo_tempo - 60)
 
-        # Aggiorniamo il database
         supabase.table("cantieri").update({
             "materiali": materiali_list,
             "tempo_rimanente": nuovo_tempo,
@@ -1980,14 +2010,34 @@ async def avvia_loop_cantiere(msg: discord.Message):
             pass
 
 
-# --- NEL COMANDO /costruisci (Modifica inizializzazione materiali) ---
-# Sostituisci la parte in cui crei "lista_materiali_struttura" all'interno del comando /costruisci con questa:
+# --- COMANDO /costruisci ---
+@bot.tree.command(name="costruisci", description="Avvia un nuovo cantiere di costruzione")
+@app_commands.checks.has_role(ID_RUOLO_EDILIZIA)
+@app_commands.describe(
+    azienda="Nome dell'azienda costruttrice",
+    address="Indirizzo dell'immobile",
+    grandezza="Dimensione del cantiere (piccolo, medio, grande)"
+)
+@app_commands.choices(grandezza=[
+    app_commands.Choice(name="Piccolo", value="piccolo"),
+    app_commands.Choice(name="Medio", value="medio"),
+    app_commands.Choice(name="Grande", value="grande")
+])
+async def costruisci(interaction: discord.Interaction, azienda: str, address: str, grandezza: app_commands.Choice[str]):
+    await interaction.response.defer()
+
+    config_grandezza = {
+        "piccolo": {"tempo": 1800, "range_mat": (10, 30), "num_mat": 2},
+        "medio": {"tempo": 3600, "range_mat": (30, 60), "num_mat": 3},
+        "grande": {"tempo": 7200, "range_mat": (60, 100), "num_mat": 4}
+    }
+    
+    cfg = config_grandezza[grandezza.value]
+    materiali_scelti = random.sample(LISTA_MATERIALI_DISPONIBILI, cfg["num_mat"])
 
     lista_materiali_struttura = []
     for mat_nome in materiali_scelti:
-        mat_totale = random.randint(*range_mat)
-        
-        # All'avvio partono con 0 nel deposito e 0 consumati
+        mat_totale = random.randint(*cfg["range_mat"])
         lista_materiali_struttura.append({
             "nome": mat_nome,
             "totale": mat_totale,
@@ -1995,9 +2045,36 @@ async def avvia_loop_cantiere(msg: discord.Message):
             "consumati": 0
         })
 
-    # Il cantiere parte subito attivamente (supponendo che si parta con 0, andrà in pausa subito dopo il primo minuto se non si deposita, oppure puoi lasciarlo partire)
-    is_paused = False 
+    cantiere_data = {
+        "builder_id": str(interaction.user.id),
+        "azienda": azienda,
+        "address": address,
+        "grandezza": grandezza.value,
+        "tempo_rimanente": cfg["tempo"],
+        "materiali": lista_materiali_struttura,
+        "operai_ids": [],
+        "paused": False
+    }
 
+    view = MaterialiView()
+    embed = generate_cantiere_embed(cantiere_data)
+    
+    msg = await interaction.followup.send(embed=embed, view=view)
+
+    cantiere_data["message_id"] = str(msg.id)
+    supabase.table("cantieri").insert(cantiere_data).execute()
+
+    asyncio.create_task(avvia_loop_cantiere(msg))
+
+
+# --- GESTORE ERRORE PER RUOLO MANCANTE ---
+@costruisci.error
+async def costruisci_error(interaction: discord.Interaction, error: app_commands.AppCommandError):
+    if isinstance(error, app_commands.MissingRole):
+        await interaction.response.send_message(
+            f"❌ Devi possedere il ruolo con ID `<@&{ID_RUOLO_EDILIZIA}>` per utilizzare questo comando!", 
+            ephemeral=True
+        )
 
 @bot.tree.command(name="playtest", description="Testa la riproduzione di un brano audio")
 async def playtest(interaction: discord.Interaction, query: str = "https://www.youtube.com/watch?v=dQw4w9WgXcQ"):
