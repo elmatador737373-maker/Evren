@@ -6413,7 +6413,7 @@ async def on_ready():
     await bot.tree.sync()
     bot.add_view(PannelloAnagrafeView())
     bot.add_view(MaterialiView())
-    bot.add_view(DistributorePannelloView())
+    bot.add_view(DistributorePannelloView(supabase_client=supabase))
     bot.add_view(ApprovazioneStipendioView())
     print(f"✅ Bot online come {bot.user}")
 
