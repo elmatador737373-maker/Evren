@@ -108,6 +108,44 @@ def run_flask():
     port = int(os.getenv("PORT", 5000))
     app.run(host="0.0.0.0", port=port)
 
+import os
+import tarfile
+import urllib.request
+import discord
+from discord.ext import commands
+
+WKHTML_PATH = "/home/container/wkhtmltoimage"
+
+
+def scarica_wkhtml_se_manca():
+    if not os.path.exists(WKHTML_PATH):
+        print("[SETUP] wkhtmltoimage non trovato. Download in corso...")
+        url = "https://github.com/wkhtmltopdf/wkhtmltopdf/releases/download/0.12.4/wkhtmltox-0.12.4_linux-generic-amd64.tar.xz"
+        archive_path = "/home/container/wkhtml.tar.xz"
+
+        # Scarica l'archivio
+        urllib.request.urlretrieve(url, archive_path)
+
+        # Estrae solo l'eseguibile wkhtmltoimage
+        with tarfile.open(archive_path, "r:xz") as tar:
+            for member in tar.getmembers():
+                if member.name.endswith("wkhtmltoimage"):
+                    f = tar.extractfile(member)
+                    with open(WKHTML_PATH, "wb") as out:
+                        out.write(f.read())
+                    break
+
+        # Imposta i permessi di esecuzione
+        os.chmod(WKHTML_PATH, 0o755)
+
+        # Pulizia file temporaneo
+        if os.path.exists(archive_path):
+            os.remove(archive_path)
+
+        print("[SETUP] wkhtmltoimage installato con successo!")
+
+
+
 
 # --- FUNZIONI DI SUPPORTO & UTILITY ---
 class ApriStep2View(ui.View):
@@ -6363,6 +6401,9 @@ async def registra_casa(interaction: discord.Interaction, proprietario: discord.
 
 @bot.event
 async def on_ready():
+    # Download automatico dell'eseguibile se non presente sul server
+    scarica_wkhtml_se_manca()
+
     await bot.tree.sync()
     bot.add_view(PannelloAnagrafeView())
     bot.add_view(MaterialiView())
