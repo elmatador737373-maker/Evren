@@ -108,44 +108,6 @@ def run_flask():
     port = int(os.getenv("PORT", 5000))
     app.run(host="0.0.0.0", port=port)
 
-import os
-import tarfile
-import urllib.request
-import discord
-from discord.ext import commands
-
-WKHTML_PATH = "/home/container/wkhtmltoimage"
-
-
-def scarica_wkhtml_se_manca():
-    if not os.path.exists(WKHTML_PATH):
-        print("[SETUP] wkhtmltoimage non trovato. Download in corso...")
-        url = "https://github.com/wkhtmltopdf/wkhtmltopdf/releases/download/0.12.4/wkhtmltox-0.12.4_linux-generic-amd64.tar.xz"
-        archive_path = "/home/container/wkhtml.tar.xz"
-
-        # Scarica l'archivio
-        urllib.request.urlretrieve(url, archive_path)
-
-        # Estrae solo l'eseguibile wkhtmltoimage
-        with tarfile.open(archive_path, "r:xz") as tar:
-            for member in tar.getmembers():
-                if member.name.endswith("wkhtmltoimage"):
-                    f = tar.extractfile(member)
-                    with open(WKHTML_PATH, "wb") as out:
-                        out.write(f.read())
-                    break
-
-        # Imposta i permessi di esecuzione
-        os.chmod(WKHTML_PATH, 0o755)
-
-        # Pulizia file temporaneo
-        if os.path.exists(archive_path):
-            os.remove(archive_path)
-
-        print("[SETUP] wkhtmltoimage installato con successo!")
-
-
-
 
 # --- FUNZIONI DI SUPPORTO & UTILITY ---
 class ApriStep2View(ui.View):
@@ -5953,12 +5915,6 @@ async def genera_carta_identita(residenza, nome, cognome, birth_date, birth_plac
     """
     return html_content
 
-import asyncio
-import io
-import discord
-import imgkit
-
-
 async def renderizza_fattura_immagine(fattura) -> discord.File:
     html = await genera_fattura_html(
         invoice_id=fattura["id"],
@@ -5968,24 +5924,44 @@ async def renderizza_fattura_immagine(fattura) -> discord.File:
         importo=fattura["importo"],
         causale=fattura["causale"],
         data_emissione=fattura["data"],
-        stato=fattura["status"],
+        stato=fattura["status"]
     )
-
-    # Opzioni di configurazione per wkhtmltoimage (A4 e scala)
-    options = {
-        "page-width": "794px",
-        "page-height": "1123px",
-        "quality": "100",
-        "encoding": "UTF-8",
-        "enable-local-file-access": None,
+    
+    payload = {
+        "html": html,
+        "viewport_width": 794,
+        "viewport_height": 1123,
+        "device_scale": 2
     }
 
-    # imgkit è sincrono: usiamo asyncio.to_thread per non bloccare il bot Discord
-    img_bytes = await asyncio.to_thread(
-        imgkit.from_string, html, False, options=options
-    )
+    # Inserisci qui il tuo User ID di HCTI e la tua API key
+    user_id = "01KZPCE84PPV7VR108CEEE4SCG"
+    api_key = "019fecc7-2096-7cab-9a5f-b984c4061b51"
+    
+    headers = {
+        "Authorization": aiohttp.encode_basic_auth(str(user_id), str(api_key))
+    }
 
-    buffer = io.BytesIO(img_bytes)
+    async with aiohttp.ClientSession() as session:
+        async with session.post("https://hcti.io/v1/image", json=payload, headers=headers) as response:
+            if response.status == 200:
+                result = await response.json()
+                image_url = result.get("url")
+                
+                if not image_url:
+                    raise Exception("L'API non ha restituito alcun URL per l'immagine della fattura.")
+                
+                # Scarichiamo l'immagine generata dal cloud
+                async with session.get(image_url) as img_resp:
+                    if img_resp.status == 200:
+                        screenshot_bytes = await img_resp.read()
+                    else:
+                        raise Exception(f"Errore nel download dell'immagine della fattura: {img_resp.status}")
+            else:
+                error_text = await response.text()
+                raise Exception(f"Errore nel rendering HTML della fattura (Status {response.status}): {error_text}")
+
+    buffer = io.BytesIO(screenshot_bytes)
     buffer.seek(0)
     return discord.File(buffer, filename="fattura.png")
 
@@ -6250,28 +6226,46 @@ async def mie_fatture(interaction: discord.Interaction):
 
 import aiohttp
 
-import asyncio
-import io
-import discord
-import imgkit
-
-
 async def renderizza_html_in_immagine(html_content: str) -> discord.File:
-    # Opzioni di configurazione per wkhtmltoimage
-    options = {
-        "width": "820",
-        "height": "520",
-        "quality": "100",
-        "encoding": "UTF-8",
-        "enable-local-file-access": None,
+    # Inserisci qui le tue credenziali prese dalla dashboard di HCTI
+    user_id = "01M09ZXQYW1R58HK3ZT7VQ856A"   # Esempio: "123456ab-..."
+    api_key = "01a013fe-dfdc-79de-8f3c-0c6a8c4bcab4"
+    
+    payload = {
+        "html": html_content,
+        "viewport_width": 820,
+        "viewport_height": 520,
+        "device_scale": 2
     }
 
-    # Eseguiamo la conversione in un thread separato per non bloccare il bot
-    img_bytes = await asyncio.to_thread(
-        imgkit.from_string, html_content, False, options=options
-    )
+    # Autenticazione aggiornata per evitare il DeprecationWarning di aiohttp
+    headers = {
+        "Authorization": aiohttp.encode_basic_auth(user_id, api_key)
+    }
 
-    buffer = io.BytesIO(img_bytes)
+    async with aiohttp.ClientSession() as session:
+        async with session.post(
+            "https://hcti.io/v1/image", 
+            json=payload, 
+            headers=headers
+        ) as response:
+            if response.status == 200:
+                result = await response.json()
+                image_url = result.get("url")
+                
+                if not image_url:
+                    raise Exception("L'API non ha restituito alcun URL per l'immagine.")
+                
+                async with session.get(image_url) as img_resp:
+                    if img_resp.status == 200:
+                        screenshot_bytes = await img_resp.read()
+                    else:
+                        raise Exception(f"Errore nel download dell'immagine generata: {img_resp.status}")
+            else:
+                error_text = await response.text()
+                raise Exception(f"Errore nel rendering HTML (Status {response.status}): {error_text}")
+
+    buffer = io.BytesIO(screenshot_bytes)
     buffer.seek(0)
     return discord.File(buffer, filename="carta_identita.png")
 
@@ -6401,9 +6395,6 @@ async def registra_casa(interaction: discord.Interaction, proprietario: discord.
 
 @bot.event
 async def on_ready():
-    # Download automatico dell'eseguibile se non presente sul server
-    scarica_wkhtml_se_manca()
-
     await bot.tree.sync()
     bot.add_view(PannelloAnagrafeView())
     bot.add_view(MaterialiView())
