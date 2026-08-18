@@ -494,6 +494,181 @@ async def gestisci_soldi(
         ephemeral=True,
     )
 
+import discord
+from discord import app_commands
+
+# Definisci il nome o l'ID del ruolo richiesto per usare questo comando
+REQUIRED_ROLE = 1253460150141059198  # Oppure puoi usare l'ID numerico: 123456789012345678
+
+
+# Funzione di Autocomplete per cercare l'item in tempo reale su Supabase
+async def item_autocomplete(
+    interaction: discord.Interaction, current: str
+) -> list[app_commands.Choice[str]]:
+    # Recupera fino a 25 item che contengono la stringa cercata
+    response = (
+        supabase.table("custom_items")
+        .select("id, name")
+        .ilike("name", f"%{current}%")
+        .limit(25)
+        .execute()
+    )
+
+    return [
+        app_commands.Choice(name=item["name"], value=str(item["id"]))
+        for item in response.data
+    ]
+
+
+@bot.tree.command(name="update_item", description="Modifica un item nel database")
+@app_commands.autocomplete(item=item_autocomplete)
+async def update_item(
+    interaction: discord.Interaction,
+    item: str,  # Riceve l'ID selezionato dall'autocomplete
+    name: str | None = None,
+    weight: float | None = None,
+    probability: float | None = None,
+    backpack_capacity: float | None = None,
+    price: float | None = None,
+    required_role_id: str | None = None,
+):
+    # 1. VERIFICA RUOLO
+    # Controlla se l'utente ha il ruolo richiesto (funziona sia con Nome che con ID)
+    has_role = any(
+        role.name == REQUIRED_ROLE or role.id == REQUIRED_ROLE
+        for role in interaction.user.roles
+    )
+
+    if not has_role:
+        await interaction.response.send_message(
+            f"❌ Non hai i permessi necessari (Ruolo richiesto: `{REQUIRED_ROLE}`) per usare questo comando.",
+            ephemeral=True,
+        )
+        return
+
+    # 2. PREPARAZIONE DATI DA AGGIORNARE
+    updates = {}
+    if name is not None:
+        updates["name"] = name
+    if weight is not None:
+        updates["weight"] = weight
+    if probability is not None:
+        updates["probability"] = probability
+    if backpack_capacity is not None:
+        updates["backpack_capacity"] = backpack_capacity
+    if price is not None:
+        updates["price"] = price
+    if required_role_id is not None:
+        updates["required_role_id"] = required_role_id
+
+    # Se non è stato inserito nessun parametro facoltativo
+    if not updates:
+        await interaction.response.send_message(
+            "⚠️ Nessun campo specificato da modificare.", ephemeral=True
+        )
+        return
+
+    # 3. AGGIORNAMENTO SU SUPABASE
+    try:
+        response = (
+            supabase.table("custom_items")
+            .update(updates)
+            .eq("id", int(item))
+            .execute()
+        )
+
+        if response.data:
+            await interaction.response.send_message(
+                f"✅ Item **{response.data[0]['name']}** aggiornato con successo!",
+                ephemeral=True,
+            )
+        else:
+            await interaction.response.send_message(
+                "❌ Item non trovato nel database.", ephemeral=True
+            )
+    except Exception as e:
+        await interaction.response.send_message(
+            f"❌ Errore durante l'aggiornamento: {e}", ephemeral=True
+        )
+
+
+# Autocomplete per la ricerca dell'item da eliminare
+async def delete_item_autocomplete(
+    interaction: discord.Interaction, current: str
+) -> list[app_commands.Choice[str]]:
+    response = (
+        supabase.table("custom_items")
+        .select("id, name")
+        .ilike("name", f"%{current}%")
+        .limit(25)
+        .execute()
+    )
+
+    return [
+        app_commands.Choice(name=item["name"], value=str(item["id"]))
+        for item in response.data
+    ]
+
+
+@bot.tree.command(name="delete_item", description="Elimina un item dal database")
+@app_commands.autocomplete(item=delete_item_autocomplete)
+@app_commands.describe(
+    item="Seleziona l'item da eliminare",
+    conferma="Seleziona True per confermare l'eliminazione definitiva"
+)
+async def delete_item(
+    interaction: discord.Interaction,
+    item: str,  # Riceve l'ID dell'item scelto via autocomplete
+    conferma: bool = False
+):
+    # 1. VERIFICA RUOLO PERMESSI
+    has_role = any(
+        role.name == REQUIRED_ROLE or role.id == REQUIRED_ROLE
+        for role in interaction.user.roles
+    )
+
+    if not has_role:
+        await interaction.response.send_message(
+            f"❌ Non hai i permessi necessari (Ruolo richiesto: `{REQUIRED_ROLE}`) per usare questo comando.",
+            ephemeral=True,
+        )
+        return
+
+    # 2. CONTROLLO SICUREZZA CONFERMA
+    if not conferma:
+        await interaction.response.send_message(
+            "⚠️ Per eliminare un item devi impostare il parametro `conferma` su `True`.",
+            ephemeral=True,
+        )
+        return
+
+    # 3. ELIMINAZIONE SU SUPABASE
+    try:
+        response = (
+            supabase.table("custom_items")
+            .delete()
+            .eq("id", int(item))
+            .execute()
+        )
+
+        # Se response.data contiene l'oggetto eliminato
+        if response.data:
+            item_deleted = response.data[0]
+            await interaction.response.send_message(
+                f"🗑️ L'item **{item_deleted['name']}** (ID: `{item_deleted['id']}`) è stato eliminato con successo dal database.",
+                ephemeral=True,
+            )
+        else:
+            await interaction.response.send_message(
+                "❌ Impossibile eliminare: l'item specificato non esiste o è già stato rimosso.",
+                ephemeral=True,
+            )
+
+    except Exception as e:
+        await interaction.response.send_message(
+            f"❌ Errore durante l'eliminazione dell'item: {e}",
+            ephemeral=True,
+        )
 
 # 4. Passa Contanti (Paga)
 @bot.tree.command(
