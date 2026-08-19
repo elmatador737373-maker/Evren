@@ -5149,32 +5149,90 @@ class PoliceCadDetailView(ui.View):
       return False
     return True
 
-  @ui.button(label="📋 Generalità", style=discord.ButtonStyle.primary, row=0)
-  async def btn_gen(self, interaction: discord.Interaction, button: ui.Button):
-    photo_url = self.doc.get("photo_url")
-    embed = discord.Embed(
-        title=(
-            "🚔 Scheda Anagrafica: "
-            f"{self.doc.get('name')} {self.doc.get('surname')}"
-        ),
-        description=(
-            "• **Nome & Cognome:**"
-            f" `{self.doc.get('name')} {self.doc.get('surname')}`\n• **Data di"
-            " Nascita:**"
-            f" `{self.doc.get('birth_date', 'N/D')} a"
-            f" {self.doc.get('birth_place', 'N/D')}`\n• **Codice Fiscale:**"
-            f" `{self.doc.get('cf', 'N/D')}`\n• **N° Documento:**"
-            f" `{self.doc.get('doc_number', 'N/D')}`\n\n### 🧬 Caratteristiche"
-            f" Fisiche:\n• **Occhi:** `{self.doc.get('eye_color', 'N/D')}`\n•"
-            f" **Capelli:** `{self.doc.get('hair_color', 'N/D')}`\n• **Segni"
-            f" Particolari:** `{self.doc.get('distinct_marks', 'Nessuno')}`\n\n•"
-            f" **Discord User:** `<@{self.target_id_str}>`"
-        ),
-        color=discord.Color.dark_blue(),
-    )
-    if photo_url:
-      embed.set_thumbnail(url=photo_url)
-    await interaction.response.edit_message(embed=embed, view=self)
+    @ui.button(label="📋 Generalità", style=discord.ButtonStyle.primary, row=0)
+    async def btn_gen(self, interaction: discord.Interaction, button: ui.Button):
+        photo_url = self.doc.get("photo_url")
+
+        # Recupero licenze di guida
+        driver_res = (
+            supabase.table("driver_licenses")
+            .select("license_type, status")
+            .eq("discord_id", self.target_id_str)
+            .execute()
+        )
+        driver_licenses = driver_res.data if driver_res.data else []
+
+        # Recupero licenze d'armi
+        gun_res = (
+            supabase.table("gun_licenses")
+            .select("license_type, status")
+            .eq("discord_id", self.target_id_str)
+            .execute()
+        )
+        gun_licenses = gun_res.data if gun_res.data else []
+
+        # Formattazione testuale delle licenze
+        if driver_licenses:
+            driver_str = "\n".join(
+                [f"• {l['license_type']} (`{l['status']}`)" for l in driver_licenses]
+            )
+        else:
+            driver_str = "• *Nessuna licenza*"
+
+        if gun_licenses:
+            gun_str = "\n".join(
+                [f"• {l['license_type']} (`{l['status']}`)" for l in gun_licenses]
+            )
+        else:
+            gun_str = "• *Nessuna licenza*"
+
+        embed = discord.Embed(
+            title=f"🚔 Scheda Anagrafica: {self.doc.get('name')} {self.doc.get('surname')}",
+            description=(
+                f"• **Nome & Cognome:** `{self.doc.get('name')} {self.doc.get('surname')}`\n"
+                f"• **Data di Nascita:** `{self.doc.get('birth_date', 'N/D')} a {self.doc.get('birth_place', 'N/D')}`\n"
+                f"• **Codice Fiscale:** `{self.doc.get('cf', 'N/D')}`\n"
+                f"• **N° Documento:** `{self.doc.get('doc_number', 'N/D')}`\n\n"
+                f"### 🧬 Caratteristiche Fisiche:\n"
+                f"• **Occhi:** `{self.doc.get('eye_color', 'N/D')}`\n"
+                f"• **Capelli:** `{self.doc.get('hair_color', 'N/D')}`\n"
+                f"• **Segni Particolari:** `{self.doc.get('distinct_marks', 'Nessuno')}`\n\n"
+                f"### 🪪 Patenti di Guida:\n{driver_str}\n\n"
+                f"### 📜 Porti d'Arma:\n{gun_str}\n\n"
+                f"• **Discord User:** `<@{self.target_id_str}>`"
+            ),
+            color=discord.Color.dark_blue(),
+        )
+        if photo_url:
+            embed.set_thumbnail(url=photo_url)
+
+        await interaction.response.edit_message(embed=embed, view=self)
+
+    @ui.button(label="🔫 Armi Registrate", style=discord.ButtonStyle.secondary, row=0)
+    async def btn_weapons(self, interaction: discord.Interaction, button: ui.Button):
+        # Query alla tabella registered_weapons
+        res = (
+            supabase.table("registered_weapons")
+            .select("model, serial_number")
+            .eq("discord_id", self.target_id_str)
+            .execute()
+        )
+        weapons = res.data if res.data else []
+
+        if weapons:
+            weapons_str = "\n".join(
+                [f"• **Modello:** `{w['model']}` | **Matricola:** `{w['serial_number']}`" for w in weapons]
+            )
+        else:
+            weapons_str = "*Nessun'arma registrata a questo nome.*"
+
+        embed = discord.Embed(
+            title=f"🔫 Armi Registrate - {self.doc.get('name')} {self.doc.get('surname')}",
+            description=weapons_str,
+            color=discord.Color.red(),
+        )
+
+        await interaction.response.edit_message(embed=embed, view=self)
 
   @ui.button(label="🚗 Proprietà", style=discord.ButtonStyle.success, row=0)
   async def btn_prop(self, interaction: discord.Interaction, button: ui.Button):
