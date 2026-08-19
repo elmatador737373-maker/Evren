@@ -208,6 +208,81 @@ from discord.ext import commands
 import discord
 from discord import app_commands
 from discord.ext import commands
+import discord
+from discord import app_commands
+from discord.ext import commands
+
+# Inserisci qui l'ID del ruolo autorizzato ad eseguire il wipe
+ALLOWED_ROLE_ID = 1253460150141059198 
+
+@tree.command(name="wipe", description="Effettua il wipe completo di un utente")
+@app_commands.describe(utente="L'utente da sottoporre a wipe")
+async def wipe_user(interaction: discord.Interaction, utente: discord.User):
+    # Controllo dei permessi per ruolo specifico
+    role = interaction.guild.get_role(ALLOWED_ROLE_ID)
+    if role not in interaction.user.roles:
+        await interaction.response.send_message(
+            "❌ Non hai i permessi necessari per usare questo comando.", 
+            ephemeral=True
+        )
+        return
+
+    await interaction.response.defer(ephemeral=True)
+    target_id = str(utente.id)
+
+    try:
+        # 1. Reset Saldo, Wallet e Stato nella tabella public.users
+        supabase.table("users").update({
+            "wallet": 500.0,
+            "bank": 1500.0,
+            "braccialetto_ritirato": False
+        }).eq("discord_id", target_id).execute()
+
+        # 2. Eliminazione Documenti d'Identità (public.documents)
+        supabase.table("documents").delete().eq("discord_id", target_id).execute()
+
+        # 3. Eliminazione Inventario Personale (public.inventory)
+        supabase.table("inventory").delete().eq("discord_id", target_id).execute()
+
+        # 4. Eliminazione TUTTE le Licenze (public.driver_licenses e public.gun_licenses)
+        supabase.table("driver_licenses").delete().eq("discord_id", target_id).execute()
+        supabase.table("gun_licenses").delete().eq("discord_id", target_id).execute()
+
+        # 5. Eliminazione Armi Registrate (public.registered_weapons)
+        supabase.table("registered_weapons").delete().eq("discord_id", target_id).execute()
+
+        # 6. Eliminazione Veicoli Registrati (public.registered_vehicles)
+        supabase.table("registered_vehicles").delete().eq("discord_id", target_id).execute()
+
+        # 7. Eliminazione Proprietà Registrate (public.registered_properties)
+        supabase.table("registered_properties").delete().eq("discord_id", target_id).execute()
+
+        # 8. Eliminazione Altri Dati Personali
+        supabase.table("user_phones").delete().eq("discord_id", target_id).execute()
+        supabase.table("darkweb_users").delete().eq("discord_id", target_id).execute()
+
+        embed = discord.Embed(
+            title="🧹 Wipe Completato con Successo",
+            description=(
+                f"L'utente <@{target_id}> è stato completamente resettato.\n\n"
+                "• **Portafoglio (Wallet):** Impostato a `500.0$`\n"
+                "• **Banca (Bank):** Impostato a `1500.0$`\n"
+                "• **Documenti:** Eliminati (`documents`)\n"
+                "• **Inventario:** Svuotato (`inventory`)\n"
+                "• **Licenze Guida & Armi:** Eliminate (`driver_licenses`, `gun_licenses`)\n"
+                "• **Armi Registrate:** Eliminate (`registered_weapons`)\n"
+                "• **Veicoli Registrati:** Eliminati (`registered_vehicles`)\n"
+                "• **Proprietà:** Eliminate (`registered_properties`)"
+            ),
+            color=discord.Color.green()
+        )
+        await interaction.followup.send(embed=embed, ephemeral=True)
+
+    except Exception as e:
+        await interaction.followup.send(
+            f"❌ Si è verificato un errore durante l'esecuzione del wipe: `{str(e)}`", 
+            ephemeral=True
+        )
 
 # Inserisci l'ID del tuo ruolo Staff
 
