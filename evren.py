@@ -285,6 +285,306 @@ async def wipe_user(interaction: discord.Interaction, utente: discord.User):
         )
 
 # Inserisci l'ID del tuo ruolo Staff
+import random
+from datetime import datetime, timezone
+import discord
+from discord import app_commands
+from discord.ext import commands
+
+ROLE_MINATORE_ID = 1271635278406225951  # Sostituisci con l'ID del ruolo Minatore (int)
+
+intents = discord.Intents.default()
+bot = commands.Bot(command_prefix="!", intents=intents)
+
+# Definizione dei materiali con rarità visiva, probabilità decrescenti e range di drop
+MINERALS_POOL = [
+    # Materiali Molto Comuni
+    {"name": "🪨| Pietra", "weight": 1.0, "prob": 0.35, "min_qty": 5, "max_qty": 12, "rarity": "Comune"},
+    {"name": "🏖️| Sabbia", "weight": 0.8, "prob": 0.25, "min_qty": 5, "max_qty": 10, "rarity": "Comune"},
+    # Materiali Comuni / Intermedi
+    {"name": "🪵| Legno", "weight": 1.0, "prob": 0.15, "min_qty": 3, "max_qty": 8, "rarity": "Non Comune"},
+    {"name": "🧱| Mattoni", "weight": 1.2, "prob": 0.10, "min_qty": 3, "max_qty": 6, "rarity": "Non Comune"},
+    {"name": "🌩️| Cemento", "weight": 1.5, "prob": 0.08, "min_qty": 2, "max_qty": 5, "rarity": "Raro"},
+    # Materiali Rari e Molto Rari
+    {"name": "⚙️| Ferro", "weight": 1.5, "prob": 0.04, "min_qty": 1, "max_qty": 3, "rarity": "Molto Raro"},
+    {"name": "🪟| Vetro", "weight": 0.8, "prob": 0.02, "min_qty": 1, "max_qty": 2, "rarity": "Molto Raro"},
+    {"name": "🏠| Tegole", "weight": 0.9, "prob": 0.01, "min_qty": 1, "max_qty": 2, "rarity": "Epico"}
+]
+
+def make_progress_bar(current: float, max_val: float, length: int = 10) -> str:
+    """Crea una barra di avanzamento visiva per il peso dell'inventario."""
+    percentage = min(1.0, max(0.0, current / max_val))
+    filled_length = int(length * percentage)
+    bar = "🟩" * filled_length + "⬛" * (length - filled_length)
+    return f"{bar} `{current:.1f}/{max_val:.1f} kg` ({int(percentage * 100)}%)"
+
+
+@bot.tree.command(
+    name="avvia_minatore", description="Inizia la sessione di lavoro in miniera"
+)
+@app_commands.describe(foto="Carica una foto che testimonia che sei in miniera")
+async def avvia_minatore(
+    interaction: discord.Interaction, foto: discord.Attachment
+):
+    user_id = str(interaction.user.id)
+
+    # 1. Verifica ruolo Minatore su Discord
+    role = interaction.guild.get_role(ROLE_MINATORE_ID)
+    if not role or role not in interaction.user.roles:
+        return await interaction.response.send_message(
+            "❌ Non possiedi il ruolo minatore necessario per questo comando.",
+            ephemeral=True,
+        )
+
+    # 2. Verifica se l'utente sta già minando
+    miner_check = (
+        supabase.table("minatori_attivi")
+        .select("discord_id")
+        .eq("discord_id", user_id)
+        .execute()
+    )
+
+    if miner_check.data:
+        return await interaction.response.send_message(
+            "⚠️ Stai già minando! Usa `/fine_minatore` per terminare la sessione e raccogliere i materiali.",
+            ephemeral=True,
+        )
+
+    # 3. Verifica presenza della foto
+    if not foto.content_type or not foto.content_type.startswith("image/"):
+        return await interaction.response.send_message(
+            "❌ Devi allegare un file immagine valido come prova.",
+            ephemeral=True,
+        )
+
+    # 4. Verifica possesso dell'item "⛏️| Piccone"
+    inv_res = (
+        supabase.table("inventory")
+        .select("quantity")
+        .eq("discord_id", user_id)
+        .eq("item_name", "⛏️| Piccone")
+        .execute()
+    )
+
+    if not inv_res.data or inv_res.data[0].get("quantity", 0) <= 0:
+        return await interaction.response.send_message(
+            "❌ Non possiedi l'oggetto **⛏️| Piccone** nel tuo inventario!",
+            ephemeral=True,
+        )
+
+    now_utc = datetime.now(timezone.utc)
+
+    # 5. Salva l'inizio del turno nel database
+    supabase.table("minatori_attivi").insert(
+        {
+            "discord_id": user_id,
+            "created_at": now_utc.isoformat(),
+        }
+    ).execute()
+
+    embed = discord.Embed(
+        title="⛏️ SESSIONE IN MINIERA AVVIATA",
+        description=f"Il minatore {interaction.user.mention} ha iniziato le operazioni di raccolta.",
+        color=discord.Color.dark_gold(),
+        timestamp=now_utc
+    )
+    embed.add_field(
+        name="⏳ Ora di Inizio",
+        value=f"<t:{int(now_utc.timestamp())}:t> (<t:{int(now_utc.timestamp())}:R>)",
+        inline=True
+    )
+    embed.add_field(
+        name="🛠️ Strumento",
+        value="`⛏️| Piccone`",
+        inline=True
+    )
+    embed.add_field(
+        name="📸 Prova Foto",
+        value=f"[Visualizza Immagine]({foto.url})",
+        inline=False
+    )
+    embed.set_footer(
+        text=f"Utente: {interaction.user.display_name}",
+        icon_url=interaction.user.display_avatar.url
+    )
+
+    await interaction.response.send_message(embed=embed)
+
+
+@bot.tree.command(
+    name="fine_minatore", description="Termina il turno e raccogli i materiali"
+)
+async def fine_minatore(interaction: discord.Interaction):
+    user_id = str(interaction.user.id)
+
+    # 1. Recupera la sessione attiva
+    miner_check = (
+        supabase.table("minatori_attivi")
+        .select("discord_id, created_at")
+        .eq("discord_id", user_id)
+        .execute()
+    )
+
+    if not miner_check.data:
+        return await interaction.response.send_message(
+            "❌ Non hai avviato alcuna sessione di scavo! Usa prima `/avvia_minatore`.",
+            ephemeral=True,
+        )
+
+    session = miner_check.data[0]
+    start_time = datetime.fromisoformat(session["created_at"])
+    now_time = datetime.now(timezone.utc)
+
+    # Calcolo minuti trascorsi
+    elapsed_seconds = int((now_time - start_time).total_seconds())
+    elapsed_minutes = max(1, elapsed_seconds // 60)
+
+    # Rimuove la sessione dal database
+    supabase.table("minatori_attivi").delete().eq(
+        "discord_id", user_id
+    ).execute()
+
+    # 2. Numero di tentativi di estrazione basati sul tempo (3 base + 1 ogni 3 min)
+    total_drops = 3 + (elapsed_minutes // 3)
+
+    probabilities = [m["prob"] for m in MINERALS_POOL]
+
+    mined_items = {}
+    for _ in range(total_drops):
+        # Selezione pesata in base alle probabilità di rarità
+        selected_item = random.choices(MINERALS_POOL, weights=probabilities, k=1)[0]
+        item_name = selected_item["name"]
+        
+        # Genera la quantità in base alla rarità del materiale estratto
+        qty = random.randint(selected_item["min_qty"], selected_item["max_qty"])
+        
+        mined_items[item_name] = mined_items.get(item_name, 0) + qty
+
+    # 3. Controllo limiti di peso dell'inventario utente
+    user_res = (
+        supabase.table("users")
+        .select("max_weight")
+        .eq("discord_id", user_id)
+        .execute()
+    )
+
+    if not user_res.data:
+        return await interaction.response.send_message(
+            "❌ Utente non registrato nel sistema database.", ephemeral=True
+        )
+
+    max_weight = user_res.data[0]["max_weight"]
+
+    # Calcolo peso attuale trasportato
+    current_inv = (
+        supabase.table("inventory")
+        .select("weight, quantity")
+        .eq("discord_id", user_id)
+        .execute()
+    )
+    current_weight = sum(
+        item["weight"] * item["quantity"] for item in current_inv.data
+    )
+
+    # Calcolo peso dei nuovi materiali
+    added_weight = 0.0
+    for name, qty in mined_items.items():
+        item_info = next(m for m in MINERALS_POOL if m["name"] == name)
+        added_weight += item_info["weight"] * qty
+
+    total_new_weight = current_weight + added_weight
+
+    # Se supera il peso massimo, i materiali vengono persi
+    if total_new_weight > max_weight:
+        embed_error = discord.Embed(
+            title="⚠️ INVENTARIO TROPPO PIENO",
+            description=(
+                f"Hai minato per **{elapsed_minutes} minuti**, ma il tuo inventario non ha abbastanza spazio per trasportare tutto il carico!\n"
+                f"I materiali estratti sono stati abbandonati."
+            ),
+            color=discord.Color.red()
+        )
+        embed_error.add_field(
+            name="⚖️ Capacità Inventario",
+            value=make_progress_bar(total_new_weight, max_weight),
+            inline=False
+        )
+        return await interaction.response.send_message(embed=embed_error, ephemeral=True)
+
+    # 4. Aggiunta automatica nell'inventario Supabase
+    summary_list = []
+    total_quantity_sum = 0
+    for item_name, qty in mined_items.items():
+        item_info = next(m for m in MINERALS_POOL if m["name"] == item_name)
+        total_quantity_sum += qty
+
+        existing_item = (
+            supabase.table("inventory")
+            .select("id, quantity")
+            .eq("discord_id", user_id)
+            .eq("item_name", item_name)
+            .execute()
+        )
+
+        if existing_item.data:
+            item_id = existing_item.data[0]["id"]
+            new_qty = existing_item.data[0]["quantity"] + qty
+            supabase.table("inventory").update({"quantity": new_qty}).eq(
+                "id", item_id
+            ).execute()
+        else:
+            supabase.table("inventory").insert(
+                {
+                    "discord_id": user_id,
+                    "item_name": item_name,
+                    "category": "Materiale",
+                    "weight": item_info["weight"],
+                    "quantity": qty,
+                }
+            ).execute()
+
+        unit_w = item_info["weight"] * qty
+        summary_list.append(
+            f"> **{item_name}** × `{qty}` *(+{unit_w:.1f} kg)* — `{item_info['rarity']}`"
+        )
+
+    hours, mins = divmod(elapsed_minutes, 60)
+    time_str = f"{hours}h {mins}m" if hours > 0 else f"{mins} min"
+
+    embed = discord.Embed(
+        title="⛏️ RICCO BOTTINO ESTRATTO",
+        description=f"Sessione completata con successo da {interaction.user.mention}.",
+        color=discord.Color.gold(),
+        timestamp=now_time
+    )
+
+    embed.add_field(
+        name="⏱️ Tempo Impiegato",
+        value=f"`{time_str}`",
+        inline=True
+    )
+    embed.add_field(
+        name="📦 Totale Unità Raccolte",
+        value=f"`{total_quantity_sum} pezzi`",
+        inline=True
+    )
+    embed.add_field(
+        name="🧱 Materiali Depositati nell'Inventario",
+        value="\n".join(summary_list),
+        inline=False
+    )
+    embed.add_field(
+        name="🎒 Spazio Inventario Occupato",
+        value=make_progress_bar(total_new_weight, max_weight),
+        inline=False
+    )
+
+    embed.set_footer(
+        text=f"ID Utente: {user_id}",
+        icon_url=interaction.user.display_avatar.url
+    )
+
+    await interaction.response.send_message(embed=embed)
 
 # ------------------------------------------------------------------
 # AUTOCOMPLETE HELPERS
