@@ -293,9 +293,6 @@ from discord.ext import commands
 
 ROLE_MINATORE_ID = 1271635278406225951  # Sostituisci con l'ID del ruolo Minatore (int)
 
-intents = discord.Intents.default()
-bot = commands.Bot(command_prefix="!", intents=intents)
-
 # Definizione dei materiali con rarità visiva, probabilità decrescenti e range di drop
 MINERALS_POOL = [
     # Materiali Molto Comuni
