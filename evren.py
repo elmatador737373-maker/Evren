@@ -215,7 +215,7 @@ from discord.ext import commands
 # Inserisci qui l'ID del ruolo autorizzato ad eseguire il wipe
 ALLOWED_ROLE_ID = 1253460150141059198 
 
-@tree.command(name="wipe", description="Effettua il wipe completo di un utente")
+@bot.tree.command(name="wipe", description="Effettua il wipe completo di un utente")
 @app_commands.describe(utente="L'utente da sottoporre a wipe")
 async def wipe_user(interaction: discord.Interaction, utente: discord.User):
     # Controllo dei permessi per ruolo specifico
@@ -3189,7 +3189,7 @@ async def on_raw_reaction_add(payload):
 
   # 4. Controllo Permessi Staff
   is_staff = any(
-      r.id == ID_RUOLO_STAFF for r in member.roles
+      r.id == RUOLO_STAFF_ID for r in member.roles
   ) or member.guild_permissions.administrator
 
   if is_staff:
