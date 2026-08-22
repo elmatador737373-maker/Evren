@@ -5109,7 +5109,7 @@ SERVER_CONFIGS = {
 
 async def send_standardized_log(
     bot: discord.Client,
-    guild_id: int,
+    guild_id: int,  # Mantenuto per compatibilità con i parametri delle chiamate
     log_type: str,
     name: str,
     surname: str,
@@ -5121,46 +5121,52 @@ async def send_standardized_log(
     notes: str,
     photo_url: str = None,
 ):
-    if guild_id not in SERVER_CONFIGS:
-        return None
-
-    config = SERVER_CONFIGS[guild_id]
-    channel_id = config.get(log_type)
-    role_tag = config.get("role_tag", "")
-
-    if not channel_id:
-        return None
-
     now_str = datetime.datetime.now().strftime("%d/%m/%Y %H:%M")
+    sent_messages = []
 
-    log_text = (
-        f"# 𝐑𝐄𝐆𝐈𝐒𝐓𝐑𝐎\n"
-        f"> • ɴᴏᴍᴇ: {name}\n\n"
-        f"> • ᴄᴏɢɴᴏᴍᴇ: {surname}\n\n"
-        f"> • ᴅᴀᴛᴀ ᴅɪ ɴᴀsᴄɪᴛᴀ: {birth_date}\n\n"
-        f"> • ᴀʀᴛɪᴄᴏʟᴏ/ɪ ᴄᴏɴᴛᴇsᴛᴀᴛᴏ/ɪ: {articles}\n\n"
-        f"> • ᴘᴇɴᴀ ᴅᴇᴛᴇɴᴛɪᴠᴀ: {penalty_det}\n\n"
-        f"> • sᴀɴᴢɪᴏɴᴇ ᴘᴇᴄᴜɴɪᴀʀɪᴀ: {penalty_pec}\n\n"
-        f"> • ᴅᴀᴛᴀ / ᴏʀᴀ: {now_str}\n\n"
-        f"> • ᴏᴘᴇʀᴀᴛᴏʀᴇ/ɪ: {operators}\n\n"
-        f"> • ɴᴏᴛᴇ [ sᴇ ᴘʀᴇsᴇɴᴛɪ ]: {notes if notes else 'Nessuna'}\n\n"
-        f"> • ᴀʟʟᴇɢᴀ ꜰᴏᴛᴏ\n\n"
-        f"{role_tag}"
-    )
+    # Cicla tutti i server presenti in SERVER_CONFIGS ed invia ad entrambi
+    for s_id, config in SERVER_CONFIGS.items():
+        channel_id = config.get(log_type)
+        role_tag = config.get("role_tag", "")
 
-    embed = discord.Embed(
-        description=log_text, color=discord.Color.from_rgb(30, 40, 60)
-    )
-    if photo_url:
-        embed.set_image(url=photo_url)
+        if not channel_id:
+            continue
 
-    try:
-        channel = bot.get_channel(channel_id)
-        if channel:
-            return await channel.send(embed=embed)
-    except Exception as e:
-        print(f"Errore invio log embed [{log_type}] al canale {channel_id}: {e}")
-    return None
+        log_text = (
+            f"# 𝐑𝐄𝐆𝐈𝐒𝐓𝐑𝐎\n"
+            f"> • ɴᴏᴍᴇ: {name}\n\n"
+            f"> • ᴄᴏɢɴᴏᴍᴇ: {surname}\n\n"
+            f"> • ᴅᴀᴛᴀ ᴅɪ ɴᴀsᴄɪᴛᴀ: {birth_date}\n\n"
+            f"> • ᴀʀᴛɪᴄᴏʟᴏ/ɪ ᴄᴏɴᴛᴇsᴛᴀᴛᴏ/ɪ: {articles}\n\n"
+            f"> • ᴘᴇɴᴀ ᴅᴇᴛᴇɴᴛɪᴠᴀ: {penalty_det}\n\n"
+            f"> • sᴀɴᴢɪᴏɴᴇ ᴘᴇᴄᴜɴɪᴀʀɪᴀ: {penalty_pec}\n\n"
+            f"> • ᴅᴀᴛᴀ / ᴏʀᴀ: {now_str}\n\n"
+            f"> • ᴏᴘᴇʀᴀᴛᴏʀᴇ/ɪ: {operators}\n\n"
+            f"> • ɴᴏᴛᴇ [ sᴇ ᴘʀᴇsᴇɴᴛɪ ]: {notes if notes else 'Nessuna'}\n\n"
+            f"> • ᴀʟʟᴇɢᴀ ꜰᴏᴛᴏ\n\n"
+            f"{role_tag}"
+        )
+
+        embed = discord.Embed(
+            description=log_text, color=discord.Color.from_rgb(30, 40, 60)
+        )
+        if photo_url:
+            embed.set_image(url=photo_url)
+
+        try:
+            channel = bot.get_channel(channel_id)
+            if not channel:
+                # Se il canale non è in cache, prova a recuperarlo via API
+                channel = await bot.fetch_channel(channel_id)
+
+            if channel:
+                msg = await channel.send(embed=embed)
+                sent_messages.append(msg)
+        except Exception as e:
+            print(f"Errore invio log [{log_type}] al server {s_id} (Canale {channel_id}): {e}")
+
+    # Restituisce il primo messaggio inviato per la gestione dell'allegato foto
+    return sent_messages[0] if sent_messages else None
 
 
 # ==========================================
@@ -5168,9 +5174,10 @@ async def send_standardized_log(
 # ==========================================
 
 class UploadPhotoView(ui.View):
-    def __init__(self, log_message: discord.Message, officer_id: int, bot: discord.Client):
+    def __init__(self, log_messages: list, officer_id: int, bot: discord.Client):
         super().__init__(timeout=120)
-        self.log_message = log_message
+        # Assicurati che log_messages sia una lista di messaggi
+        self.log_messages = log_messages if isinstance(log_messages, list) else [log_messages]
         self.officer_id = officer_id
         self.bot = bot
 
@@ -5180,7 +5187,7 @@ class UploadPhotoView(ui.View):
             return await interaction.response.send_message("❌ Solo l'agente procedente può caricare la foto.", ephemeral=True)
 
         await interaction.response.send_message(
-            "📤 **Invia adesso la foto allegandola come file in questa chat!**\n*(Hai 60 secondi di tempo)*",
+            "📌 **Invia l'immagine direttamente qui sotto nella chat!**\n*(Il bot la aggiungerà ai registri di entrambi i server e la cancellerà da qui)*",
             ephemeral=True
         )
 
@@ -5194,24 +5201,24 @@ class UploadPhotoView(ui.View):
             if not attachment.content_type or not attachment.content_type.startswith("image/"):
                 return await interaction.followup.send("❌ Il file inviato non è un'immagine valida.", ephemeral=True)
 
-            # Aggiorna il log sul canale con la foto caricata
-            if self.log_message and self.log_message.embeds:
-                embed = self.log_message.embeds[0]
-                embed.set_image(url=attachment.url)
-                await self.log_message.edit(embed=embed)
+            # Aggiorna gli embed in ENTRAMBI i server
+            for log_msg in self.log_messages:
+                if log_msg and log_msg.embeds:
+                    embed = log_msg.embeds[0]
+                    embed.set_image(url=attachment.url)
+                    await log_msg.edit(embed=embed)
 
             try:
-                await msg.delete()  # Pulisce il messaggio con l'allegato nel canale
+                await msg.delete()
             except Exception:
                 pass
 
-            # Disabilita il bottone dopo il caricamento
             button.disabled = True
-            button.label = "✅ Foto Caricata"
+            button.label = "✅ Foto Caricata in Entrambi i Server"
             button.style = discord.ButtonStyle.success
             await interaction.edit_original_response(view=self)
 
-            await interaction.followup.send("✅ Foto allegata con successo al registro!", ephemeral=True)
+            await interaction.followup.send("✅ Foto allegata con successo ai registri di entrambi i server!", ephemeral=True)
 
         except Exception:
             await interaction.followup.send("⏱️ Tempo scaduto! Non hai inviato alcuna immagine.", ephemeral=True)
