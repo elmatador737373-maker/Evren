@@ -359,7 +359,7 @@ async def avvia_minatore(
         supabase.table("inventory")
         .select("quantity")
         .eq("discord_id", user_id)
-        .eq("item_name", "⛏️| Piccone")
+        .eq("item_name", "⛏️|Piccone")
         .execute()
     )
 
