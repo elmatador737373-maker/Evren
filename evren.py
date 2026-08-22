@@ -1730,6 +1730,9 @@ class ModificaStipendioModal(discord.ui.Modal, title="✏️ Modifica Importo St
 
 
 # --- VIEW PERSISTENTE STAFF ---
+import discord
+import datetime
+
 class ApprovazioneStipendioView(discord.ui.View):
     def __init__(self, dipendente_id: int = None, importo_calcolato: float = None):
         super().__init__(timeout=None)
@@ -1738,6 +1741,9 @@ class ApprovazioneStipendioView(discord.ui.View):
 
     @discord.ui.button(label="Approva", style=discord.ButtonStyle.success, emoji="✅", custom_id="stipendio_approva")
     async def approva(self, interaction: discord.Interaction, button: discord.ui.Button):
+        # 1. Risposta immediata all'interazione per evitare che vada in timeout
+        await interaction.response.send_message(f"Sto elaborando l'approvazione...", ephemeral=True)
+
         embed = interaction.message.embeds[0]
         dipendente_id = self.dipendente_id or int(embed.footer.text.split("ID: ")[1])
         
@@ -1746,6 +1752,7 @@ class ApprovazioneStipendioView(discord.ui.View):
             raw_val = embed.fields[1].value.replace("```fix\n", "").replace("```", "").replace("$", "").replace(",", "")
             importo = float(raw_val)
 
+        # Operazioni database/banca
         supabase.table("transazioni").insert({
             "user_id": str(dipendente_id),
             "importo": importo,
@@ -1753,9 +1760,9 @@ class ApprovazioneStipendioView(discord.ui.View):
             "approvato_da": str(interaction.user.id)
         }).execute()
 
-        # Accredito in banca lato codice
         await accredita_in_banca(dipendente_id, importo)
 
+        # Modifica l'embed e disabilita i pulsanti
         embed.color = discord.Color.brand_green()
         embed.title = "✅ Stipendio Approvato"
         embed.add_field(name="🛡️ Gestito da", value=interaction.user.mention, inline=False)
@@ -1763,8 +1770,12 @@ class ApprovazioneStipendioView(discord.ui.View):
         for child in self.children:
             child.disabled = True
 
+        # Usa edit_original_response per aggiornare il messaggio ephemeral di conferma
+        await interaction.edit_original_response(
+            content=f"🎉 Stipendio di **{importo:,.2f}$** approvato ed accreditato in banca per <@{dipendente_id}>."
+        )
+        # Modifica il messaggio principale con l'embed disabilitato
         await interaction.message.edit(embed=embed, view=self)
-        await interaction.response.send_message(f"🎉 Stipendio di **{importo:,.2f}$** approvato ed accreditato in banca per <@{dipendente_id}>.", ephemeral=True)
 
         # Notifica DM Utente
         dm_embed = discord.Embed(
@@ -1784,6 +1795,8 @@ class ApprovazioneStipendioView(discord.ui.View):
 
     @discord.ui.button(label="Rifiuta", style=discord.ButtonStyle.danger, emoji="✖️", custom_id="stipendio_rifiuta")
     async def rifiuta(self, interaction: discord.Interaction, button: discord.ui.Button):
+        await interaction.response.defer(ephemeral=True)
+
         embed = interaction.message.embeds[0]
         dipendente_id = self.dipendente_id or int(embed.footer.text.split("ID: ")[1])
 
@@ -1802,7 +1815,7 @@ class ApprovazioneStipendioView(discord.ui.View):
             child.disabled = True
 
         await interaction.message.edit(embed=embed, view=self)
-        await interaction.response.send_message(f"❌ Stipendio rifiutato per <@{dipendente_id}>.", ephemeral=True)
+        await interaction.followup.send(f"❌ Stipendio rifiutato per <@{dipendente_id}>.", ephemeral=True)
 
         # Notifica DM Utente
         dm_embed = discord.Embed(
@@ -1812,7 +1825,6 @@ class ApprovazioneStipendioView(discord.ui.View):
             timestamp=datetime.datetime.now()
         )
         await notifica_utente_dm(interaction.client, dipendente_id, dm_embed)
-
 
 # --- INVIO RICHIESTA STIPENDIO ---
 async def invia_richiesta_stipendio(bot: commands.Bot, utente: discord.Member, turno_data: dict, motivo: str):
