@@ -798,6 +798,12 @@ class ConfirmDeleteView(ui.View):
 # 🛠️ COMANDO STAFF UNICO CON BOTTONE
 # ==========================================
 
+# ==========================================
+# 🛠️ COMANDO STAFF UNICO (SCHEDA GLOBALE)
+# ==========================================
+
+# Sostituisci con l'ID del tuo ruolo Staff
+
 @bot.tree.command(name="staff_info", description="[STAFF] Scheda globale: documenti, saldo, inventario, precedenti ed eliminazione")
 @app_commands.checks.has_role(RUOLO_STAFF_ID)
 async def staff_info(interaction: discord.Interaction, target: discord.User):
@@ -818,8 +824,8 @@ async def staff_info(interaction: discord.Interaction, target: discord.User):
     eco_res = supabase.table("economy").select("*").eq("discord_id", target_id).execute()
     eco_data = eco_res.data[0] if eco_res.data else {}
 
-    cash = eco_data.get("cash", 0)
-    bank = eco_data.get("bank", 0)
+    cash = eco_data.get("cash") or 0.0
+    bank = eco_data.get("bank") or 0.0
     total = cash + bank
 
     # 3. LICENZE (PATENTI & PORTO D'ARMI)
@@ -887,17 +893,20 @@ async def staff_info(interaction: discord.Interaction, target: discord.User):
     else:
         embed.set_thumbnail(url=target.display_avatar.url)
 
-    # Istanzia la View con il bottone di eliminazione passandogli la Target View
+    # Istanzia la View con il bottone di eliminazione
     view = StaffDeleteDocView(target_id=target_id, target_name=citizen_name)
 
     await interaction.followup.send(embed=embed, view=view, ephemeral=True)
 
 
-# Gestore errore permessi mancanti
+# Gestore errore per ruolo Staff mancante
 @staff_info.error
 async def staff_info_error(interaction: discord.Interaction, error: app_commands.AppCommandError):
-    if isinstance(error, app_commands.MissingPermissions):
-        await interaction.response.send_message("❌ **Accesso Negato:** Comando riservato agli Amministratori/Staff.", ephemeral=True)
+    if isinstance(error, (app_commands.MissingRole, app_commands.MissingAnyRole)):
+        if interaction.response.is_done():
+            await interaction.followup.send("❌ **Accesso Negato:** Non possiedi il ruolo Staff necessario per usare questo comando.", ephemeral=True)
+        else:
+            await interaction.response.send_message("❌ **Accesso Negato:** Non possiedi il ruolo Staff necessario per usare questo comando.", ephemeral=True)
 
 # 3. Gestione Soldi Staff
 @bot.tree.command(
