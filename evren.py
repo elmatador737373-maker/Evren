@@ -1222,7 +1222,7 @@ async def paga(
 
     await interaction.response.send_message(
         f"Hai inviato **{importo}€** in contanti a {destinatario.mention}.",
-        ephemeral=True,
+        ephemeral=False,
     )
 
 
