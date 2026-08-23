@@ -804,102 +804,132 @@ class ConfirmDeleteView(ui.View):
 
 # Sostituisci con l'ID del tuo ruolo Staff
 
+def get_val(data: dict, key: str, fallback: str = "Nessuna") -> str:
+    """Restituisce il valore dalla mappa oppure il fallback se mancante, None o vuoto."""
+    val = data.get(key)
+    if val is None or str(val).strip() == "":
+        return fallback
+    return str(val)
+
+
 @bot.tree.command(name="staff_info", description="[STAFF] Scheda globale: documenti, saldo, inventario, precedenti ed eliminazione")
 @app_commands.checks.has_role(RUOLO_STAFF_ID)
 async def staff_info(interaction: discord.Interaction, target: discord.User):
+    # Esegui subito il defer per evitare il timeout di 3 secondi di Discord
     await interaction.response.defer(ephemeral=True)
     target_id = str(target.id)
 
-    # 1. DOCUMENTI & ANAGRAFICA
-    doc_res = supabase.table("documents").select("*").eq("discord_id", target_id).execute()
-    doc_data = doc_res.data[0] if doc_res.data else {}
+    try:
+        # 1. DOCUMENTI & ANAGRAFICA
+        doc_res = supabase.table("documents").select("*").eq("discord_id", target_id).execute()
+        
+        # Se l'utente non ha proprio un record di documenti registrato nel database
+        if not doc_res.data:
+            embed_empty = discord.Embed(
+                title="⚠️ Scheda Non Trovata",
+                description=f"L'utente {target.mention} (`{target_id}`) **non possiede alcuna scheda o documento** registrato nel sistema.",
+                color=discord.Color.red()
+            )
+            embed_empty.set_thumbnail(url=target.display_avatar.url)
+            await interaction.followup.send(embed=embed_empty, ephemeral=True)
+            return
 
-    citizen_name = f"{doc_data.get('name', 'N/D')} {doc_data.get('surname', 'N/D')}"
-    cf = doc_data.get("cf", "N/D")
-    doc_num = doc_data.get("doc_number", "N/D")
-    birth_date = doc_data.get("birth_date", "N/D")
-    birth_place = doc_data.get("birth_place", "N/D")
+        doc_data = doc_res.data[0]
 
-    # 2. SALDO & ECONOMIA
-    eco_res = supabase.table("economy").select("*").eq("discord_id", target_id).execute()
-    eco_data = eco_res.data[0] if eco_res.data else {}
+        name = get_val(doc_data, "name")
+        surname = get_val(doc_data, "surname")
+        citizen_name = f"{name} {surname}" if (name != "Nessuna" or surname != "Nessuna") else "Nessuna"
+        
+        cf = get_val(doc_data, "cf")
+        doc_num = get_val(doc_data, "doc_number")
+        birth_date = get_val(doc_data, "birth_date")
+        birth_place = get_val(doc_data, "birth_place")
 
-    cash = eco_data.get("cash") or 0.0
-    bank = eco_data.get("bank") or 0.0
-    total = cash + bank
+        # 2. SALDO & ECONOMIA
+        eco_res = supabase.table("economy").select("*").eq("discord_id", target_id).execute()
+        eco_data = eco_res.data[0] if eco_res.data else {}
 
-    # 3. LICENZE (PATENTI & PORTO D'ARMI)
-    driver_res = supabase.table("driver_licenses").select("license_type, status").eq("discord_id", target_id).execute()
-    gun_res = supabase.table("gun_licenses").select("license_type, status").eq("discord_id", target_id).execute()
+        cash = float(eco_data.get("cash") or 0.0)
+        bank = float(eco_data.get("bank") or 0.0)
+        total = cash + bank
 
-    driver_str = "\n".join([f"• {l['license_type']} (`{l['status']}`)" for l in driver_res.data]) if driver_res.data else "• *Nessuna patente*"
-    gun_str = "\n".join([f"• {l['license_type']} (`{l['status']}`)" for l in gun_res.data]) if gun_res.data else "• *Nessun porto d'armi*"
+        # 3. LICENZE (PATENTI & PORTO D'ARMI)
+        driver_res = supabase.table("driver_licenses").select("license_type, status").eq("discord_id", target_id).execute()
+        gun_res = supabase.table("gun_licenses").select("license_type, status").eq("discord_id", target_id).execute()
 
-    # 4. INVENTARIO & PROPRIETÀ
-    weapons_res = supabase.table("registered_weapons").select("model, serial_number").eq("discord_id", target_id).execute()
-    vehicles_res = supabase.table("registered_vehicles").select("model, plate").eq("discord_id", target_id).execute()
+        driver_str = "\n".join([f"• {l.get('license_type', 'Nessuna')} (`{l.get('status', 'Nessuna')}`)" for l in driver_res.data]) if driver_res.data else "• *Nessuna patente*"
+        gun_str = "\n".join([f"• {l.get('license_type', 'Nessuna')} (`{l.get('status', 'Nessuna')}`)" for l in gun_res.data]) if gun_res.data else "• *Nessun porto d'armi*"
 
-    weapons_str = "\n".join([f"• **{w['model']}** (Matricola: `{w['serial_number']}`)" for w in weapons_res.data]) if weapons_res.data else "*Nessun'arma registrata*"
-    vehicles_str = "\n".join([f"• **{v['model']}** (Targa: `{v['plate']}`)" for v in vehicles_res.data]) if vehicles_res.data else "*Nessun veicolo registrato*"
+        # 4. INVENTARIO & PROPRIETÀ
+        weapons_res = supabase.table("registered_weapons").select("model, serial_number").eq("discord_id", target_id).execute()
+        vehicles_res = supabase.table("registered_vehicles").select("model, plate").eq("discord_id", target_id).execute()
 
-    # 5. PRECEDENTI PENALI
-    fines_res = supabase.table("fines").select("articles, amount, created_at").eq("discord_id", target_id).execute()
-    arrests_res = supabase.table("arrests").select("articles, months, bail, created_at").eq("discord_id", target_id).execute()
+        weapons_str = "\n".join([f"• **{w.get('model', 'Nessuna')}** (Matricola: `{w.get('serial_number', 'Nessuna')}`)" for w in weapons_res.data]) if weapons_res.data else "*Nessun'arma registrata*"
+        vehicles_str = "\n".join([f"• **{v.get('model', 'Nessuna')}** (Targa: `{v.get('plate', 'Nessuna')}`)" for v in vehicles_res.data]) if vehicles_res.data else "*Nessun veicolo registrato*"
 
-    if fines_res.data:
-        fines_str = "\n".join([f"• `{f.get('created_at', '')[:10]}` - **{f.get('articles')}** (${f.get('amount', 0)})" for f in fines_res.data[:5]])
-    else:
-        fines_str = "*Nessuna multa a carico*"
+        # 5. PRECEDENTI PENALI
+        fines_res = supabase.table("fines").select("articles, amount, created_at").eq("discord_id", target_id).execute()
+        arrests_res = supabase.table("arrests").select("articles, months, bail, created_at").eq("discord_id", target_id).execute()
 
-    if arrests_res.data:
-        arrests_str = "\n".join([f"• `{a.get('created_at', '')[:10]}` - **{a.get('articles')}** ({a.get('months')} mesi)" for a in arrests_res.data[:5]])
-    else:
-        arrests_str = "*Nessun arresto a carico*"
+        if fines_res.data:
+            fines_str = "\n".join([f"• `{str(f.get('created_at', ''))[:10] or 'Nessuna'}` - **{f.get('articles', 'Nessuna')}** (${f.get('amount', 0)})" for f in fines_res.data[:5]])
+        else:
+            fines_str = "*Nessuna multa a carico*"
 
-    # 6. CREAZIONE EMBED
-    embed = discord.Embed(
-        title=f"🛠️ Scheda Globale Staff - {citizen_name}",
-        description=f"**Utente Discord:** {target.mention} (`{target_id}`)",
-        color=discord.Color.dark_purple()
-    )
+        if arrests_res.data:
+            arrests_str = "\n".join([f"• `{str(a.get('created_at', ''))[:10] or 'Nessuna'}` - **{a.get('articles', 'Nessuna')}** ({a.get('months', 0)} mesi)" for a in arrests_res.data[:5]])
+        else:
+            arrests_str = "*Nessun arresto a carico*"
 
-    embed.add_field(
-        name="🪪 Documenti & Anagrafica",
-        value=f"• **Nome & Cognome:** `{citizen_name}`\n"
-              f"• **Nascita:** `{birth_date}` a `{birth_place}`\n"
-              f"• **CF:** `{cf}` | **Doc N°:** `{doc_num}`",
-        inline=False
-    )
+        # 6. CREAZIONE EMBED
+        embed = discord.Embed(
+            title=f"🛠️ Scheda Globale Staff - {citizen_name}",
+            description=f"**Utente Discord:** {target.mention} (`{target_id}`)",
+            color=discord.Color.dark_purple()
+        )
 
-    embed.add_field(
-        name="💳 Saldo & Economia",
-        value=f"• **Contanti:** `${cash:,.2f}`\n"
-              f"• **Banca:** `${bank:,.2f}`\n"
-              f"• **Totale:** `${total:,.2f}`",
-        inline=False
-    )
+        embed.add_field(
+            name="🪪 Documenti & Anagrafica",
+            value=f"• **Nome & Cognome:** `{citizen_name}`\n"
+                  f"• **Nascita:** `{birth_date}` a `{birth_place}`\n"
+                  f"• **CF:** `{cf}` | **Doc N°:** `{doc_num}`",
+            inline=False
+        )
 
-    embed.add_field(name="📜 Licenze", value=f"**Patenti:**\n{driver_str}\n\n**Porti d'Arma:**\n{gun_str}", inline=True)
-    embed.add_field(name="🎒 Inventario Registrato", value=f"**Armi Possedute:**\n{weapons_str}\n\n**Veicoli:**\n{vehicles_str}", inline=True)
+        embed.add_field(
+            name="💳 Saldo & Economia",
+            value=f"• **Contanti:** `${cash:,.2f}`\n"
+                  f"• **Banca:** `${bank:,.2f}`\n"
+                  f"• **Totale:** `${total:,.2f}`",
+            inline=False
+        )
 
-    embed.add_field(
-        name="🚨 Precedenti Penali",
-        value=f"**Arresti effettuati:**\n{arrests_str}\n\n**Multe ricevute:**\n{fines_str}",
-        inline=False
-    )
+        embed.add_field(name="📜 Licenze", value=f"**Patenti:**\n{driver_str}\n\n**Porti d'Arma:**\n{gun_str}", inline=True)
+        embed.add_field(name="🎒 Inventario Registrato", value=f"**Armi Possedute:**\n{weapons_str}\n\n**Veicoli:**\n{vehicles_str}", inline=True)
 
-    if doc_data.get("photo_url"):
-        embed.set_thumbnail(url=doc_data.get("photo_url"))
-    else:
-        embed.set_thumbnail(url=target.display_avatar.url)
+        embed.add_field(
+            name="🚨 Precedenti Penali",
+            value=f"**Arresti effettuati:**\n{arrests_str}\n\n**Multe ricevute:**\n{fines_str}",
+            inline=False
+        )
 
-    # Istanzia la View con il bottone di eliminazione
-    view = StaffDeleteDocView(target_id=target_id, target_name=citizen_name)
+        photo_url = doc_data.get("photo_url")
+        if photo_url and str(photo_url).startswith("http"):
+            embed.set_thumbnail(url=photo_url)
+        else:
+            embed.set_thumbnail(url=target.display_avatar.url)
 
-    await interaction.followup.send(embed=embed, view=view, ephemeral=True)
+        # Istanzia la View con il bottone di eliminazione
+        view = StaffDeleteDocView(target_id=target_id, target_name=citizen_name)
+
+        await interaction.followup.send(embed=embed, view=view, ephemeral=True)
+
+    except Exception as e:
+        print(f"[ERRORE staff_info]: {e}")
+        await interaction.followup.send(f"⚠️ Si è verificato un errore durante la lettura dei dati: `{e}`", ephemeral=True)
 
 
-# Gestore errore per ruolo Staff mancante
+# Gestore errore del comando per ruolo mancante
 @staff_info.error
 async def staff_info_error(interaction: discord.Interaction, error: app_commands.AppCommandError):
     if isinstance(error, (app_commands.MissingRole, app_commands.MissingAnyRole)):
