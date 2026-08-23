@@ -96,7 +96,10 @@ app.post('/v1/image', authenticate, async (req, res) => {
     `;
 
     // Carica il contenuto e attendi il caricamento di risorse e font esterni
-    await page.setContent(fullContent, { waitUntil: 'networkidle0' });
+   await page.setContent(fullContent, { 
+  waitUntil: 'domcontentloaded',
+  timeout: 60000 // Aumenta il timeout a 60 secondi
+});
 
     // Cattura lo screenshot in memoria (buffer PNG)
     const imageBuffer = await page.screenshot({ type: 'png' });
