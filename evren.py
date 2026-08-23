@@ -1783,98 +1783,47 @@ class ModificaStipendioModal(discord.ui.Modal, title="✏️ Modifica Importo St
 import discord
 import datetime
 
+import datetime
+import discord
+
+
 class ApprovazioneStipendioView(discord.ui.View):
-    def __init__(self, dipendente_id: int = None, importo_calcolato: float = None):
+
+    def __init__(
+        self,
+        dipendente_id: int = None,
+        importo_calcolato: float = None,
+    ):
         super().__init__(timeout=None)
         self.dipendente_id = dipendente_id
         self.importo_calcolato = importo_calcolato
 
-    @discord.ui.button(label="Approva", style=discord.ButtonStyle.success, emoji="✅", custom_id="stipendio_approva")
-    async def approva(self, interaction: discord.Interaction, button: discord.ui.Button):
-        # 1. Risposta immediata all'interazione per evitare che vada in timeout
-        await interaction.response.send_message(f"Sto elaborando l'approvazione...", ephemeral=True)
+    @discord.ui.button(
+        label="Approva",
+        style=discord.ButtonStyle.success,
+        emoji="✅",
+        custom_id="stipendio_approva",
+    )
+    async def approva(
+        self, interaction: discord.Interaction, button: discord.ui.Button
+    ):
+        await interaction.response.send_message(
+            "Sto elaborando l'approvazione...", ephemeral=True
+        )
 
         embed = interaction.message.embeds[0]
-        dipendente_id = self.dipendente_id or int(embed.footer.text.split("ID: ")[1])
-        
+
+        # Fix parsing ID con split()[0]
+        dipendente_id = self.dipendente_id or int(
+            embed.footer.text.split("ID: ")[1].split()[0]
+        )
+
         importo = self.importo_calcolato
         if importo is None:
-            raw_val = embed.fields[1].value.replace("```fix\n", "").replace("```", "").replace("$", "").replace(",", "")
-            importo = float(raw_val)
-
-        # Operazioni database/banca
-        supabase.table("transazioni").insert({
-            "user_id": str(dipendente_id),
-            "importo": importo,
-            "stato": "APPROVATO",
-            "approvato_da": str(interaction.user.id)
-        }).execute()
-
-        await accredita_in_banca(dipendente_id, importo)
-
-        # Modifica l'embed e disabilita i pulsanti
-        embed.color = discord.Color.brand_green()
-        embed.title = "✅ Stipendio Approvato"
-        embed.add_field(name="🛡️ Gestito da", value=interaction.user.mention, inline=False)
-
-        for child in self.children:
-            child.disabled = True
-
-        # Usa edit_original_response per aggiornare il messaggio ephemeral di conferma
-        await interaction.edit_original_response(
-            content=f"🎉 Stipendio di **{importo:,.2f}$** approvato ed accreditato in banca per <@{dipendente_id}>."
-        )
-        # Modifica il messaggio principale con l'embed disabilitato
-        await interaction.message.edit(embed=embed, view=self)
-
-        # Notifica DM Utente
-        dm_embed = discord.Embed(
-            title="🎉 Stipendio Approvato!",
-            description=f"Il tuo stipendio è stato approvato da **{interaction.user.display_name}**.",
-            color=discord.Color.brand_green(),
-            timestamp=datetime.datetime.now()
-        )
-        dm_embed.add_field(name="💰 Importo Accredito in Banca", value=f"```fix\n{importo:,.2f}$```", inline=False)
-        await notifica_utente_dm(interaction.client, dipendente_id, dm_embed)
-
-    @discord.ui.button(label="Modifica", style=discord.ButtonStyle.primary, emoji="✏️", custom_id="stipendio_modifica")
-    async def modifica(self, interaction: discord.Interaction, button: discord.ui.Button):
-        embed = interaction.message.embeds[0]
-        dipendente_id = self.dipendente_id or int(embed.footer.text.split("ID: ")[1])
-        await interaction.response.send_modal(ModificaStipendioModal(dipendente_id, embed))
-
-    @discord.ui.button(label="Rifiuta", style=discord.ButtonStyle.danger, emoji="✖️", custom_id="stipendio_rifiuta")
-    async def rifiuta(self, interaction: discord.Interaction, button: discord.ui.Button):
-        await interaction.response.defer(ephemeral=True)
-
-        embed = interaction.message.embeds[0]
-        dipendente_id = self.dipendente_id or int(embed.footer.text.split("ID: ")[1])
-
-        supabase.table("transazioni").insert({
-            "user_id": str(dipendente_id),
-            "importo": 0,
-            "stato": "RIFIUTATO",
-            "approvato_da": str(interaction.user.id)
-        }).execute()
-
-        embed.color = discord.Color.brand_red()
-        embed.title = "❌ Stipendio Rifiutato"
-        embed.add_field(name="🛡️ Gestito da", value=interaction.user.mention, inline=False)
-
-        for child in self.children:
-            child.disabled = True
-
-        await interaction.message.edit(embed=embed, view=self)
-        await interaction.followup.send(f"❌ Stipendio rifiutato per <@{dipendente_id}>.", ephemeral=True)
-
-        # Notifica DM Utente
-        dm_embed = discord.Embed(
-            title="❌ Richiesta Stipendio Rifiutata",
-            description=f"La tua richiesta di stipendio per il turno è stata rifiutata da **{interaction.user.display_name}**.",
-            color=discord.Color.brand_red(),
-            timestamp=datetime.datetime.now()
-        )
-        await notifica_utente_dm(interaction.client, dipendente_id, dm_embed)
+            raw_val = (
+                embed.fields[1]
+                .value.replace("```fix\n", "")
+                .replace("
 
 # --- INVIO RICHIESTA STIPENDIO ---
 async def invia_richiesta_stipendio(bot: commands.Bot, utente: discord.Member, turno_data: dict, motivo: str):
