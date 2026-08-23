@@ -5932,6 +5932,64 @@ class PoliceCadDetailView(ui.View):
 
         await interaction.response.edit_message(embed=embed, view=self)
 
+    @ui.button(
+        label="💳 Transazioni", style=discord.ButtonStyle.primary, row=0
+    )
+    async def btn_transazioni(
+        self, interaction: discord.Interaction, button: ui.Button
+    ):
+        # Fetch delle transazioni dell'utente dal database
+        res = (
+            supabase.table("transactions_log")
+            .select("*")
+            .eq("discord_id", self.target_id_str)
+            .order("created_at", desc=True)
+            .execute()
+        )
+        self.tx_data = res.data if res.data else []
+        self.tx_page = 0  # Reset alla prima pagina
+
+        if not self.tx_data:
+            embed = discord.Embed(
+                title=f"💳 Transazioni: {self.doc.get('name')} {self.doc.get('surname')}",
+                description="*Nessuna transazione trovata nei registri.*",
+                color=discord.Color.dark_blue(),
+            )
+        else:
+            total_items = len(self.tx_data)
+            total_pages = (total_items - 1) // self.tx_per_page + 1
+
+            start_idx = self.tx_page * self.tx_per_page
+            end_idx = start_idx + self.tx_per_page
+            current_items = self.tx_data[start_idx:end_idx]
+
+            lines = []
+            for tx in current_items:
+                amount = tx.get("amount", 0.0)
+                tx_type = tx.get("type", "N/D")
+                description = tx.get("description", "Nessuna descrizione")
+                data_raw = tx.get("created_at", "")[:10]
+
+                lines.append(
+                    f"• **Importo:** `${amount:,.2f}` | **Tipo:** `{tx_type}`\n"
+                    f"  └ **Causale:** {description} (`{data_raw}`)"
+                )
+
+            embed = discord.Embed(
+                title=f"💳 Registro Transazioni: {self.doc.get('name')} {self.doc.get('surname')}",
+                description="\n\n".join(lines),
+                color=discord.Color.dark_blue(),
+            )
+            embed.set_footer(
+                text=f"Pagina {self.tx_page + 1} di {total_pages} | Totale transazioni: {total_items}"
+            )
+
+        photo_url = self.doc.get("photo_url")
+        if photo_url:
+            embed.set_thumbnail(url=photo_url)
+
+        await interaction.response.edit_message(embed=embed, view=self)
+
     @ui.button(label="🔫 Armi Registrate", style=discord.ButtonStyle.secondary, row=0)
     async def btn_weapons(self, interaction: discord.Interaction, button: ui.Button):
         res = supabase.table("registered_weapons").select("model, serial_number").eq("discord_id", self.target_id_str).execute()
