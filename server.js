@@ -2,7 +2,8 @@ const express = require('express');
 const puppeteer = require('puppeteer');
 
 const app = express();
-app.use(express.json({ limit: '10mb' }));
+app.use(express.json({ limit: '50mb' }));
+app.use(express.urlencoded({ limit: '50mb', extended: true }));
 
 // Credenziali configurabili tramite variabili d'ambiente di Render (con fallback di sicurezza)
 const USER_ID = process.env.API_USER_ID || "mio_user_id";
