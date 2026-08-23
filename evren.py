@@ -804,8 +804,11 @@ class ConfirmDeleteView(ui.View):
 
 # Sostituisci con l'ID del tuo ruolo Staff
 
+
 def get_val(data: dict, key: str, fallback: str = "Nessuna") -> str:
     """Restituisce il valore dalla mappa oppure il fallback se mancante, None o vuoto."""
+    if not data:
+        return fallback
     val = data.get(key)
     if val is None or str(val).strip() == "":
         return fallback
@@ -815,7 +818,7 @@ def get_val(data: dict, key: str, fallback: str = "Nessuna") -> str:
 @bot.tree.command(name="staff_info", description="[STAFF] Scheda globale: documenti, saldo, inventario, precedenti ed eliminazione")
 @app_commands.checks.has_role(RUOLO_STAFF_ID)
 async def staff_info(interaction: discord.Interaction, target: discord.User):
-    # Esegui subito il defer per evitare il timeout di 3 secondi di Discord
+    # Risponde subito a Discord per evitare il timeout dei 3 secondi
     await interaction.response.defer(ephemeral=True)
     target_id = str(target.id)
 
@@ -823,7 +826,7 @@ async def staff_info(interaction: discord.Interaction, target: discord.User):
         # 1. DOCUMENTI & ANAGRAFICA
         doc_res = supabase.table("documents").select("*").eq("discord_id", target_id).execute()
         
-        # Se l'utente non ha proprio un record di documenti registrato nel database
+        # Se l'utente non ha alcun documento registrato
         if not doc_res.data:
             embed_empty = discord.Embed(
                 title="⚠️ Scheda Non Trovata",
@@ -845,39 +848,39 @@ async def staff_info(interaction: discord.Interaction, target: discord.User):
         birth_date = get_val(doc_data, "birth_date")
         birth_place = get_val(doc_data, "birth_place")
 
-        # 2. SALDO & ECONOMIA
-        eco_res = supabase.table("economy").select("*").eq("discord_id", target_id).execute()
+        # 2. SALDO & ECONOMIA (Tabella: users | Campi: wallet, bank)
+        eco_res = supabase.table("users").select("wallet, bank").eq("discord_id", target_id).execute()
         eco_data = eco_res.data[0] if eco_res.data else {}
 
-        cash = float(eco_data.get("cash") or 0.0)
+        cash = float(eco_data.get("wallet") or 0.0)
         bank = float(eco_data.get("bank") or 0.0)
         total = cash + bank
 
-        # 3. LICENZE (PATENTI & PORTO D'ARMI)
+        # 3. LICENZE (Tabelle: driver_licenses, gun_licenses)
         driver_res = supabase.table("driver_licenses").select("license_type, status").eq("discord_id", target_id).execute()
         gun_res = supabase.table("gun_licenses").select("license_type, status").eq("discord_id", target_id).execute()
 
         driver_str = "\n".join([f"• {l.get('license_type', 'Nessuna')} (`{l.get('status', 'Nessuna')}`)" for l in driver_res.data]) if driver_res.data else "• *Nessuna patente*"
         gun_str = "\n".join([f"• {l.get('license_type', 'Nessuna')} (`{l.get('status', 'Nessuna')}`)" for l in gun_res.data]) if gun_res.data else "• *Nessun porto d'armi*"
 
-        # 4. INVENTARIO & PROPRIETÀ
+        # 4. INVENTARIO & PROPRIETÀ (Tabelle: registered_weapons, registered_vehicles)
         weapons_res = supabase.table("registered_weapons").select("model, serial_number").eq("discord_id", target_id).execute()
         vehicles_res = supabase.table("registered_vehicles").select("model, plate").eq("discord_id", target_id).execute()
 
         weapons_str = "\n".join([f"• **{w.get('model', 'Nessuna')}** (Matricola: `{w.get('serial_number', 'Nessuna')}`)" for w in weapons_res.data]) if weapons_res.data else "*Nessun'arma registrata*"
         vehicles_str = "\n".join([f"• **{v.get('model', 'Nessuna')}** (Targa: `{v.get('plate', 'Nessuna')}`)" for v in vehicles_res.data]) if vehicles_res.data else "*Nessun veicolo registrato*"
 
-        # 5. PRECEDENTI PENALI
-        fines_res = supabase.table("fines").select("articles, amount, created_at").eq("discord_id", target_id).execute()
-        arrests_res = supabase.table("arrests").select("articles, months, bail, created_at").eq("discord_id", target_id).execute()
+        # 5. PRECEDENTI PENALI (Tabelle: police_fines, police_arrests | Campo motivo: reason)
+        fines_res = supabase.table("police_fines").select("reason, amount, created_at").eq("discord_id", target_id).execute()
+        arrests_res = supabase.table("police_arrests").select("reason, months, bail, created_at").eq("discord_id", target_id).execute()
 
         if fines_res.data:
-            fines_str = "\n".join([f"• `{str(f.get('created_at', ''))[:10] or 'Nessuna'}` - **{f.get('articles', 'Nessuna')}** (${f.get('amount', 0)})" for f in fines_res.data[:5]])
+            fines_str = "\n".join([f"• `{str(f.get('created_at', ''))[:10] or 'Nessuna'}` - **{f.get('reason', 'Nessuna')}** (${f.get('amount', 0)})" for f in fines_res.data[:5]])
         else:
             fines_str = "*Nessuna multa a carico*"
 
         if arrests_res.data:
-            arrests_str = "\n".join([f"• `{str(a.get('created_at', ''))[:10] or 'Nessuna'}` - **{a.get('articles', 'Nessuna')}** ({a.get('months', 0)} mesi)" for a in arrests_res.data[:5]])
+            arrests_str = "\n".join([f"• `{str(a.get('created_at', ''))[:10] or 'Nessuna'}` - **{a.get('reason', 'Nessuna')}** ({a.get('months', 0)} mesi)" for a in arrests_res.data[:5]])
         else:
             arrests_str = "*Nessun arresto a carico*"
 
@@ -919,17 +922,24 @@ async def staff_info(interaction: discord.Interaction, target: discord.User):
         else:
             embed.set_thumbnail(url=target.display_avatar.url)
 
-        # Istanzia la View con il bottone di eliminazione
-        view = StaffDeleteDocView(target_id=target_id, target_name=citizen_name)
+        # Gestione sicura della View
+        view = None
+        try:
+            view = StaffDeleteDocView(target_id=target_id, target_name=citizen_name)
+        except NameError:
+            pass
 
-        await interaction.followup.send(embed=embed, view=view, ephemeral=True)
+        if view:
+            await interaction.followup.send(embed=embed, view=view, ephemeral=True)
+        else:
+            await interaction.followup.send(embed=embed, ephemeral=True)
 
     except Exception as e:
         print(f"[ERRORE staff_info]: {e}")
         await interaction.followup.send(f"⚠️ Si è verificato un errore durante la lettura dei dati: `{e}`", ephemeral=True)
 
 
-# Gestore errore del comando per ruolo mancante
+# Gestore errore per ruolo Staff mancante
 @staff_info.error
 async def staff_info_error(interaction: discord.Interaction, error: app_commands.AppCommandError):
     if isinstance(error, (app_commands.MissingRole, app_commands.MissingAnyRole)):
