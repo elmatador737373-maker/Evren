@@ -1,23 +1,28 @@
-FROM python:3.11-slim
+FROM node:18-slim
 
-ENV DEBIAN_FRONTEND=noninteractive
-
-WORKDIR /app
-
-# Installa le dipendenze di sistema necessarie (incluso FFmpeg per la voce di Discord)
-RUN apt-get update && apt-get install -y --no-install-recommends \
-    ffmpeg \
-    git \
+# Installa Chromium e i font di sistema necessari
+RUN apt-get update && apt-get install -y \
+    chromium \
+    fonts-ipafont-gothic \
+    fonts-wqy-zenhei \
+    fonts-thai-tlwg \
+    fonts-kacst \
+    fonts-freefont-ttf \
+    libxss1 \
+    --no-install-recommends \
     && rm -rf /var/lib/apt/lists/*
 
-# Copia i requisiti e installa le librerie Python
-COPY requirements.txt .
-RUN pip install --no-cache-dir -r requirements.txt
+# Configura le variabili di ambiente affinché Puppeteer usi Chromium di sistema
+ENV PUPPETEER_SKIP_CHROMIUM_DOWNLOAD=true \
+    PUPPETEER_EXEC_PATH=/usr/bin/chromium
 
-# Installa automaticamente le dipendenze di sistema e il browser Chromium tramite Playwright
-RUN playwright install-deps chromium && playwright install chromium
+WORKDIR /usr/src/app
 
-# Copia il resto del codice
+COPY package*.json ./
+RUN npm install
+
 COPY . .
 
-CMD ["python", "evren.py"]
+EXPOSE 3000
+
+CMD ["node", "server.js"]
