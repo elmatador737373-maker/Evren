@@ -1822,8 +1822,13 @@ class ApprovazioneStipendioView(discord.ui.View):
         if importo is None:
             raw_val = (
                 embed.fields[1]
-                .value.replace("```fix\n", "")
-                .replace("
+                .value.replace("```fix", "")
+                .replace("```", "")
+                .replace("$", "")
+                .replace(",", "")
+                .strip()
+            )
+            importo = float(raw_val)
 
 # --- INVIO RICHIESTA STIPENDIO ---
 async def invia_richiesta_stipendio(bot: commands.Bot, utente: discord.Member, turno_data: dict, motivo: str):
