@@ -3696,88 +3696,166 @@ class AggiungiContattoModal(ui.Modal, title="Nuovo Contatto - Evren City OS"):
 
 
 # ==========================================
-# 💬 WHATSAPP - CHAT PERSISTENTE AL 100%
+# 💬 WHATSAPP - HUB CHAT (Sconosciuti & Rubrica)
 # ==========================================
 
-class WhatsAppMessageModal(ui.Modal, title="WhatsApp - Invia Messaggio"):
-    testo_messaggio = ui.TextInput(
-        label="Messaggio",
-        placeholder="Scrivi qui il messaggio...",
-        style=discord.TextStyle.paragraph,
-        required=True
+
+class ApriChatSconosciutoModal(ui.Modal, title="WhatsApp - Nuova Chat"):
+    numero_destinatario = ui.TextInput(
+        label="Numero di Telefono",
+        placeholder="Es. 3331234567",
+        min_length=3,
+        max_length=20,
+        required=True,
     )
 
-    def __init__(self, user_phone: str, target_phone: str, target_name: str, chat_view):
+    def __init__(self, user_phone: str):
         super().__init__()
         self.user_phone = user_phone
-        self.target_phone = target_phone
-        self.target_name = target_name
-        self.chat_view = chat_view
 
     async def on_submit(self, interaction: discord.Interaction):
-        testo = self.testo_messaggio.value.strip()
-        
-        try:
-            supabase.table("whatsapp_messages").insert({
-                "sender_phone": self.user_phone,
-                "receiver_phone": self.target_phone,
-                "message": testo
-            }).execute()
+        target_phone = self.numero_destinatario.value.strip()
 
-            await self.chat_view.aggiorna_embed_chat(interaction)
-        except Exception as e:
-            await interaction.response.send_message(f"❌ Errore nell'invio del messaggio: {e}", ephemeral=True)
+        # Istanzia direttamente la chat passando solo il numero di telefono
+        view = WhatsAppChatView(
+            user_phone=self.user_phone, target_phone=target_phone
+        )
+        embed = discord.Embed(
+            title=f"💬 WhatsApp — Chat con {target_phone}",
+            description="*Caricamento messaggi in corso...*",
+            color=discord.Color.from_rgb(37, 211, 102),
+        )
+        await interaction.response.send_message(
+            embed=embed, view=view, ephemeral=True
+        )
+        await view.aggiorna_embed_chat(interaction)
 
 
-class WhatsAppChatView(ui.View):
-    def __init__(self, user_phone: str, target_phone: str, target_name: str):
-        super().__init__(timeout=300)
+class SelectChatDropdown(ui.Select):
+
+    def __init__(self, user_phone: str, chat_list: list):
         self.user_phone = user_phone
-        self.target_phone = target_phone
-        self.target_name = target_name
+        options = []
 
-    @ui.button(label="Invia Messaggio", style=discord.ButtonStyle.green, emoji="💬")
-    async def invia_messaggio(self, interaction: discord.Interaction, button: ui.Button):
-        modal = WhatsAppMessageModal(self.user_phone, self.target_phone, self.target_name, self)
-        await interaction.response.send_modal(modal)
+        for phone, last_msg in chat_list[:25]:  # Limite massimo Discord (25)
+            options.append(
+                discord.SelectOption(
+                    label=f"Chat: {phone}",
+                    value=phone,
+                    description=f"Ultimo: {last_msg[:40]}",
+                    emoji="💬",
+                )
+            )
 
-    @ui.button(label="Aggiorna Chat", style=discord.ButtonStyle.blurple, emoji="🔄")
-    async def aggiorna_chat(self, interaction: discord.Interaction, button: ui.Button):
-        await self.aggiorna_embed_chat(interaction)
+        super().__init__(
+            placeholder="Seleziona una chat attiva...",
+            min_values=1,
+            max_values=1,
+            options=options,
+        )
 
-    async def aggiorna_embed_chat(self, interaction: discord.Interaction):
-        user_clean = "".join(filter(str.isdigit, self.user_phone))
-        target_clean = "".join(filter(str.isdigit, self.target_phone))
-
-        res = supabase.table("whatsapp_messages").select("*").order("created_at", desc=False).limit(50).execute()
-        
-        tutti_messaggi = res.data if res.data else []
-        messaggi = []
-
-        for m in tutti_messaggi:
-            s_clean = "".join(filter(str.isdigit, m["sender_phone"]))
-            r_clean = "".join(filter(str.isdigit, m["receiver_phone"]))
-            
-            if (s_clean == user_clean and r_clean == target_clean) or (s_clean == target_clean and r_clean == user_clean):
-                messaggi.append(m)
-
-        messaggi = messaggi[-10:]
-        
-        descrizione = f"*Cronologia messaggi con **{self.target_name}** (`{self.target_phone}`)*\n\n"
-        if not messaggi:
-            descrizione += "_Nessun messaggio in questa chat. Inizia a scrivere!_"
-        else:
-            for m in messaggi:
-                m_sender_clean = "".join(filter(str.isdigit, m["sender_phone"]))
-                mittente = "Tu" if m_sender_clean == user_clean else self.target_name
-                descrizione += f"**{mittente}:** {m['message']}\n"
+    async def callback(self, interaction: discord.Interaction):
+        selected_phone = self.values[0]
+        view = WhatsAppChatView(
+            user_phone=self.user_phone, target_phone=selected_phone
+        )
 
         embed = discord.Embed(
-            title=f"💬 WhatsApp — Chat con {self.target_name}",
-            description=descrizione,
-            color=discord.Color.from_rgb(37, 211, 102)
+            title=f"💬 WhatsApp — Chat con {selected_phone}",
+            description="*Caricamento messaggi in corso...*",
+            color=discord.Color.from_rgb(37, 211, 102),
         )
-        
+        await interaction.response.send_message(
+            embed=embed, view=view, ephemeral=True
+        )
+        await view.aggiorna_embed_chat(interaction)
+
+
+class WhatsAppHubView(ui.View):
+
+    def __init__(self, user_phone: str):
+        super().__init__(timeout=300)
+        self.user_phone = user_phone
+
+    @ui.button(
+        label="Scrivi a un Numero",
+        style=discord.ButtonStyle.green,
+        emoji="📱",
+        row=0,
+    )
+    async def apri_numero((
+        self, interaction: discord.Interaction, button: ui.Button
+    ):
+        await interaction.response.send_modal(
+            ApriChatSconosciutoModal(self.user_phone)
+        )
+
+    @ui.button(
+        label="Aggiorna Lista Chat",
+        style=discord.ButtonStyle.secondary,
+        emoji="🔄",
+        row=0,
+    )
+    async def aggiorna_hub(
+        self, interaction: discord.Interaction, button: ui.Button
+    ):
+        await self.mostra_hub(interaction)
+
+    async def mostra_hub(self, interaction: discord.Interaction):
+        user_clean = "".join(filter(str.isdigit, self.user_phone))
+
+        # Recupera tutti i messaggi dove sei mittente o destinatario
+        res = (
+            supabase.table("whatsapp_messages")
+            .select("*")
+            .or_(
+                f"sender_phone.eq.{self.user_phone},receiver_phone.eq.{self.user_phone}"
+            )
+            .order("created_at", desc=True)
+            .execute()
+        )
+
+        raw_msgs = res.data if res.data else []
+        active_chats = {}
+
+        # Mappa l'ultimo messaggio per ciascun numero interlocutore
+        for m in raw_msgs:
+            s_clean = "".join(filter(str.isdigit, m["sender_phone"]))
+            r_clean = "".join(filter(str.isdigit, m["receiver_phone"]))
+
+            other_phone = (
+                m["receiver_phone"]
+                if s_clean == user_clean
+                else m["sender_phone"]
+            )
+
+            if other_phone not in active_chats:
+                active_chats[other_phone] = m["message"]
+
+        # Ricostruisce i componenti (rimuove eventuali vecchi dropdown)
+        self.clear_items()
+        self.add_item(self.apri_numero)
+        self.add_item(self.aggiorna_hub)
+
+        chat_items = list(active_chats.items())
+
+        if chat_items:
+            self.add_item(SelectChatDropdown(self.user_phone, chat_items))
+            desc_lines = [
+                f"• **{phone}**: _{msg[:35]}..._" for phone, msg in chat_items
+            ]
+            desc = "### 📥 Chat Attive (Ricevute e Inviate):\n" + "\n".join(
+                desc_lines
+            )
+        else:
+            desc = "*Non hai nessuna chat attiva. Clicca su **Scrivi a un Numero** per avviare una conversazione.*"
+
+        embed = discord.Embed(
+            title=f"📲 WhatsApp — Il tuo Numero: `{self.user_phone}`",
+            description=desc,
+            color=discord.Color.from_rgb(37, 211, 102),
+        )
+
         if interaction.response.is_done():
             await interaction.edit_message(embed=embed, view=self)
         else:
