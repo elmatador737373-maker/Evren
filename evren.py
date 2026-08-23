@@ -285,7 +285,7 @@ async def wipe_user(interaction: discord.Interaction, utente: discord.User):
         )
 
 
-from datetime import datetime, timezone
+from datetime import datetime
 import discord
 from discord import app_commands
 from discord.ext import commands
@@ -367,9 +367,9 @@ async def avvia_minatore(
         )
 
     pickaxe_used = inv_res.data[0]["item_name"]
-    now_utc = datetime.now(timezone.utc)
+    now_utc = discord.utils.utcnow()
     mat_info = MATERIALS_DATA[materiale.value]
-    full_material_name = f"{mat_info['emoji']}| {materiale.value}"
+    full_material_name = f"{mat_info['emoji']} | {materiale.value}"
 
     # 4. Salva la sessione e il materiale scelto nel database
     supabase.table("minatori_attivi").insert(
@@ -440,13 +440,24 @@ async def fine_minatore(interaction: discord.Interaction):
         )
 
     session = miner_check.data[0]
-    start_time = datetime.fromisoformat(session["created_at"])
+    
+    # Parsing sicuro della data da Supabase salvaguardando il fuso orario
+    created_at_str = session["created_at"].replace("Z", "+00:00")
+    start_time = datetime.fromisoformat(created_at_str)
+    
     target_material = session["target_material"]
-    now_time = datetime.now(timezone.utc)
+    now_time = discord.utils.utcnow()
 
-    # Estrazione dati materiale scelto
-    raw_name = target_material.split("| ")[1]
-    mat_info = MATERIALS_DATA[raw_name]
+    # Estrazione sicura del nome del materiale
+    try:
+        raw_name = target_material.split("|")[-1].strip()
+        mat_info = MATERIALS_DATA[raw_name]
+    except (IndexError, KeyError):
+        return await interaction.response.send_message(
+            "❌ Si è verificato un errore nel recupero del materiale selezionato.",
+            ephemeral=True,
+        )
+
     required_minutes = mat_info["time_min"]
     reward_kg = mat_info["qty_kg"]
 
@@ -2505,25 +2516,27 @@ async def massrole(
             embed.add_field(name="Statistiche", value=f"Aggiornati: `{successi}` | Falliti: `{falliti}` | Tempo: `{tempo_impiegato}s`", inline=False)
             await canale_log.send(embed=embed)
 
+import asyncio
+import random
+from typing import Optional
 
 import discord
 from discord import app_commands, ui
-import asyncio
-import random
+from discord.ext import commands, tasks
 
 # --- CONFIGURAZIONE ID RUOLO ---
 ID_RUOLO_EDILIZIA = 1534986071211769996  # Sostituisci con l'ID numerico del tuo ruolo
 
 # --- LISTA MATERIALI DISPONIBILI ---
 LISTA_MATERIALI_DISPONIBILI = [
-    "Cemento", 
-    "Mattoni", 
-    "Legno", 
-    "Ferro", 
-    "Vetro", 
-    "Sabbia", 
-    "Pietra", 
-    "Tegole"
+    "Cemento",
+    "Mattoni",
+    "Legno",
+    "Ferro",
+    "Vetro",
+    "Sabbia",
+    "Pietra",
+    "Tegole",
 ]
 
 
@@ -2543,33 +2556,62 @@ def format_tempo_rimanente(secondi: int) -> str:
 # --- GENERATORE EMBED ---
 def generate_cantiere_embed(cantiere: dict) -> discord.Embed:
     tot_richiesti = sum(mat["totale"] for mat in cantiere["materiali"])
-    tot_consumati = sum(mat.get("consumati", 0) for mat in cantiere["materiali"])
-    progresso = int((tot_consumati / tot_richiesti) * 100) if tot_richiesti > 0 else 100
-    
+    tot_consumati = sum(
+        mat.get("consumati", 0) for mat in cantiere["materiali"]
+    )
+    progresso = (
+        int((tot_consumati / tot_richiesti) * 100) if tot_richiesti > 0 else 100
+    )
+
     tempo_str = format_tempo_rimanente(cantiere["tempo_rimanente"])
-    
+
     embed = discord.Embed(
         title="🏗️ Cantiere in Costruzione",
-        color=discord.Color.from_rgb(43, 45, 49)
+        color=discord.Color.from_rgb(43, 45, 49),
     )
-    embed.add_field(name="Azienda Costruttrice:", value=cantiere["azienda"], inline=False)
-    embed.add_field(name="Indirizzo Immobile:", value=cantiere["address"], inline=False)
-    embed.add_field(name="Progresso Totale:", value=f"`{progresso}%`", inline=False)
-    
+    embed.add_field(
+        name="Azienda Costruttrice:", value=cantiere["azienda"], inline=False
+    )
+    embed.add_field(
+        name="Indirizzo Immobile:", value=cantiere["address"], inline=False
+    )
+    embed.add_field(
+        name="Progresso Totale:", value=f"`{progresso}%`", inline=False
+    )
+
     mat_text = ""
     for mat in cantiere["materiali"]:
         status = "✅" if mat.get("consumati", 0) >= mat["totale"] else "📦"
         mat_text += f"{status} **{mat['nome']}**: Deposito: `{mat['attuale']}` | Lavorati: `{mat.get('consumati', 0)}/{mat['totale']}`\n"
-    embed.add_field(name="Materiali nel Cantiere:", value=mat_text, inline=False)
-    
+    embed.add_field(
+        name="Materiali nel Cantiere:", value=mat_text, inline=False
+    )
+
+    builder_tag = f"<@{cantiere['builder_id']}>"
     operai_ids = cantiere.get("operai_ids", [])
-    operai_tags = ", ".join([f"<@{uid}>" for uid in operai_ids]) if operai_ids else "Nessun operaio assegnato"
-    embed.add_field(name=f"Operai Assegnati ({len(operai_ids)}/5):", value=operai_tags, inline=False)
-    
-    embed.add_field(name="Tempo rimanente stimato:", value=f"`{tempo_str}`", inline=False)
-    
+    operai_tags = (
+        ", ".join([f"<@{uid}>" for uid in operai_ids])
+        if operai_ids
+        else "Nessuno"
+    )
+
+    embed.add_field(
+        name="Responsabile Cantiere:", value=builder_tag, inline=True
+    )
+    embed.add_field(
+        name=f"Operai Assegnati ({len(operai_ids)}/4):",
+        value=operai_tags,
+        inline=True,
+    )
+
+    embed.add_field(
+        name="Tempo rimanente stimato:", value=f"`{tempo_str}`", inline=False
+    )
+
     if cantiere["paused"]:
-        embed.set_footer(text="⚠️ Cantiere in pausa: materiali esauriti nel deposito! Depositatene altri per riprendere.")
+        embed.set_footer(
+            text="⚠️ Cantiere in pausa: materiali esauriti nel deposito! Depositatene altri per riprendere."
+        )
     else:
         embed.set_footer(text="🔨 Lavori in corso...")
     return embed
@@ -2577,29 +2619,44 @@ def generate_cantiere_embed(cantiere: dict) -> discord.Embed:
 
 # --- VISTA PERSISTENTE ---
 class MaterialiView(ui.View):
+
     def __init__(self):
         super().__init__(timeout=None)
 
     @ui.button(
-        label="🔨 Deposita Materiali", 
-        style=discord.ButtonStyle.primary, 
-        custom_id="btn_deposita_materiali_persistente"
+        label="🔨 Deposita Materiali",
+        style=discord.ButtonStyle.primary,
+        custom_id="btn_deposita_materiali_persistente",
     )
-    async def add_material(self, interaction: discord.Interaction, button: ui.Button):
+    async def add_material(
+        self, interaction: discord.Interaction, button: ui.Button
+    ):
         msg_id = str(interaction.message.id)
         user_id = str(interaction.user.id)
 
-        res_cantiere = supabase.table("cantieri").select("*").eq("message_id", msg_id).execute()
+        res_cantiere = (
+            supabase.table("cantieri")
+            .select("*")
+            .eq("message_id", msg_id)
+            .execute()
+        )
 
         if not res_cantiere.data:
-            await interaction.response.send_message("❌ Questo cantiere non existe più o i lavori sono stati completati.", ephemeral=True)
+            await interaction.response.send_message(
+                "❌ Questo cantiere non esiste più o i lavori sono stati completati.",
+                ephemeral=True,
+            )
             return
 
         cantiere = res_cantiere.data[0]
         operai_ids = cantiere.get("operai_ids", [])
 
+        # Controllo autorizzazioni: Creatore oppure Operaio Assegnato
         if user_id != cantiere["builder_id"] and user_id not in operai_ids:
-            await interaction.response.send_message("❌ Solo il responsabile o gli operai assegnati a questo cantiere possono versare materiali!", ephemeral=True)
+            await interaction.response.send_message(
+                "❌ Solo il responsabile o gli operai assegnati a questo cantiere possono versare materiali!",
+                ephemeral=True,
+            )
             return
 
         materiali_list = cantiere["materiali"]
@@ -2609,16 +2666,20 @@ class MaterialiView(ui.View):
         for mat in materiali_list:
             consumati_attuali = mat.get("consumati", 0)
             mancanti_totali = mat["totale"] - consumati_attuali
-            
+
             if mancanti_totali <= 0:
                 continue
 
-            # Modifica qui: cerchiamo qualsiasi item nell'inventario il cui nome contenga il materiale richiesto
             query_nome = f"%{mat['nome']}%"
-            inv_res = supabase.table("inventory").select("item_name, quantity").eq("discord_id", user_id).ilike("item_name", query_nome).execute()
-            
+            inv_res = (
+                supabase.table("inventory")
+                .select("item_name, quantity")
+                .eq("discord_id", user_id)
+                .ilike("item_name", query_nome)
+                .execute()
+            )
+
             if inv_res.data:
-                # Prendiamo il primo oggetto corrispondente
                 item_found = inv_res.data[0]
                 exact_item_name = item_found["item_name"]
                 disponibili = item_found["quantity"]
@@ -2628,49 +2689,73 @@ class MaterialiView(ui.View):
                     nuova_qta = disponibili - da_usare
 
                     if nuova_qta > 0:
-                        supabase.table("inventory").update({"quantity": nuova_qta}).eq("discord_id", user_id).eq("item_name", exact_item_name).execute()
+                        supabase.table("inventory").update(
+                            {"quantity": nuova_qta}
+                        ).eq("discord_id", user_id).eq(
+                            "item_name", exact_item_name
+                        ).execute()
                     else:
-                        supabase.table("inventory").delete().eq("discord_id", user_id).eq("item_name", exact_item_name).execute()
+                        supabase.table("inventory").delete().eq(
+                            "discord_id", user_id
+                        ).eq("item_name", exact_item_name).execute()
 
                     mat["attuale"] += da_usare
                     depositato = True
                     res_messaggio += f"📥 Depositate **+{da_usare}x {mat['nome']}** (usando `{exact_item_name}`) nel cantiere\n"
 
         if not depositato:
-            await interaction.response.send_message("❌ Non possiedi i materiali necessari nel tuo inventario!", ephemeral=True)
+            await interaction.response.send_message(
+                "❌ Non possiedi i materiali necessari nel tuo inventario!",
+                ephemeral=True,
+            )
             return
 
         paused = False
 
-        supabase.table("cantieri").update({
-            "materiali": materiali_list,
-            "paused": paused
-        }).eq("message_id", msg_id).execute()
+        supabase.table("cantieri").update(
+            {"materiali": materiali_list, "paused": paused}
+        ).eq("message_id", msg_id).execute()
 
         cantiere["materiali"] = materiali_list
         cantiere["paused"] = paused
 
-        await interaction.response.edit_message(embed=generate_cantiere_embed(cantiere))
-        await interaction.followup.send(content=f"✅ **Operazione completata:**\n{res_messaggio}", ephemeral=True)
+        await interaction.response.edit_message(
+            embed=generate_cantiere_embed(cantiere)
+        )
+        await interaction.followup.send(
+            content=f"✅ **Operazione completata:**\n{res_messaggio}",
+            ephemeral=True,
+        )
 
 
-# --- LOOP DI AVANZAMENTO ---
-async def avvia_loop_cantiere(msg: discord.Message):
-    msg_id = str(msg.id)
-    
-    while True:
-        await asyncio.sleep(60)
+# --- LOOP DI AVANZAMENTO GLOBALE (PERSISTENTE DOPO I RIAVVII) ---
+@tasks.loop(seconds=60)
+async def gestore_cantieri_loop():
+    res_cantieri = supabase.table("cantieri").select("*").execute()
 
-        res_data = supabase.table("cantieri").select("*").eq("message_id", msg_id).execute()
-        if not res_data.data:
-            break
+    if not res_cantieri.data:
+        return
 
-        data = res_data.data[0]
+    for cantiere in res_cantieri.data:
+        msg_id = cantiere["message_id"]
+        channel_id = int(cantiere["channel_id"])
 
-        if data["paused"]:
+        channel = bot.get_channel(channel_id)
+        if not channel:
+            try:
+                channel = await bot.fetch_channel(channel_id)
+            except discord.HTTPException:
+                continue
+
+        try:
+            msg = await channel.fetch_message(int(msg_id))
+        except discord.HTTPException:
             continue
 
-        materiali_list = data["materiali"]
+        if cantiere["paused"]:
+            continue
+
+        materiali_list = cantiere["materiali"]
         tutti_completati = True
         mancano_materiali = False
 
@@ -2685,83 +2770,140 @@ async def avvia_loop_cantiere(msg: discord.Message):
                     mancano_materiali = True
 
         if tutti_completati:
-            supabase.table("registered_properties").insert({
-                "discord_id": data["builder_id"],
-                "address": data["address"],
-                "property_type": f"Edificio ({data['grandezza'].capitalize()})"
-            }).execute()
+            supabase.table("registered_properties").insert(
+                {
+                    "discord_id": cantiere["builder_id"],
+                    "address": cantiere["address"],
+                    "property_type": f"Edificio ({cantiere['grandezza'].capitalize()})",
+                }
+            ).execute()
 
-            supabase.table("cantieri").delete().eq("message_id", msg_id).execute()
+            supabase.table("cantieri").delete().eq(
+                "message_id", msg_id
+            ).execute()
 
             try:
                 dm_embed = discord.Embed(
                     title="🎉 Costruzione Completata!",
-                    description=f"Il cantiere gestito da **{data['azienda']}** presso **{data['address']}** è stato completato ed è stato registrato ufficialmente!",
-                    color=discord.Color.green()
+                    description=f"Il cantiere gestito da **{cantiere['azienda']}** presso **{cantiere['address']}** è stato completato ed è stato registrato ufficialmente!",
+                    color=discord.Color.green(),
                 )
-                user = await msg.guild.fetch_member(int(data["builder_id"]))
+                user = await bot.fetch_user(int(cantiere["builder_id"]))
                 if user:
                     await user.send(embed=dm_embed)
             except discord.HTTPException:
                 pass
-            break
+
+            try:
+                embed_completato = generate_cantiere_embed(cantiere)
+                embed_completato.title = "🎉 Cantiere Completato!"
+                embed_completato.color = discord.Color.green()
+                await msg.edit(embed=embed_completato, view=None)
+            except discord.HTTPException:
+                pass
+
+            continue
 
         paused = mancano_materiali
-        nuovo_tempo = data["tempo_rimanente"]
-        
+        nuovo_tempo = cantiere["tempo_rimanente"]
+
         if not paused:
             nuovo_tempo = max(0, nuovo_tempo - 60)
 
-        supabase.table("cantieri").update({
-            "materiali": materiali_list,
-            "tempo_rimanente": nuovo_tempo,
-            "paused": paused
-        }).eq("message_id", msg_id).execute()
+        supabase.table("cantieri").update(
+            {
+                "materiali": materiali_list,
+                "tempo_rimanente": nuovo_tempo,
+                "paused": paused,
+            }
+        ).eq("message_id", msg_id).execute()
 
-        data["materiali"] = materiali_list
-        data["tempo_rimanente"] = nuovo_tempo
-        data["paused"] = paused
+        cantiere["materiali"] = materiali_list
+        cantiere["tempo_rimanente"] = nuovo_tempo
+        cantiere["paused"] = paused
 
         try:
-            await msg.edit(embed=generate_cantiere_embed(data))
+            await msg.edit(embed=generate_cantiere_embed(cantiere))
         except discord.HTTPException:
             pass
 
 
+# --- EVENTO ON_READY PER RIPRISTINARE I CANTIERI ED AVVIARE IL LOOP ---
+@bot.event
+async def on_ready():
+    bot.add_view(MaterialiView())  # Registra il pulsante persistente
+    if not gestore_cantieri_loop.is_running():
+        gestore_cantieri_loop.start()
+
+
 # --- COMANDO /costruisci ---
-@bot.tree.command(name="costruisci", description="Avvia un nuovo cantiere di costruzione")
+@bot.tree.command(
+    name="costruisci", description="Avvia un nuovo cantiere di costruzione"
+)
 @app_commands.checks.has_role(ID_RUOLO_EDILIZIA)
 @app_commands.describe(
     azienda="Nome dell'azienda costruttrice",
     address="Indirizzo dell'immobile",
-    grandezza="Dimensione del cantiere (piccolo, medio, grande)"
+    grandezza="Dimensione del cantiere (piccolo, medio, grande)",
+    operaio1="Operaio aggiuntivo 1",
+    operaio2="Operaio aggiuntivo 2",
+    operaio3="Operaio aggiuntivo 3",
+    operaio4="Operaio aggiuntivo 4",
 )
-@app_commands.choices(grandezza=[
-    app_commands.Choice(name="Piccolo", value="piccolo"),
-    app_commands.Choice(name="Medio", value="medio"),
-    app_commands.Choice(name="Grande", value="grande")
-])
-async def costruisci(interaction: discord.Interaction, azienda: str, address: str, grandezza: app_commands.Choice[str]):
+@app_commands.choices(
+    grandezza=[
+        app_commands.Choice(name="Piccolo", value="piccolo"),
+        app_commands.Choice(name="Medio", value="medio"),
+        app_commands.Choice(name="Grande", value="grande"),
+    ]
+)
+async def costruisci(
+    interaction: discord.Interaction,
+    azienda: str,
+    address: str,
+    grandezza: app_commands.Choice[str],
+    operaio1: Optional[discord.Member] = None,
+    operaio2: Optional[discord.Member] = None,
+    operaio3: Optional[discord.Member] = None,
+    operaio4: Optional[discord.Member] = None,
+):
     await interaction.response.defer()
+
+    # Raccoglie ed elabora gli ID degli operai evitando duplicati ed escludendo se stessi
+    operai_selezionati = [
+        op for op in [operaio1, operaio2, operaio3, operaio4] if op is not None
+    ]
+    operai_ids = []
+    for op in operai_selezionati:
+        op_id_str = str(op.id)
+        if (
+            op_id_str != str(interaction.user.id)
+            and op_id_str not in operai_ids
+        ):
+            operai_ids.append(op_id_str)
 
     config_grandezza = {
         "piccolo": {"tempo": 1800, "range_mat": (10, 30), "num_mat": 2},
         "medio": {"tempo": 3600, "range_mat": (30, 60), "num_mat": 3},
-        "grande": {"tempo": 7200, "range_mat": (60, 100), "num_mat": 4}
+        "grande": {"tempo": 7200, "range_mat": (60, 100), "num_mat": 4},
     }
-    
+
     cfg = config_grandezza[grandezza.value]
-    materiali_scelti = random.sample(LISTA_MATERIALI_DISPONIBILI, cfg["num_mat"])
+    materiali_scelti = random.sample(
+        LISTA_MATERIALI_DISPONIBILI, cfg["num_mat"]
+    )
 
     lista_materiali_struttura = []
     for mat_nome in materiali_scelti:
         mat_totale = random.randint(*cfg["range_mat"])
-        lista_materiali_struttura.append({
-            "nome": mat_nome,
-            "totale": mat_totale,
-            "attuale": 0,
-            "consumati": 0
-        })
+        lista_materiali_struttura.append(
+            {
+                "nome": mat_nome,
+                "totale": mat_totale,
+                "attuale": 0,
+                "consumati": 0,
+            }
+        )
 
     cantiere_data = {
         "builder_id": str(interaction.user.id),
@@ -2770,28 +2912,30 @@ async def costruisci(interaction: discord.Interaction, azienda: str, address: st
         "grandezza": grandezza.value,
         "tempo_rimanente": cfg["tempo"],
         "materiali": lista_materiali_struttura,
-        "operai_ids": [],
-        "paused": False
+        "operai_ids": operai_ids,
+        "paused": False,
     }
 
     view = MaterialiView()
     embed = generate_cantiere_embed(cantiere_data)
-    
+
     msg = await interaction.followup.send(embed=embed, view=view)
 
     cantiere_data["message_id"] = str(msg.id)
-    supabase.table("cantieri").insert(cantiere_data).execute()
+    cantiere_data["channel_id"] = str(msg.channel.id)
 
-    asyncio.create_task(avvia_loop_cantiere(msg))
+    supabase.table("cantieri").insert(cantiere_data).execute()
 
 
 # --- GESTORE ERRORE PER RUOLO MANCANTE ---
 @costruisci.error
-async def costruisci_error(interaction: discord.Interaction, error: app_commands.AppCommandError):
+async def costruisci_error(
+    interaction: discord.Interaction, error: app_commands.AppCommandError
+):
     if isinstance(error, app_commands.MissingRole):
         await interaction.response.send_message(
-            f"❌ Devi possedere il ruolo con ID `<@&{ID_RUOLO_EDILIZIA}>` per utilizzare questo comando!", 
-            ephemeral=True
+            f"❌ Devi possedere il ruolo <@&{ID_RUOLO_EDILIZIA}> per utilizzare questo comando!",
+            ephemeral=True,
         )
 
 @bot.tree.command(name="playtest", description="Testa la riproduzione di un brano audio")
@@ -6621,8 +6765,8 @@ async def renderizza_fattura_immagine(fattura) -> discord.File:
     }
 
     # Credenziali Basic Auth impostate sul tuo server
-    user_id = "01KZPCE84PPV7VR108CEEE4SCG"
-    api_key = "019fecc7-2096-7cab-9a5f-b984c4061b51"
+    user_id = "Evren"
+    api_key = "Evren"
     
     # Endpoint del tuo nuovo servizio su Render
     render_url = "https://htmlevren.onrender.com/v1/image"
@@ -6910,8 +7054,8 @@ import aiohttp
 import discord
 
 async def renderizza_html_in_immagine(html_content: str) -> discord.File:
-    user_id = "01M09ZXQYW1R58HK3ZT7VQ856A"
-    api_key = "01a013fe-dfdc-79de-8f3c-0c6a8c4bcab4"
+    user_id = "Evren"
+    api_key = "Evren"
     
     # Endpoint puntato al tuo servizio Render
     render_url = "https://htmlevren.onrender.com/v1/image"
