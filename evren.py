@@ -6517,9 +6517,65 @@ import discord
 import base64
 import aiohttp
 
-async def genera_carta_identita(residenza, nome, cognome, birth_date, birth_place, cf, doc_number, photo_url, colore_occhi, colore_capelli, segni_particolari):
-    
-    # 1. Download e conversione della foto in Base64 per HTCI
+import base64
+import aiohttp
+
+
+async def genera_carta_identita(
+    discord_id,
+    residenza,
+    nome,
+    cognome,
+    birth_date,
+    birth_place,
+    cf,
+    doc_number,
+    photo_url,
+    colore_occhi,
+    colore_capelli,
+    segni_particolari,
+):
+
+    # 1. Recupero Patenti di Guida e Porti d'Arma da Supabase
+    driver_str = "Nessuna"
+    gun_str = "Nessuno"
+
+    try:
+        # Query Patenti
+        driver_res = (
+            supabase.table("driver_licenses")
+            .select("license_type, status")
+            .eq("discord_id", str(discord_id))
+            .execute()
+        )
+        if driver_res.data:
+            attive = [
+                l["license_type"]
+                for l in driver_res.data
+                if l.get("status") == "Attiva"
+            ]
+            if attive:
+                driver_str = ", ".join(attive)
+
+        # Query Porti d'Arma
+        gun_res = (
+            supabase.table("gun_licenses")
+            .select("license_type, status")
+            .eq("discord_id", str(discord_id))
+            .execute()
+        )
+        if gun_res.data:
+            attivi = [
+                l["license_type"]
+                for l in gun_res.data
+                if l.get("status") in ["Attivo", "Attiva"]
+            ]
+            if attivi:
+                gun_str = ", ".join(attivi)
+    except Exception as e:
+        print(f"Errore nel recupero licenze per {discord_id}: {e}")
+
+    # 2. Download e conversione della foto in Base64 per HTCI
     photo_src = photo_url
     if photo_url and photo_url.startswith("http"):
         try:
@@ -6527,13 +6583,13 @@ async def genera_carta_identita(residenza, nome, cognome, birth_date, birth_plac
                 async with session.get(photo_url) as resp:
                     if resp.status == 200:
                         data = await resp.read()
-                        encoded = base64.b64encode(data).decode('utf-8')
-                        mime = resp.headers.get('Content-Type', 'image/jpeg')
+                        encoded = base64.b64encode(data).decode("utf-8")
+                        mime = resp.headers.get("Content-Type", "image/jpeg")
                         photo_src = f"data:{mime};base64,{encoded}"
         except Exception as e:
             print(f"Errore download foto per Base64: {e}")
 
-    # 2. Configurazione dati geografici
+    # 3. Configurazione dati geografici
     if residenza == "Messico":
         ente_titolo = "ESTADOS UNIDOS MEXICANOS"
         sotto_titolo = "CREDENCIAL PARA VOTAR / CÉDULA DE IDENTIDAD"
@@ -6549,10 +6605,12 @@ async def genera_carta_identita(residenza, nome, cognome, birth_date, birth_plac
         paese_cod = "USA"
         stato_emittente = "USCAL"
 
-    mrz_line1 = f"I<{paese_cod}{cognome.upper()}<<{nome.upper()}<<<<<<<<<<<<<<"
+    mrz_line1 = (
+        f"I<{paese_cod}{cognome.upper()}<<{nome.upper()}<<<<<<<<<<<<<<"
+    )
     mrz_line2 = f"{doc_number}9{paese_cod}{birth_date.replace('/', '')}M281231{stato_emittente}<<<<<<<$"
 
-    # 3. HTML / CSS Corretto
+    # 4. HTML / CSS Ottimizzato e Bellissimo
     html_content = f"""
     <!DOCTYPE html>
     <html lang="it">
@@ -6567,7 +6625,7 @@ async def genera_carta_identita(residenza, nome, cognome, birth_date, birth_plac
             body {{
                 width: 820px;
                 height: 520px;
-                background: #f8fafc;
+                background: linear-gradient(135deg, #f8fafc 0%, #e2e8f0 100%);
                 font-family: 'Helvetica Neue', Arial, sans-serif;
                 overflow: hidden;
                 display: flex;
@@ -6582,23 +6640,23 @@ async def genera_carta_identita(residenza, nome, cognome, birth_date, birth_plac
                 top: 0; left: 0; width: 100%; height: 100%;
                 background-image: radial-gradient({colore_primario} 0.8px, transparent 0.8px);
                 background-size: 14px 14px;
-                opacity: 0.03;
+                opacity: 0.04;
                 z-index: 0;
             }}
             .header {{
                 background: linear-gradient(135deg, {colore_primario} 0%, #0f172a 100%);
                 color: white;
-                padding: 12px 20px;
+                padding: 10px 20px;
                 display: flex;
                 justify-content: space-between;
                 align-items: center;
                 border-bottom: 4px solid {colore_secondario};
                 z-index: 1;
-                height: 70px;
+                height: 65px;
                 flex-shrink: 0;
             }}
             .header-left h1 {{
-                font-size: 17px;
+                font-size: 16px;
                 letter-spacing: 1.5px;
                 font-weight: 900;
                 text-transform: uppercase;
@@ -6620,12 +6678,12 @@ async def genera_carta_identita(residenza, nome, cognome, birth_date, birth_plac
                 letter-spacing: 1px;
             }}
             .body-content {{
-                padding: 15px 22px;
+                padding: 12px 20px;
                 display: flex;
-                gap: 22px;
+                gap: 20px;
                 z-index: 1;
                 flex-grow: 1;
-                align-items: flex-start; /* FIX: Allinea in alto anziché centrare */
+                align-items: flex-start;
             }}
             .foto-container {{
                 width: 145px;
@@ -6633,16 +6691,16 @@ async def genera_carta_identita(residenza, nome, cognome, birth_date, birth_plac
                 border: 3px solid {colore_primario};
                 background: #fff;
                 box-shadow: 0 4px 10px rgba(0,0,0,0.15);
-                border-radius: 4px;
+                border-radius: 6px;
                 flex-shrink: 0;
-                overflow: hidden; /* FIX: Evita che l'immagine esca dal riquadro */
+                overflow: hidden;
                 display: flex;
             }}
             .foto-container img {{
                 width: 100%;
                 height: 100%;
                 object-fit: cover;
-                object-position: center; /* FIX: Centra l'immagine dentro il contenitore */
+                object-position: center;
                 border-radius: 2px;
                 display: block;
             }}
@@ -6650,7 +6708,7 @@ async def genera_carta_identita(residenza, nome, cognome, birth_date, birth_plac
                 flex-grow: 1;
                 display: grid;
                 grid-template-columns: 1fr 1fr;
-                gap: 8px 15px;
+                gap: 6px 15px;
             }}
             .field {{
                 display: flex;
@@ -6669,15 +6727,18 @@ async def genera_carta_identita(residenza, nome, cognome, birth_date, birth_plac
                 letter-spacing: 0.5px;
             }}
             .value {{
-                font-size: 14px;
+                font-size: 13px;
                 font-weight: 700;
                 color: #0f172a;
                 margin-top: 1px;
             }}
+            .value-highlight {{
+                color: #1e3a8a;
+            }}
             .mrz-container {{
-                background: #e2e8f0;
+                background: #cbd5e1;
                 padding: 6px 15px;
-                border-top: 1px solid #cbd5e1;
+                border-top: 2px solid #94a3b8;
                 font-family: 'Courier New', Courier, monospace;
                 font-size: 12px;
                 font-weight: bold;
@@ -6735,6 +6796,14 @@ async def genera_carta_identita(residenza, nome, cognome, birth_date, birth_plac
                 <div class="field">
                     <span class="label">Occhi / Capelli / Eyes / Hair</span>
                     <span class="value">{colore_occhi} / {colore_capelli}</span>
+                </div>
+                <div class="field">
+                    <span class="label">🪪 Patenti di Guida / Driver Licenses</span>
+                    <span class="value value-highlight">{driver_str}</span>
+                </div>
+                <div class="field">
+                    <span class="label">📜 Porto d'Armi / Gun Permits</span>
+                    <span class="value value-highlight">{gun_str}</span>
                 </div>
                 <div class="field full">
                     <span class="label">Segni Particolari / Distinctive Marks</span>
