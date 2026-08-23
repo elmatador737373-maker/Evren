@@ -815,7 +815,6 @@ class ConfirmDeleteView(ui.View):
 
 # Sostituisci con l'ID del tuo ruolo Staff
 
-
 def get_val(data: dict, key: str, fallback: str = "Nessuna") -> str:
     """Restituisce il valore dalla mappa oppure il fallback se mancante, None o vuoto."""
     if not data:
@@ -859,7 +858,7 @@ async def staff_info(interaction: discord.Interaction, target: discord.User):
         birth_date = get_val(doc_data, "birth_date")
         birth_place = get_val(doc_data, "birth_place")
 
-        # 2. SALDO & ECONOMIA (Tabella: users | Campi: wallet, bank)
+        # 2. SALDO & ECONOMIA (Tabella: users)
         eco_res = supabase.table("users").select("wallet, bank").eq("discord_id", target_id).execute()
         eco_data = eco_res.data[0] if eco_res.data else {}
 
@@ -867,21 +866,21 @@ async def staff_info(interaction: discord.Interaction, target: discord.User):
         bank = float(eco_data.get("bank") or 0.0)
         total = cash + bank
 
-        # 3. LICENZE (Tabelle: driver_licenses, gun_licenses)
+        # 3. LICENZE
         driver_res = supabase.table("driver_licenses").select("license_type, status").eq("discord_id", target_id).execute()
         gun_res = supabase.table("gun_licenses").select("license_type, status").eq("discord_id", target_id).execute()
 
         driver_str = "\n".join([f"• {l.get('license_type', 'Nessuna')} (`{l.get('status', 'Nessuna')}`)" for l in driver_res.data]) if driver_res.data else "• *Nessuna patente*"
         gun_str = "\n".join([f"• {l.get('license_type', 'Nessuna')} (`{l.get('status', 'Nessuna')}`)" for l in gun_res.data]) if gun_res.data else "• *Nessun porto d'armi*"
 
-        # 4. INVENTARIO & PROPRIETÀ (Tabelle: registered_weapons, registered_vehicles)
-        weapons_res = supabase.table("registered_weapons").select("model, serial_number").eq("discord_id", target_id).execute()
+        # 4. INVENTARIO & PROPRIETÀ (Tabella: inventory | Campi: item_name, quantity)
+        inventory_res = supabase.table("inventory").select("item_name, quantity").eq("discord_id", target_id).execute()
         vehicles_res = supabase.table("registered_vehicles").select("model, plate").eq("discord_id", target_id).execute()
 
-        weapons_str = "\n".join([f"• **{w.get('model', 'Nessuna')}** (Matricola: `{w.get('serial_number', 'Nessuna')}`)" for w in weapons_res.data]) if weapons_res.data else "*Nessun'arma registrata*"
+        items_str = "\n".join([f"• **{item.get('item_name', 'Nessuna')}** x{item.get('quantity', 1)}" for item in inventory_res.data]) if inventory_res.data else "*Inventario vuoto*"
         vehicles_str = "\n".join([f"• **{v.get('model', 'Nessuna')}** (Targa: `{v.get('plate', 'Nessuna')}`)" for v in vehicles_res.data]) if vehicles_res.data else "*Nessun veicolo registrato*"
 
-        # 5. PRECEDENTI PENALI (Tabelle: police_fines, police_arrests | Campo motivo: reason)
+        # 5. PRECEDENTI PENALI
         fines_res = supabase.table("police_fines").select("reason, amount, created_at").eq("discord_id", target_id).execute()
         arrests_res = supabase.table("police_arrests").select("reason, months, bail, created_at").eq("discord_id", target_id).execute()
 
@@ -919,7 +918,7 @@ async def staff_info(interaction: discord.Interaction, target: discord.User):
         )
 
         embed.add_field(name="📜 Licenze", value=f"**Patenti:**\n{driver_str}\n\n**Porti d'Arma:**\n{gun_str}", inline=True)
-        embed.add_field(name="🎒 Inventario Registrato", value=f"**Armi Possedute:**\n{weapons_str}\n\n**Veicoli:**\n{vehicles_str}", inline=True)
+        embed.add_field(name="🎒 Inventario & Veicoli", value=f"**Oggetti Posseduti:**\n{items_str}\n\n**Veicoli Registrati:**\n{vehicles_str}", inline=True)
 
         embed.add_field(
             name="🚨 Precedenti Penali",
@@ -933,7 +932,7 @@ async def staff_info(interaction: discord.Interaction, target: discord.User):
         else:
             embed.set_thumbnail(url=target.display_avatar.url)
 
-        # Gestione sicura della View
+        # Gestione View
         view = None
         try:
             view = StaffDeleteDocView(target_id=target_id, target_name=citizen_name)
