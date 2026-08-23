@@ -6557,6 +6557,10 @@ async def genera_carta_identita(residenza, nome, cognome, birth_date, birth_plac
     """
     return html_content
 
+import io
+import aiohttp
+import discord
+
 async def renderizza_fattura_immagine(fattura) -> discord.File:
     html = await genera_fattura_html(
         invoice_id=fattura["id"],
@@ -6576,29 +6580,22 @@ async def renderizza_fattura_immagine(fattura) -> discord.File:
         "device_scale": 2
     }
 
-    # Inserisci qui il tuo User ID di HCTI e la tua API key
+    # Credenziali Basic Auth impostate sul tuo server
     user_id = "01KZPCE84PPV7VR108CEEE4SCG"
     api_key = "019fecc7-2096-7cab-9a5f-b984c4061b51"
+    
+    # Endpoint del tuo nuovo servizio su Render
+    render_url = "https://htmlevren.onrender.com/v1/image"
     
     headers = {
         "Authorization": aiohttp.encode_basic_auth(str(user_id), str(api_key))
     }
 
     async with aiohttp.ClientSession() as session:
-        async with session.post("https://hcti.io/v1/image", json=payload, headers=headers) as response:
+        async with session.post(render_url, json=payload, headers=headers) as response:
             if response.status == 200:
-                result = await response.json()
-                image_url = result.get("url")
-                
-                if not image_url:
-                    raise Exception("L'API non ha restituito alcun URL per l'immagine della fattura.")
-                
-                # Scarichiamo l'immagine generata dal cloud
-                async with session.get(image_url) as img_resp:
-                    if img_resp.status == 200:
-                        screenshot_bytes = await img_resp.read()
-                    else:
-                        raise Exception(f"Errore nel download dell'immagine della fattura: {img_resp.status}")
+                # Il tuo server su Render restituisce direttamente i byte della fattura in PNG
+                screenshot_bytes = await response.read()
             else:
                 error_text = await response.text()
                 raise Exception(f"Errore nel rendering HTML della fattura (Status {response.status}): {error_text}")
@@ -6868,10 +6865,16 @@ async def mie_fatture(interaction: discord.Interaction):
 
 import aiohttp
 
+import io
+import aiohttp
+import discord
+
 async def renderizza_html_in_immagine(html_content: str) -> discord.File:
-    # Inserisci qui le tue credenziali prese dalla dashboard di HCTI
-    user_id = "01M09ZXQYW1R58HK3ZT7VQ856A"   # Esempio: "123456ab-..."
+    user_id = "01M09ZXQYW1R58HK3ZT7VQ856A"
     api_key = "01a013fe-dfdc-79de-8f3c-0c6a8c4bcab4"
+    
+    # Endpoint puntato al tuo servizio Render
+    render_url = "https://htmlevren.onrender.com/v1/image"
     
     payload = {
         "html": html_content,
@@ -6880,29 +6883,15 @@ async def renderizza_html_in_immagine(html_content: str) -> discord.File:
         "device_scale": 2
     }
 
-    # Autenticazione aggiornata per evitare il DeprecationWarning di aiohttp
     headers = {
         "Authorization": aiohttp.encode_basic_auth(user_id, api_key)
     }
 
     async with aiohttp.ClientSession() as session:
-        async with session.post(
-            "https://hcti.io/v1/image", 
-            json=payload, 
-            headers=headers
-        ) as response:
+        async with session.post(render_url, json=payload, headers=headers) as response:
             if response.status == 200:
-                result = await response.json()
-                image_url = result.get("url")
-                
-                if not image_url:
-                    raise Exception("L'API non ha restituito alcun URL per l'immagine.")
-                
-                async with session.get(image_url) as img_resp:
-                    if img_resp.status == 200:
-                        screenshot_bytes = await img_resp.read()
-                    else:
-                        raise Exception(f"Errore nel download dell'immagine generata: {img_resp.status}")
+                # Legge direttamente il flusso di byte della carta d'identità in PNG
+                screenshot_bytes = await response.read()
             else:
                 error_text = await response.text()
                 raise Exception(f"Errore nel rendering HTML (Status {response.status}): {error_text}")
