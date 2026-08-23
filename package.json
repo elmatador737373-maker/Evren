@@ -1,0 +1,13 @@
+{
+  "name": "html2image-custom-service",
+  "version": "1.0.0",
+  "description": "Servizio privato di rendering HTML/CSS to Image stile HCTI",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js"
+  },
+  "dependencies": {
+    "express": "^4.19.2",
+    "puppeteer": "^22.10.0"
+  }
+}
