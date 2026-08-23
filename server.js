@@ -6,8 +6,8 @@ app.use(express.json({ limit: '50mb' }));
 app.use(express.urlencoded({ limit: '50mb', extended: true }));
 
 // Credenziali configurabili tramite variabili d'ambiente di Render (con fallback di sicurezza)
-const USER_ID = process.env.API_USER_ID || "mio_user_id";
-const API_KEY = process.env.API_KEY || "mia_api_key_segreta";
+const USER_ID = process.env.API_USER_ID || "Evren";
+const API_KEY = process.env.API_KEY || "Evren";
 
 let browser;
 
