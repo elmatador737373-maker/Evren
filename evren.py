@@ -6522,7 +6522,7 @@ import aiohttp
 
 
 async def genera_carta_identita(
-    discord_id,
+    interaction.user.id,
     residenza,
     nome,
     cognome,
