@@ -6522,7 +6522,7 @@ import aiohttp
 
 
 async def genera_carta_identita(
-    interaction.user.id,
+    discord_id,
     residenza,
     nome,
     cognome,
@@ -7169,6 +7169,10 @@ async def renderizza_html_in_immagine(html_content: str) -> discord.File:
 import random
 import string
 
+import random
+import string
+
+
 @bot.tree.command(
     name="mostra_documento",
     description="Mostra la tua carta d'identità ufficiale in chat.",
@@ -7178,7 +7182,10 @@ async def mostra_documento(interaction: discord.Interaction):
 
     user_id = str(interaction.user.id)
     response = (
-        supabase.table("documents").select("*").eq("discord_id", user_id).execute()
+        supabase.table("documents")
+        .select("*")
+        .eq("discord_id", user_id)
+        .execute()
     )
 
     if not response.data:
@@ -7193,10 +7200,12 @@ async def mostra_documento(interaction: discord.Interaction):
     doc_number = doc.get("doc_number")
 
     if not doc_number:
-        lettere = ''.join(random.choices(string.ascii_uppercase, k=2))
-        numeri = ''.join(random.choices(string.digits, k=6))
+        lettere = "".join(random.choices(string.ascii_uppercase, k=2))
+        numeri = "".join(random.choices(string.digits, k=6))
         doc_number = f"{lettere}{numeri}"
-        supabase.table("documents").update({"doc_number": doc_number}).eq("discord_id", user_id).execute()
+        supabase.table("documents").update({"doc_number": doc_number}).eq(
+            "discord_id", user_id
+        ).execute()
 
     RUOLO_LOS_ANGELES = 1536072707878420541
     RUOLO_MESSICO = 1536072848224034856
@@ -7211,6 +7220,7 @@ async def mostra_documento(interaction: discord.Interaction):
         residenza_utente = "Los Angeles"
 
     html_content = await genera_carta_identita(
+        discord_id=interaction.user.id,  # <-- Aggiunto discord_id
         residenza=residenza_utente,
         nome=doc["name"],
         cognome=doc["surname"],
@@ -7223,12 +7233,10 @@ async def mostra_documento(interaction: discord.Interaction):
         colore_capelli=doc["hair_color"],
         segni_particolari=doc["distinct_marks"],
     )
-
     file_documento = await renderizza_html_in_immagine(html_content)
 
     await interaction.followup.send(
-        "🪪 Ecco la tua carta d'identità ufficiale:",
-        file=file_documento
+        "🪪 Ecco la tua carta d'identità ufficiale:", file=file_documento
     )
 
 # --- COMANDI REGISTRAZIONE ISTITUZIONALE ---
