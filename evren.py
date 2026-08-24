@@ -303,6 +303,7 @@ MATERIALS_DATA = {
 }
 
 
+
 @bot.tree.command(
     name="avvia_minatore", description="Inizia la sessione di lavoro in miniera"
 )
@@ -327,6 +328,9 @@ async def avvia_minatore(
     materiale: app_commands.Choice[str],
     foto: discord.Attachment,
 ):
+    # Rimanda la risposta per evitare il timeout dei 3 secondi di Discord
+    await interaction.response.defer()
+
     user_id = str(interaction.user.id)
 
     # 1. Verifica se l'utente sta già minando
@@ -338,16 +342,14 @@ async def avvia_minatore(
     )
 
     if miner_check.data:
-        return await interaction.response.send_message(
-            "⚠️ Stai già minando! Usa `/fine_minatore` per terminare la sessione attiva.",
-            ephemeral=True,
+        return await interaction.followup.send(
+            "⚠️ Stai già minando! Usa `/fine_minatore` per terminare la sessione attiva."
         )
 
     # 2. Verifica presenza immagine
     if not foto.content_type or not foto.content_type.startswith("image/"):
-        return await interaction.response.send_message(
-            "❌ Devi allegare un file immagine valido come prova.",
-            ephemeral=True,
+        return await interaction.followup.send(
+            "❌ Devi allegare un file immagine valido come prova."
         )
 
     # 3. Controllo dinamico: Cerca qualsiasi oggetto contenente la parola "Piccone"
@@ -361,9 +363,8 @@ async def avvia_minatore(
     )
 
     if not inv_res.data:
-        return await interaction.response.send_message(
-            "❌ Non possiedi un **Piccone** nel tuo inventario!",
-            ephemeral=True,
+        return await interaction.followup.send(
+            "❌ Non possiedi un **Piccone** nel tuo inventario!"
         )
 
     pickaxe_used = inv_res.data[0]["item_name"]
@@ -416,13 +417,16 @@ async def avvia_minatore(
         icon_url=interaction.user.display_avatar.url,
     )
 
-    await interaction.response.send_message(embed=embed)
+    await interaction.followup.send(embed=embed)
 
 
 @bot.tree.command(
     name="fine_minatore", description="Termina il turno e raccogli i materiali"
 )
 async def fine_minatore(interaction: discord.Interaction):
+    # Rimanda la risposta per evitare il timeout dei 3 secondi di Discord
+    await interaction.response.defer()
+
     user_id = str(interaction.user.id)
 
     # 1. Recupera la sessione attiva
@@ -434,9 +438,8 @@ async def fine_minatore(interaction: discord.Interaction):
     )
 
     if not miner_check.data:
-        return await interaction.response.send_message(
-            "❌ Non hai avviato alcuna sessione di scavo! Usa prima `/avvia_minatore`.",
-            ephemeral=True,
+        return await interaction.followup.send(
+            "❌ Non hai avviato alcuna sessione di scavo! Usa prima `/avvia_minatore`."
         )
 
     session = miner_check.data[0]
@@ -453,9 +456,8 @@ async def fine_minatore(interaction: discord.Interaction):
         raw_name = target_material.split("|")[-1].strip()
         mat_info = MATERIALS_DATA[raw_name]
     except (IndexError, KeyError):
-        return await interaction.response.send_message(
-            "❌ Si è verificato un errore nel recupero del materiale selezionato.",
-            ephemeral=True,
+        return await interaction.followup.send(
+            "❌ Si è verificato un errore nel recupero del materiale selezionato."
         )
 
     required_minutes = mat_info["time_min"]
@@ -468,10 +470,9 @@ async def fine_minatore(interaction: discord.Interaction):
     # 2. Controllo tempo minimo rispettato
     if elapsed_minutes < required_minutes:
         remaining = required_minutes - elapsed_minutes
-        return await interaction.response.send_message(
+        return await interaction.followup.send(
             f"⚠️ Non hai ancora finito di raccogliere **{target_material}**!\n"
-            f"Devi attendere ancora **{remaining} minuto/i** (Tempo trascorso: `{elapsed_minutes}/{required_minutes} min`).",
-            ephemeral=True,
+            f"Devi attendere ancora **{remaining} minuto/i** (Tempo trascorso: `{elapsed_minutes}/{required_minutes} min`)."
         )
 
     # Rimuove la sessione attiva dal database
@@ -546,7 +547,7 @@ async def fine_minatore(interaction: discord.Interaction):
         icon_url=interaction.user.display_avatar.url,
     )
 
-    await interaction.response.send_message(embed=embed)
+    await interaction.followup.send(embed=embed)
 
 # ------------------------------------------------------------------
 # AUTOCOMPLETE HELPERS
