@@ -6618,7 +6618,6 @@ async def renderizza_fattura_immagine(fattura) -> discord.File:
     buffer = io.BytesIO(screenshot_bytes)
     buffer.seek(0)
     return discord.File(buffer, filename="fattura.png")
-
 @bot.tree.command(
     name="emetti_fattura", description="Emetti una nuova fattura aziendale."
 )
@@ -6698,7 +6697,6 @@ async def emetti_fattura(
     except discord.Forbidden:
         # Gestisce il caso in cui l'utente ha i DM chiusi o ha bloccato il bot
         pass
-
 
 # --- INTERFACCIA PER IL PAGAMENTO DELLE FATTURE ---
 class PagaFatturaSelect(discord.ui.Select):
