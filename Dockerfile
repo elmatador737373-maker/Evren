@@ -1,28 +1,25 @@
 FROM node:18-slim
 
-# Installa Chromium e i font di sistema necessari
+# Installazione delle dipendenze Linux essenziali per Chromium
 RUN apt-get update && apt-get install -y \
-    chromium \
-    fonts-ipafont-gothic \
-    fonts-wqy-zenhei \
-    fonts-thai-tlwg \
-    fonts-kacst \
-    fonts-freefont-ttf \
-    libxss1 \
-    --no-install-recommends \
+    fonts-liberation \
+    libnss3 \
+    libatk-bridge2.0-0 \
+    libdrm2 \
+    libxkbcommon0 \
+    libgbm1 \
+    libasound2 \
+    ca-certificates \
     && rm -rf /var/lib/apt/lists/*
-
-# Configura le variabili di ambiente affinché Puppeteer usi Chromium di sistema
-ENV PUPPETEER_SKIP_CHROMIUM_DOWNLOAD=true \
-    PUPPETEER_EXEC_PATH=/usr/bin/chromium
 
 WORKDIR /usr/src/app
 
 COPY package*.json ./
-RUN npm install
+
+RUN npm ci --only=production
 
 COPY . .
 
 EXPOSE 3000
 
-CMD ["node", "server.js"]
+CMD ["npm", "start"]
