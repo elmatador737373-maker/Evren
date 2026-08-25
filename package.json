@@ -1,13 +1,17 @@
 {
-  "name": "html2image-custom-service",
+  "name": "express-puppeteer-render",
   "version": "1.0.0",
-  "description": "Servizio privato di rendering HTML/CSS to Image stile HCTI",
+  "description": "HTML to Image API ottimizzata per Render Free Tier con gestione della RAM e coda anti-crash",
   "main": "server.js",
   "scripts": {
-    "start": "node server.js"
+    "start": "node --expose-gc server.js"
   },
   "dependencies": {
+    "@sparticuz/chromium": "^123.0.0",
     "express": "^4.19.2",
-    "puppeteer": "^22.10.0"
+    "puppeteer-core": "^22.6.0"
+  },
+  "engines": {
+    "node": ">=18.0.0"
   }
 }
