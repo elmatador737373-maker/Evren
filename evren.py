@@ -1603,6 +1603,77 @@ async def pannello_distributore(interaction: discord.Interaction):
     view = DistributorePannelloView(supabase)
     await interaction.channel.send(embed=embed, view=view)
 
+import datetime
+import re
+import discord
+from discord import app_commands, ui
+from discord.ext import commands
+# --- FUNZIONE INVIA RICHIESTA STIPENDIO ---
+async def invia_richiesta_stipendio(bot: commands.Bot, utente: discord.Member, turno: dict, motivo: str = "Fine Turno"):
+    ora_inizio = datetime.datetime.fromisoformat(turno["ora_inizio"])
+    ora_fine = datetime.datetime.now(datetime.timezone.utc)
+    
+    # Calcolo della durata in minuti ed ore
+    durata_secondi = (ora_fine - ora_inizio).total_seconds()
+    durata_minuti = max(0, int(durata_secondi // 60))
+    
+    # Controllo tolleranza minima
+    if durata_minuti < TOLLERANZA_MINUTI:
+        embed_annullato = discord.Embed(
+            title="⚠️ Turno Annullato",
+            description=f"Il tuo turno di **{durata_minuti} min** è stato annullato perché inferiore alla tolleranza minima di **{TOLLERANZA_MINUTI} minuti**.",
+            color=discord.Color.red(),
+            timestamp=datetime.datetime.now()
+        )
+        await notifica_utente_dm(bot, utente.id, embed_annullato)
+        return
+
+    # Calcolo dello stipendio
+    tariffa = float(turno.get("tariffa", 0.0))
+    ore_lavorate = durata_secondi / 3600.0
+    importo_calcolato = round(ore_lavorate * tariffa, 2)
+
+    # Formattazione tempi
+    ore_display = durata_minuti // 60
+    minuti_display = durata_minuti % 60
+    tempo_str = f"{ore_display}h {minuti_display}m" if ore_display > 0 else f"{minuti_display} minuti"
+
+    # Recupero del canale per lo staff
+    canale_stipendi = bot.get_channel(CANALE_STIPENDI_ID) or await bot.fetch_channel(CANALE_STIPENDI_ID)
+    if not canale_stipendi:
+        print(f"❌ Errore: Impossibile trovare il canale stipendi con ID {CANALE_STIPENDI_ID}")
+        return
+
+    # Embed per il canale staff
+    embed_staff = discord.Embed(
+        title="📑 Richiesta Approvazione Stipendio",
+        color=discord.Color.gold(),
+        timestamp=datetime.datetime.now()
+    )
+    embed_staff.add_field(name="👤 Dipendente", value=f"{utente.mention}\n`{utente.name}`", inline=True)
+    embed_staff.add_field(name="💰 Stipendio Calcolato", value=f"```fix\n{importo_calcolato:,.2f}$```", inline=True)
+    embed_staff.add_field(name="💼 Mansione", value=f"```{turno.get('role_name', 'N/D')}```", inline=False)
+    embed_staff.add_field(name="⏱️ Tempo Lavorato", value=f"**{tempo_str}**", inline=True)
+    embed_staff.add_field(name="💵 Tariffa Oraria", value=f"**{tariffa:,.2f}$/h**", inline=True)
+    embed_staff.add_field(name="📌 Motivo Chiusura", value=f"*{motivo}*", inline=False)
+    embed_staff.set_thumbnail(url=utente.display_avatar.url)
+    embed_staff.set_footer(text=f"ID: {utente.id} | Supabase Integrated")
+
+    # Invia nel canale staff con i bottoni di approvazione/rifiuto
+    view = ApprovazioneStipendioView(dipendente_id=utente.id, importo_calcolato=importo_calcolato)
+    await canale_stipendi.send(embed=embed_staff, view=view)
+
+    # Embed di notifica in DM per l'utente
+    embed_dm = discord.Embed(
+        title="🏁 Turno Concluso",
+        description=f"Il tuo turno come **{turno.get('role_name')}** è stato registrato ed è in attesa di approvazione dallo staff.",
+        color=discord.Color.blue(),
+        timestamp=datetime.datetime.now()
+    )
+    embed_dm.add_field(name="⏱️ Tempo Lavorato", value=f"**{tempo_str}**", inline=True)
+    embed_dm.add_field(name="💰 Importo Stimato", value=f"**{importo_calcolato:,.2f}$**", inline=True)
+    
+    await notifica_utente_dm(bot, utente.id, embed_dm)
 
 CANALE_STIPENDI_ID = 1459566404100686009  # ID canale staff stipendi
 TOLLERANZA_MINUTI = 15                  # Tolleranza minima in minuti
@@ -1644,8 +1715,8 @@ async def notifica_utente_dm(bot: commands.Bot, user_id: int, embed: discord.Emb
 
 
 # --- MODALE TARIFFA MANUALE ---
-class TariffaManualeModal(discord.ui.Modal, title="💵 Inserisci Tariffa Oraria"):
-    tariffa_input = discord.ui.TextInput(
+class TariffaManualeModal(ui.Modal, title="💵 Inserisci Tariffa Oraria"):
+    tariffa_input = ui.TextInput(
         label="Tariffa Oraria in $",
         placeholder="Es: 250.00",
         required=True,
@@ -1668,7 +1739,7 @@ class TariffaManualeModal(discord.ui.Modal, title="💵 Inserisci Tariffa Oraria
 
 
 # --- DROPDOWN SELEZIONE RUOLO ---
-class SelezioneRuoloSelect(discord.ui.Select):
+class SelezioneRuoloSelect(ui.Select):
     def __init__(self, ruoli: list[discord.Role]):
         options = []
         for ruolo in ruoli[:25]:
@@ -1694,7 +1765,7 @@ class SelezioneRuoloSelect(discord.ui.Select):
             await interaction.response.send_modal(TariffaManualeModal(ruolo))
 
 
-class SelezioneRuoloView(discord.ui.View):
+class SelezioneRuoloView(ui.View):
     def __init__(self, ruoli: list[discord.Role]):
         super().__init__(timeout=60)
         self.add_item(SelezioneRuoloSelect(ruoli))
@@ -1726,21 +1797,6 @@ async def avvia_turno_database(interaction: discord.Interaction, ruolo: discord.
     else:
         await interaction.response.send_message(embed=embed, ephemeral=True)
 
-
-
-# --- VIEW PERSISTENTE STAFF ---
-import discord
-import datetime
-
-import datetime
-import discord
-
-
-
-import discord
-from discord import ui
-from discord.ext import commands
-import datetime
 
 # --- MODAL PER MODIFICARE L'IMPORTO ---
 class ModificaImportoModal(ui.Modal, title="Modifica Importo Stipendio"):
@@ -1774,12 +1830,10 @@ class ModificaImportoModal(ui.Modal, title="Modifica Importo Stipendio"):
 
 # --- VIEW APPROVAZIONE STIPENDIO ---
 class ApprovazioneStipendioView(ui.View):
-
-    def __init__(self, dipendente_id: int = None, importo_calcolato: float = None, db_pool = None):
+    def __init__(self, dipendente_id: int = None, importo_calcolato: float = None):
         super().__init__(timeout=None)
         self.dipendente_id = dipendente_id
         self.importo_calcolato = importo_calcolato
-        self.db_pool = db_pool  # Connessione/Pool al database (es. asyncpg)
 
     def _get_data_from_embed(self, message: discord.Message):
         """Metodo di supporto per recuperare ID e importo dall'embed in caso di riavvio bot."""
@@ -1808,25 +1862,28 @@ class ApprovazioneStipendioView(ui.View):
         await interaction.response.defer(ephemeral=True)
         dipendente_id, importo, embed = self._get_data_from_embed(interaction.message)
 
-        # Operazioni sul Database
-        if self.db_pool:
-            async with self.db_pool.acquire() as conn:
-                async with conn.transaction():
-                    # 1. Accredita lo stipendio nel conto bancario dell'utente
-                    await conn.execute(
-                        "UPDATE public.users SET bank = bank + $1 WHERE discord_id = $2",
-                        importo, str(dipendente_id)
-                    )
-                    # 2. Registra nel log delle transazioni generali
-                    await conn.execute(
-                        "INSERT INTO public.transactions_log (discord_id, type, amount, description) VALUES ($1, $2, $3, $4)",
-                        str(dipendente_id), "Stipendio", importo, f"Stipendio approvato da {interaction.user.display_name}"
-                    )
-                    # 3. Registra nella tabella transazioni
-                    await conn.execute(
-                        "INSERT INTO public.transazioni (user_id, importo, stato, approvato_da) VALUES ($1, $2, $3, $4)",
-                        str(dipendente_id), importo, "Approvato", str(interaction.user.id)
-                    )
+        # 1. Accredita lo stipendio nel conto bancario dell'utente
+        res = supabase.table("users").select("bank").eq("discord_id", str(dipendente_id)).execute()
+        saldo_attuale = res.data[0].get("bank") or 0.0 if res.data else 0.0
+        nuovo_saldo = saldo_attuale + importo
+
+        supabase.table("users").update({"bank": nuovo_saldo}).eq("discord_id", str(dipendente_id)).execute()
+
+        # 2. Registra nel log delle transazioni generali
+        supabase.table("transactions_log").insert({
+            "discord_id": str(dipendente_id),
+            "type": "Stipendio",
+            "amount": importo,
+            "description": f"Stipendio approvato da {interaction.user.display_name}"
+        }).execute()
+
+        # 3. Registra nella tabella transazioni
+        supabase.table("transazioni").insert({
+            "user_id": str(dipendente_id),
+            "importo": importo,
+            "stato": "Approvato",
+            "approvato_da": str(interaction.user.id)
+        }).execute()
 
         # Disabilita i pulsanti e aggiorna l'embed
         for item in self.children:
@@ -1846,7 +1903,6 @@ class ApprovazioneStipendioView(ui.View):
         custom_id="stipendio_modifica",
     )
     async def modifica(self, interaction: discord.Interaction, button: discord.ui.Button):
-        # Apre il Modal per la modifica manuale dell'importo
         await interaction.response.send_modal(ModificaImportoModal(self))
 
     @discord.ui.button(
@@ -1859,13 +1915,13 @@ class ApprovazioneStipendioView(ui.View):
         await interaction.response.defer(ephemeral=True)
         dipendente_id, importo, embed = self._get_data_from_embed(interaction.message)
 
-        # Operazioni sul Database
-        if self.db_pool:
-            async with self.db_pool.acquire() as conn:
-                await conn.execute(
-                    "INSERT INTO public.transazioni (user_id, importo, stato, approvato_da) VALUES ($1, $2, $3, $4)",
-                    str(dipendente_id), importo, "Rifiutato", str(interaction.user.id)
-                )
+        # Registrazione rifiuto su Supabase
+        supabase.table("transazioni").insert({
+            "user_id": str(dipendente_id),
+            "importo": importo,
+            "stato": "Rifiutato",
+            "approvato_da": str(interaction.user.id)
+        }).execute()
 
         # Disabilita i pulsanti e aggiorna l'embed
         for item in self.children:
@@ -1877,6 +1933,7 @@ class ApprovazioneStipendioView(ui.View):
 
         await interaction.message.edit(embed=embed, view=self)
         await interaction.followup.send("❌ Richiesta di stipendio rifiutata.", ephemeral=True)
+
 
 # --- COMANDI DISCORD TREE ---
 @bot.tree.command(name="inizia-turno", description="Seleziona la tua mansione e avvia il turno.")
@@ -1892,6 +1949,7 @@ async def inizia_turno(interaction: discord.Interaction):
     view = SelezioneRuoloView(ruoli_utente)
     await interaction.response.send_message("💼 **Seleziona il ruolo** per il quale intendi iniziare il turno:", view=view, ephemeral=True)
 
+
 @bot.tree.command(name="fine-turno", description="Concludi il tuo turno e inoltra la richiesta di stipendio.")
 async def fine_turno(interaction: discord.Interaction):
     res = supabase.table("turni_attivi").select("*").eq("user_id", str(interaction.user.id)).execute()
@@ -1903,6 +1961,7 @@ async def fine_turno(interaction: discord.Interaction):
 
     await invia_richiesta_stipendio(bot, interaction.user, turno, motivo="Fine Turno Volontaria")
     await interaction.response.send_message("🏁 **Turno Concluso!** La richiesta di stipendio è stata inoltrata allo staff.", ephemeral=True)
+
 
 @bot.tree.command(name="staff-chiudi-turno", description="[STAFF] Forza la chiusura del turno di un utente specifico.")
 @app_commands.checks.has_role(RUOLO_STAFF_ID)
@@ -1916,6 +1975,7 @@ async def staff_chiudi_turno(interaction: discord.Interaction, utente: discord.M
 
     await invia_richiesta_stipendio(bot, utente, turno, motivo=f"Chiusura Forzata da {interaction.user.mention}")
     await interaction.response.send_message(f"🔒 **Turno Chiuso:** Il turno di {utente.mention} è stato terminato e la richiesta è stata inviata.", ephemeral=True)
+
 
 @bot.tree.command(name="staff-chiudi-tutti", description="[STAFF] Chiudi tutti i turni attivi sul server.")
 @app_commands.checks.has_role(RUOLO_STAFF_ID)
@@ -1934,6 +1994,7 @@ async def staff_chiudi_tutti(interaction: discord.Interaction):
             await invia_richiesta_stipendio(bot, utente, turno, motivo=f"Chiusura Massiva da {interaction.user.mention}")
 
     await interaction.response.send_message(f"🚨 **Chiusura Massiva:** Chiusi correttamente tutti i **{count}** turni attivi.", ephemeral=True)
+
 
 @staff_chiudi_turno.error
 @staff_chiudi_tutti.error
@@ -6251,7 +6312,7 @@ from discord import ui
 #  CONFIGURAZIONE RUOLI (Sostituisci con i veri ID)
 # =======================================================
 
-import io
+Perchè non funziona? import io
 from playwright.async_api import async_playwright
 
 async def genera_fattura_html(
@@ -6509,6 +6570,324 @@ async def genera_fattura_html(
     """
   return html_content
 
+
+
+import io
+import aiohttp
+import discord
+
+async def renderizza_fattura_immagine(fattura) -> discord.File:
+    html = await genera_fattura_html(
+        invoice_id=fattura["id"],
+        azienda=fattura["azienda"],
+        emittente=fattura["emittente"],
+        destinatario=fattura["destinatario"],
+        importo=fattura["importo"],
+        causale=fattura["causale"],
+        data_emissione=fattura["data"],
+        stato=fattura["status"]
+    )
+    
+    payload = {
+        "html": html,
+        "viewport_width": 794,
+        "viewport_height": 1123,
+        "device_scale": 2
+    }
+
+    # Credenziali Basic Auth impostate sul tuo server
+    user_id = "Evren"
+    api_key = "Evren"
+    
+    # Endpoint del tuo nuovo servizio su Render
+    render_url = "https://htmlevren.onrender.com/v1/image"
+    
+    headers = {
+        "Authorization": aiohttp.encode_basic_auth(str(user_id), str(api_key))
+    }
+
+    async with aiohttp.ClientSession() as session:
+        async with session.post(render_url, json=payload, headers=headers) as response:
+            if response.status == 200:
+                # Il tuo server su Render restituisce direttamente i byte della fattura in PNG
+                screenshot_bytes = await response.read()
+            else:
+                error_text = await response.text()
+                raise Exception(f"Errore nel rendering HTML della fattura (Status {response.status}): {error_text}")
+
+    buffer = io.BytesIO(screenshot_bytes)
+    buffer.seek(0)
+    return discord.File(buffer, filename="fattura.png")
+
+
+@bot.tree.command(
+    name="emetti_fattura", description="Emetti una nuova fattura aziendale."
+)
+@app_commands.describe(
+    azienda="Nome dell'azienda emittente",
+    utente="Il cittadino destinatario della fattura",
+    importo="Importo in denaro",
+    causale="Motivo della fattura",
+)
+async def emetti_fattura(
+    interaction: discord.Interaction,
+    azienda: str,
+    utente: discord.Member,
+    importo: float,
+    causale: str,
+):
+  # 1. Rispondi subito a Discord per evitare lo scadere dei 3 secondi
+  await interaction.response.defer(ephemeral=False)
+
+  data_oggi = datetime.datetime.now().strftime("%d/%m/%Y")
+  emittente_nome = interaction.user.display_name
+
+  # 2. Inserimento nel database
+  res = (
+      supabase.table("invoices")
+      .insert({
+          "discord_id": str(utente.id),
+          "destinatario": utente.display_name,
+          "emittente": emittente_nome,
+          "azienda": azienda,
+          "importo": importo,
+          "causale": causale,
+          "data": data_oggi,
+          "status": "Da Pagare",
+      })
+      .execute()
+  )
+
+  if not res.data:
+    await interaction.followup.send(
+        "❌ Errore durante la creazione della fattura nel database.",
+        ephemeral=True,
+    )
+    return
+
+  nuova_fattura = res.data[0]
+
+  # 3. Generazione dell'immagine della fattura
+# --- SOSTITUISCI QUESTO BLOCCO ---
+# img_io = await renderizza_fattura_immagine(ultima)
+# file = discord.File(img_io, filename=f"fattura_{ultima['id']}.png")
+# --- CON QUESTO ---
+file = await renderizza_fattura_immagine(ultima)
+
+  embed = discord.Embed(
+      title="📑 Nuova Fattura Emessa",
+      description=f"Fattura emessa con successo per {utente.mention} a nome dell'azienda **{azienda}**!",
+      color=discord.Color.from_rgb(15, 23, 42),
+  )
+  embed.set_image(url=f"attachment://fattura_{nuova_fattura['id']}.png")
+  embed.set_footer(text="Evren City OS • Sistema Fiscale")
+
+  # 4. Invia l'anteprima nel canale pubblico
+  await interaction.followup.send(embed=embed, file=file)
+
+  # 5. Invia un messaggio privato (DM) al destinatario
+  try:
+    dm_embed = discord.Embed(
+        title="💳 Nuova Fattura Ricevuta",
+        description=(
+            f"Ti è stata emessa una nuova fattura a nome dell'azienda **{azienda}** "
+            f"per un importo di **€ {importo:,.2f}**.\n\n"
+            f"💬 **Causale:** {causale}\n\n"
+            f"Usa il comando </mie_fatture:0> in città per visualizzare l'anteprima "
+            f"dettagliata ed effettuare il pagamento."
+        ),
+        color=discord.Color.from_rgb(220, 38, 38),
+    )
+    dm_embed.set_footer(text="Evren City OS • Sistema Fiscale")
+    await utente.send(embed=dm_embed)
+  except discord.Forbidden:
+    # Gestisce il caso in cui l'utente ha i DM chiusi o ha bloccato il bot
+    pass
+
+# --- INTERFACCIA PER IL PAGAMENTO DELLE FATTURE ---
+class PagaFatturaSelect(discord.ui.Select):
+
+  def __init__(self, fatture):
+    options = []
+    for f in fatture:
+      if f["status"].lower() == "da pagare":
+        options.append(
+            discord.SelectOption(
+                label=f"Fattura #{f['id']} - € {f['importo']:,.2f}",
+                description=f"Azienda: {f['azienda']} | {f['causale'][:40]}",
+                value=str(f["id"]),
+                emoji="💳",
+            )
+        )
+
+    if not options:
+      options.append(
+          discord.SelectOption(
+              label="Nessuna fattura da pagare",
+              value="none",
+              description="Sei in regola con i pagamenti!",
+          )
+      )
+
+    super().__init__(
+        placeholder="Seleziona una fattura da pagare...",
+        min_values=1,
+        max_values=1,
+        options=options,
+    )
+
+  async def callback(self, interaction: discord.Interaction):
+    if self.values[0] == "none":
+      await interaction.response.send_message(
+          "Non hai fatture in sospeso da pagare.", ephemeral=True
+      )
+      return
+
+    invoice_id = int(self.values[0])
+    user_id_str = str(interaction.user.id)
+
+    inv_res = (
+        supabase.table("invoices")
+        .select("*")
+        .eq("id", invoice_id)
+        .execute()
+    )
+    if not inv_res.data:
+      await interaction.response.send_message(
+          "❌ Fattura non trovata.", ephemeral=True
+      )
+      return
+
+    fattura = inv_res.data[0]
+    importo_dovuto = fattura["importo"]
+
+    user_res = (
+        supabase.table("users").select("bank, wallet").eq("discord_id", user_id_str).execute()
+    )
+    if not user_res.data:
+      await interaction.response.send_message(
+          "❌ Non risulti registrato anagraficamente in città.", ephemeral=True
+      )
+      return
+
+    banca = user_res.data[0].get("bank", 0.0) or 0.0
+    portafoglio = user_res.data[0].get("wallet", 0.0) or 0.0
+
+    if banca >= importo_dovuto:
+      nuovo_saldo = banca - importo_dovuto
+      supabase.table("users").update({"bank": nuovo_saldo}).eq(
+          "discord_id", user_id_str
+      ).execute()
+      metodo_pagamento = "Conto Bancario"
+    elif portafoglio >= importo_dovuto:
+      nuovo_saldo = portafoglio - importo_dovuto
+      supabase.table("users").update({"wallet": nuovo_saldo}).eq(
+          "discord_id", user_id_str
+      ).execute()
+      metodo_pagamento = "Contanti (Wallet)"
+    else:
+      await interaction.response.send_message(
+          f"❌ Fondi insufficienti! Ti servono **€ {importo_dovuto:,.2f}** (Banca:"
+          f" € {banca:,.2f} | Contanti: € {portafoglio:,.2f}).",
+          ephemeral=True,
+      )
+      return
+
+    supabase.table("invoices").update({"status": "Pagata"}).eq(
+        "id", invoice_id
+    ).execute()
+
+    supabase.table("transactions_log").insert({
+        "discord_id": user_id_str,
+        "type": "Pagamento Fattura",
+        "amount": -importo_dovuto,
+        "description": (
+            f"Pagamento fattura #{invoice_id} - Azienda: {fattura['azienda']}"
+        ),
+    }).execute()
+
+    await interaction.response.send_message(
+        f"✅ Fattura **#{invoice_id}** pagata con successo tramite"
+        f" **{metodo_pagamento}** per un importo di **€"
+        f" {importo_dovuto:,.2f}**!",
+        ephemeral=True,
+    )
+
+
+class FabbricaFattureView(discord.ui.View):
+
+  def __init__(self, fatture):
+    super().__init__(timeout=180)
+    self.add_item(PagaFatturaSelect(fatture))
+
+@bot.tree.command(
+    name="mie_fatture", description="Visualizza e paga le tue fatture in sospeso."
+)
+async def mie_fatture(interaction: discord.Interaction):
+  # 1. Impedisce il timeout di Discord
+  await interaction.response.defer(ephemeral=False)
+
+  res = (
+      supabase.table("invoices")
+      .select("*")
+      .eq("discord_id", str(interaction.user.id))
+      .order("id", desc=True)
+      .execute()
+  )
+
+  if not res.data:
+    await interaction.followup.send(
+        "❌ Non hai alcuna fattura registrata a tuo carico.", ephemeral=True
+    )
+    return
+
+  fatture = res.data
+  ultima = fatture[0]
+
+  # 2. Generazione dell'immagine con Playwright
+# --- SOSTITUISCI QUESTO BLOCCO ---
+# img_io = await renderizza_fattura_immagine(ultima)
+# file = discord.File(img_io, filename=f"fattura_{ultima['id']}.png")
+# --- CON QUESTO ---
+file = await renderizza_fattura_immagine(ultima)
+
+  embed = discord.Embed(
+      title="📑 Gestione Fatture Personali",
+      description=(
+          "Ecco l'anteprima della tua fattura più recente. Usa il menu sotto"
+          " per pagare quelle in sospeso."
+      ),
+      color=discord.Color.from_rgb(15, 23, 42),
+  )
+  embed.set_image(url=f"attachment://fattura_{ultima['id']}.png")
+
+  if len(fatture) > 1:
+    storico_testo = ""
+    for f in fatture[1:]:
+      storico_testo += (
+          f"• **#{f['id']}** | {f['azienda']} | € {f['importo']:,.2f} |"
+          f" `{f['status']}`\n"
+      )
+    if len(storico_testo) > 1024:
+      storico_testo = storico_testo[:1021] + "..."
+    embed.add_field(
+        name="📜 Storico Fatture Precedenti",
+        value=storico_testo,
+        inline=False,
+    )
+
+  embed.set_footer(text="Evren City OS • Sistema Fiscale")
+
+  view = FabbricaFattureView(fatture)
+  
+  # 3. Invio tramite followup
+  await interaction.followup.send(embed=embed, file=file, view=view)
+
+import aiohttp
+
+import io
+import aiohttp
+import discord
 import aiohttp
 import io
 import discord
@@ -6823,318 +7202,7 @@ async def genera_carta_identita(
     </html>
     """
     return html_content
-
-import io
-import aiohttp
-import discord
-
-async def renderizza_fattura_immagine(fattura) -> discord.File:
-    html = await genera_fattura_html(
-        invoice_id=fattura["id"],
-        azienda=fattura["azienda"],
-        emittente=fattura["emittente"],
-        destinatario=fattura["destinatario"],
-        importo=fattura["importo"],
-        causale=fattura["causale"],
-        data_emissione=fattura["data"],
-        stato=fattura["status"]
-    )
     
-    payload = {
-        "html": html,
-        "viewport_width": 794,
-        "viewport_height": 1123,
-        "device_scale": 2
-    }
-
-    # Credenziali Basic Auth impostate sul tuo server
-    user_id = "Evren"
-    api_key = "Evren"
-    
-    # Endpoint del tuo nuovo servizio su Render
-    render_url = "https://htmlevren.onrender.com/v1/image"
-    
-    headers = {
-        "Authorization": aiohttp.encode_basic_auth(str(user_id), str(api_key))
-    }
-
-    async with aiohttp.ClientSession() as session:
-        async with session.post(render_url, json=payload, headers=headers) as response:
-            if response.status == 200:
-                # Il tuo server su Render restituisce direttamente i byte della fattura in PNG
-                screenshot_bytes = await response.read()
-            else:
-                error_text = await response.text()
-                raise Exception(f"Errore nel rendering HTML della fattura (Status {response.status}): {error_text}")
-
-    buffer = io.BytesIO(screenshot_bytes)
-    buffer.seek(0)
-    return discord.File(buffer, filename="fattura.png")
-
-
-@bot.tree.command(
-    name="emetti_fattura", description="Emetti una nuova fattura aziendale."
-)
-@app_commands.describe(
-    azienda="Nome dell'azienda emittente",
-    utente="Il cittadino destinatario della fattura",
-    importo="Importo in denaro",
-    causale="Motivo della fattura",
-)
-async def emetti_fattura(
-    interaction: discord.Interaction,
-    azienda: str,
-    utente: discord.Member,
-    importo: float,
-    causale: str,
-):
-  # 1. Rispondi subito a Discord per evitare lo scadere dei 3 secondi
-  await interaction.response.defer(ephemeral=False)
-
-  data_oggi = datetime.datetime.now().strftime("%d/%m/%Y")
-  emittente_nome = interaction.user.display_name
-
-  # 2. Inserimento nel database
-  res = (
-      supabase.table("invoices")
-      .insert({
-          "discord_id": str(utente.id),
-          "destinatario": utente.display_name,
-          "emittente": emittente_nome,
-          "azienda": azienda,
-          "importo": importo,
-          "causale": causale,
-          "data": data_oggi,
-          "status": "Da Pagare",
-      })
-      .execute()
-  )
-
-  if not res.data:
-    await interaction.followup.send(
-        "❌ Errore durante la creazione della fattura nel database.",
-        ephemeral=True,
-    )
-    return
-
-  nuova_fattura = res.data[0]
-
-  # 3. Generazione dell'immagine della fattura
-  img_io = await renderizza_fattura_immagine(nuova_fattura)
-  file = discord.File(img_io, filename=f"fattura_{nuova_fattura['id']}.png")
-
-  embed = discord.Embed(
-      title="📑 Nuova Fattura Emessa",
-      description=f"Fattura emessa con successo per {utente.mention} a nome dell'azienda **{azienda}**!",
-      color=discord.Color.from_rgb(15, 23, 42),
-  )
-  embed.set_image(url=f"attachment://fattura_{nuova_fattura['id']}.png")
-  embed.set_footer(text="Evren City OS • Sistema Fiscale")
-
-  # 4. Invia l'anteprima nel canale pubblico
-  await interaction.followup.send(embed=embed, file=file)
-
-  # 5. Invia un messaggio privato (DM) al destinatario
-  try:
-    dm_embed = discord.Embed(
-        title="💳 Nuova Fattura Ricevuta",
-        description=(
-            f"Ti è stata emessa una nuova fattura a nome dell'azienda **{azienda}** "
-            f"per un importo di **€ {importo:,.2f}**.\n\n"
-            f"💬 **Causale:** {causale}\n\n"
-            f"Usa il comando </mie_fatture:0> in città per visualizzare l'anteprima "
-            f"dettagliata ed effettuare il pagamento."
-        ),
-        color=discord.Color.from_rgb(220, 38, 38),
-    )
-    dm_embed.set_footer(text="Evren City OS • Sistema Fiscale")
-    await utente.send(embed=dm_embed)
-  except discord.Forbidden:
-    # Gestisce il caso in cui l'utente ha i DM chiusi o ha bloccato il bot
-    pass
-
-# --- INTERFACCIA PER IL PAGAMENTO DELLE FATTURE ---
-class PagaFatturaSelect(discord.ui.Select):
-
-  def __init__(self, fatture):
-    options = []
-    for f in fatture:
-      if f["status"].lower() == "da pagare":
-        options.append(
-            discord.SelectOption(
-                label=f"Fattura #{f['id']} - € {f['importo']:,.2f}",
-                description=f"Azienda: {f['azienda']} | {f['causale'][:40]}",
-                value=str(f["id"]),
-                emoji="💳",
-            )
-        )
-
-    if not options:
-      options.append(
-          discord.SelectOption(
-              label="Nessuna fattura da pagare",
-              value="none",
-              description="Sei in regola con i pagamenti!",
-          )
-      )
-
-    super().__init__(
-        placeholder="Seleziona una fattura da pagare...",
-        min_values=1,
-        max_values=1,
-        options=options,
-    )
-
-  async def callback(self, interaction: discord.Interaction):
-    if self.values[0] == "none":
-      await interaction.response.send_message(
-          "Non hai fatture in sospeso da pagare.", ephemeral=True
-      )
-      return
-
-    invoice_id = int(self.values[0])
-    user_id_str = str(interaction.user.id)
-
-    inv_res = (
-        supabase.table("invoices")
-        .select("*")
-        .eq("id", invoice_id)
-        .execute()
-    )
-    if not inv_res.data:
-      await interaction.response.send_message(
-          "❌ Fattura non trovata.", ephemeral=True
-      )
-      return
-
-    fattura = inv_res.data[0]
-    importo_dovuto = fattura["importo"]
-
-    user_res = (
-        supabase.table("users").select("bank, wallet").eq("discord_id", user_id_str).execute()
-    )
-    if not user_res.data:
-      await interaction.response.send_message(
-          "❌ Non risulti registrato anagraficamente in città.", ephemeral=True
-      )
-      return
-
-    banca = user_res.data[0].get("bank", 0.0) or 0.0
-    portafoglio = user_res.data[0].get("wallet", 0.0) or 0.0
-
-    if banca >= importo_dovuto:
-      nuovo_saldo = banca - importo_dovuto
-      supabase.table("users").update({"bank": nuovo_saldo}).eq(
-          "discord_id", user_id_str
-      ).execute()
-      metodo_pagamento = "Conto Bancario"
-    elif portafoglio >= importo_dovuto:
-      nuovo_saldo = portafoglio - importo_dovuto
-      supabase.table("users").update({"wallet": nuovo_saldo}).eq(
-          "discord_id", user_id_str
-      ).execute()
-      metodo_pagamento = "Contanti (Wallet)"
-    else:
-      await interaction.response.send_message(
-          f"❌ Fondi insufficienti! Ti servono **€ {importo_dovuto:,.2f}** (Banca:"
-          f" € {banca:,.2f} | Contanti: € {portafoglio:,.2f}).",
-          ephemeral=True,
-      )
-      return
-
-    supabase.table("invoices").update({"status": "Pagata"}).eq(
-        "id", invoice_id
-    ).execute()
-
-    supabase.table("transactions_log").insert({
-        "discord_id": user_id_str,
-        "type": "Pagamento Fattura",
-        "amount": -importo_dovuto,
-        "description": (
-            f"Pagamento fattura #{invoice_id} - Azienda: {fattura['azienda']}"
-        ),
-    }).execute()
-
-    await interaction.response.send_message(
-        f"✅ Fattura **#{invoice_id}** pagata con successo tramite"
-        f" **{metodo_pagamento}** per un importo di **€"
-        f" {importo_dovuto:,.2f}**!",
-        ephemeral=True,
-    )
-
-
-class FabbricaFattureView(discord.ui.View):
-
-  def __init__(self, fatture):
-    super().__init__(timeout=180)
-    self.add_item(PagaFatturaSelect(fatture))
-
-@bot.tree.command(
-    name="mie_fatture", description="Visualizza e paga le tue fatture in sospeso."
-)
-async def mie_fatture(interaction: discord.Interaction):
-  # 1. Impedisce il timeout di Discord
-  await interaction.response.defer(ephemeral=False)
-
-  res = (
-      supabase.table("invoices")
-      .select("*")
-      .eq("discord_id", str(interaction.user.id))
-      .order("id", desc=True)
-      .execute()
-  )
-
-  if not res.data:
-    await interaction.followup.send(
-        "❌ Non hai alcuna fattura registrata a tuo carico.", ephemeral=True
-    )
-    return
-
-  fatture = res.data
-  ultima = fatture[0]
-
-  # 2. Generazione dell'immagine con Playwright
-  img_io = await renderizza_fattura_immagine(ultima)
-  file = discord.File(img_io, filename=f"fattura_{ultima['id']}.png")
-
-  embed = discord.Embed(
-      title="📑 Gestione Fatture Personali",
-      description=(
-          "Ecco l'anteprima della tua fattura più recente. Usa il menu sotto"
-          " per pagare quelle in sospeso."
-      ),
-      color=discord.Color.from_rgb(15, 23, 42),
-  )
-  embed.set_image(url=f"attachment://fattura_{ultima['id']}.png")
-
-  if len(fatture) > 1:
-    storico_testo = ""
-    for f in fatture[1:]:
-      storico_testo += (
-          f"• **#{f['id']}** | {f['azienda']} | € {f['importo']:,.2f} |"
-          f" `{f['status']}`\n"
-      )
-    if len(storico_testo) > 1024:
-      storico_testo = storico_testo[:1021] + "..."
-    embed.add_field(
-        name="📜 Storico Fatture Precedenti",
-        value=storico_testo,
-        inline=False,
-    )
-
-  embed.set_footer(text="Evren City OS • Sistema Fiscale")
-
-  view = FabbricaFattureView(fatture)
-  
-  # 3. Invio tramite followup
-  await interaction.followup.send(embed=embed, file=file, view=view)
-
-
-import aiohttp
-
-import io
-import aiohttp
-import discord
 
 async def renderizza_html_in_immagine(html_content: str) -> discord.File:
     user_id = "Evren"
