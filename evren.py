@@ -6312,7 +6312,7 @@ from discord import ui
 #  CONFIGURAZIONE RUOLI (Sostituisci con i veri ID)
 # =======================================================
 
-Perchè non funziona? import io
+import io
 from playwright.async_api import async_playwright
 
 async def genera_fattura_html(
@@ -6619,7 +6619,6 @@ async def renderizza_fattura_immagine(fattura) -> discord.File:
     buffer.seek(0)
     return discord.File(buffer, filename="fattura.png")
 
-
 @bot.tree.command(
     name="emetti_fattura", description="Emetti una nuova fattura aziendale."
 )
@@ -6636,73 +6635,70 @@ async def emetti_fattura(
     importo: float,
     causale: str,
 ):
-  # 1. Rispondi subito a Discord per evitare lo scadere dei 3 secondi
-  await interaction.response.defer(ephemeral=False)
+    # 1. Rispondi subito a Discord per evitare lo scadere dei 3 secondi
+    await interaction.response.defer(ephemeral=False)
 
-  data_oggi = datetime.datetime.now().strftime("%d/%m/%Y")
-  emittente_nome = interaction.user.display_name
+    data_oggi = datetime.datetime.now().strftime("%d/%m/%Y")
+    emittente_nome = interaction.user.display_name
 
-  # 2. Inserimento nel database
-  res = (
-      supabase.table("invoices")
-      .insert({
-          "discord_id": str(utente.id),
-          "destinatario": utente.display_name,
-          "emittente": emittente_nome,
-          "azienda": azienda,
-          "importo": importo,
-          "causale": causale,
-          "data": data_oggi,
-          "status": "Da Pagare",
-      })
-      .execute()
-  )
-
-  if not res.data:
-    await interaction.followup.send(
-        "❌ Errore durante la creazione della fattura nel database.",
-        ephemeral=True,
+    # 2. Inserimento nel database
+    res = (
+        supabase.table("invoices")
+        .insert({
+            "discord_id": str(utente.id),
+            "destinatario": utente.display_name,
+            "emittente": emittente_nome,
+            "azienda": azienda,
+            "importo": importo,
+            "causale": causale,
+            "data": data_oggi,
+            "status": "Da Pagare",
+        })
+        .execute()
     )
-    return
 
-  nuova_fattura = res.data[0]
+    if not res.data:
+        await interaction.followup.send(
+            "❌ Errore durante la creazione della fattura nel database.",
+            ephemeral=True,
+        )
+        return
 
-  # 3. Generazione dell'immagine della fattura
-# --- SOSTITUISCI QUESTO BLOCCO ---
-# img_io = await renderizza_fattura_immagine(ultima)
-# file = discord.File(img_io, filename=f"fattura_{ultima['id']}.png")
-# --- CON QUESTO ---
-file = await renderizza_fattura_immagine(ultima)
+    nuova_fattura = res.data[0]
 
-  embed = discord.Embed(
-      title="📑 Nuova Fattura Emessa",
-      description=f"Fattura emessa con successo per {utente.mention} a nome dell'azienda **{azienda}**!",
-      color=discord.Color.from_rgb(15, 23, 42),
-  )
-  embed.set_image(url=f"attachment://fattura_{nuova_fattura['id']}.png")
-  embed.set_footer(text="Evren City OS • Sistema Fiscale")
+    # 3. Generazione dell'immagine della fattura
+    file = await renderizza_fattura_immagine(ultima)
 
-  # 4. Invia l'anteprima nel canale pubblico
-  await interaction.followup.send(embed=embed, file=file)
-
-  # 5. Invia un messaggio privato (DM) al destinatario
-  try:
-    dm_embed = discord.Embed(
-        title="💳 Nuova Fattura Ricevuta",
-        description=(
-            f"Ti è stata emessa una nuova fattura a nome dell'azienda **{azienda}** "
-            f"per un importo di **€ {importo:,.2f}**.\n\n"
-            f"💬 **Causale:** {causale}\n\n"
-            f"Usa il comando </mie_fatture:0> in città per visualizzare l'anteprima "
-            f"dettagliata ed effettuare il pagamento."
-        ),
-        color=discord.Color.from_rgb(220, 38, 38),
+    embed = discord.Embed(
+        title="📑 Nuova Fattura Emessa",
+        description=f"Fattura emessa con successo per {utente.mention} a nome dell'azienda **{azienda}**!",
+        color=discord.Color.from_rgb(15, 23, 42),
     )
-    dm_embed.set_footer(text="Evren City OS • Sistema Fiscale")
-    await utente.send(embed=dm_embed)
-  except discord.Forbidden:
-    # Gestisce il caso in cui l'utente ha i DM chiusi o ha bloccato il bot
-    pass
+    embed.set_image(url=f"attachment://fattura_{nuova_fattura['id']}.png")
+    embed.set_footer(text="Evren City OS • Sistema Fiscale")
+
+    # 4. Invia l'anteprima nel canale pubblico
+    await interaction.followup.send(embed=embed, file=file)
+
+    # 5. Invia un messaggio privato (DM) al destinatario
+    try:
+        dm_embed = discord.Embed(
+            title="💳 Nuova Fattura Ricevuta",
+            description=(
+                f"Ti è stata emessa una nuova fattura a nome dell'azienda **{azienda}** "
+                f"per un importo di **€ {importo:,.2f}**.\n\n"
+                f"💬 **Causale:** {causale}\n\n"
+                f"Usa il comando </mie_fatture:0> in città per visualizzare l'anteprima "
+                f"dettagliata ed effettuare il pagamento."
+            ),
+            color=discord.Color.from_rgb(220, 38, 38),
+        )
+        dm_embed.set_footer(text="Evren City OS • Sistema Fiscale")
+        await utente.send(embed=dm_embed)
+    except discord.Forbidden:
+        # Gestisce il caso in cui l'utente ha i DM chiusi o ha bloccato il bot
+        pass
+
 
 # --- INTERFACCIA PER IL PAGAMENTO DELLE FATTURE ---
 class PagaFatturaSelect(discord.ui.Select):
