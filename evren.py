@@ -303,6 +303,256 @@ MATERIALS_DATA = {
 }
 
 
+import discord
+from discord import app_commands
+from supabase import Client
+
+# RUOLO_STAFF_ID è già definito nel tuo codice principale come stringa o intero
+# RUOLO_STAFF_ID = "1234567890"  # o 1234567890
+
+# Helper function per verificare se l'utente ha il ruolo Staff
+def ha_ruolo_staff(interaction: discord.Interaction) -> bool:
+    if not isinstance(interaction.user, discord.Member):
+        return False
+    staff_id = int(RUOLO_STAFF_ID)
+    return any(role.id == staff_id for role in interaction.user.roles)
+
+
+# ------------------------------------------------------------------
+# AUTOCOMPLETE FUNCTIONS (Con controllo del ruolo)
+# ------------------------------------------------------------------
+async def fazione_autocomplete(
+    interaction: discord.Interaction,
+    current: str
+) -> list[app_commands.Choice[str]]:
+    if not ha_ruolo_staff(interaction):
+        return []
+
+    try:
+        res = supabase.table("factions").select("name").ilike("name", f"%{current}%").limit(25).execute()
+        return [
+            app_commands.Choice(name=row["name"], value=row["name"])
+            for row in res.data
+        ]
+    except Exception:
+        return []
+
+async def oggetto_custom_autocomplete(
+    interaction: discord.Interaction,
+    current: str
+) -> list[app_commands.Choice[str]]:
+    if not ha_ruolo_staff(interaction):
+        return []
+
+    try:
+        res = supabase.table("custom_items").select("name").ilike("name", f"%{current}%").limit(25).execute()
+        return [
+            app_commands.Choice(name=row["name"], value=row["name"])
+            for row in res.data
+        ]
+    except Exception:
+        return []
+
+
+# ------------------------------------------------------------------
+# COMANDO 1: GESTIONE ITEM DEPOSITO FAZIONE
+# ------------------------------------------------------------------
+@app_commands.command(
+    name="staff_item_deposito",
+    description="Aggiunge o rimuove item dal deposito fazione (Staff)."
+)
+@app_commands.describe(
+    fazione="Nome della fazione",
+    azione="Aggiungi o Rimuovi",
+    oggetto="Nome esatto dell'oggetto",
+    quantita="Quantità di item"
+)
+@app_commands.choices(azione=[
+    app_commands.Choice(name="Aggiungi", value="aggiungi"),
+    app_commands.Choice(name="Rimuovi", value="rimuovi")
+])
+@app_commands.autocomplete(
+    fazione=fazione_autocomplete,
+    oggetto=oggetto_custom_autocomplete
+)
+async def staff_item_deposito(
+    interaction: discord.Interaction,
+    fazione: str,
+    azione: app_commands.Choice[str],
+    oggetto: str,
+    quantita: int
+):
+    # Controllo del ruolo Staff
+    if not ha_ruolo_staff(interaction):
+        return await interaction.response.send_message(
+            "❌ Non hai i permessi necessari per usare questo comando.", 
+            ephemeral=True
+        )
+
+    await interaction.response.defer(ephemeral=True)
+
+    if quantita <= 0:
+        return await interaction.followup.send("❌ La quantità deve essere maggiore di 0.", ephemeral=True)
+
+    # 1. Verifica fazione
+    faction_res = supabase.table("factions").select("name").eq("name", fazione).execute()
+    if not faction_res.data:
+        return await interaction.followup.send(f"❌ La fazione `{fazione}` non esiste.", ephemeral=True)
+
+    # 2. Aggiungi Item
+    if azione.value == "aggiungi":
+        item_res = supabase.table("custom_items").select("*").eq("name", oggetto).execute()
+        if not item_res.data:
+            return await interaction.followup.send(f"❌ L'oggetto `{oggetto}` non esiste nel catalogo `custom_items`.", ephemeral=True)
+        
+        item_info = item_res.data[0]
+        category = item_info.get("category", "Generico")
+        weight = item_info.get("weight", 0.0)
+
+        inv_res = supabase.table("faction_inventory")\
+            .select("*")\
+            .eq("faction_name", fazione)\
+            .eq("item_name", oggetto)\
+            .execute()
+
+        if inv_res.data:
+            existing_item = inv_res.data[0]
+            new_qty = existing_item["quantity"] + quantita
+            supabase.table("faction_inventory")\
+                .update({"quantity": new_qty})\
+                .eq("id", existing_item["id"])\
+                .execute()
+        else:
+            supabase.table("faction_inventory").insert({
+                "faction_name": fazione,
+                "item_name": oggetto,
+                "category": category,
+                "weight": weight,
+                "quantity": quantita
+            }).execute()
+
+        await interaction.followup.send(
+            f"✅ Aggiunti **x{quantita} {oggetto}** al deposito della fazione **{fazione}**.",
+            ephemeral=True
+        )
+
+    # 3. Rimuovi Item
+    elif azione.value == "rimuovi":
+        inv_res = supabase.table("faction_inventory")\
+            .select("*")\
+            .eq("faction_name", fazione)\
+            .eq("item_name", oggetto)\
+            .execute()
+
+        if not inv_res.data:
+            return await interaction.followup.send(
+                f"❌ L'oggetto `{oggetto}` non è presente nel deposito di **{fazione}**.", 
+                ephemeral=True
+            )
+
+        existing_item = inv_res.data[0]
+        current_qty = existing_item["quantity"]
+
+        if current_qty < quantita:
+            return await interaction.followup.send(
+                f"❌ Impossibile rimuovere {quantita}x. Disponibili solo {current_qty}x nel deposito.",
+                ephemeral=True
+            )
+
+        new_qty = current_qty - quantita
+
+        if new_qty > 0:
+            supabase.table("faction_inventory")\
+                .update({"quantity": new_qty})\
+                .eq("id", existing_item["id"])\
+                .execute()
+        else:
+            supabase.table("faction_inventory")\
+                .delete()\
+                .eq("id", existing_item["id"])\
+                .execute()
+
+        await interaction.followup.send(
+            f"🗑️ Rimosse **x{quantita} {oggetto}** dal deposito della fazione **{fazione}**.",
+            ephemeral=True
+        )
+
+
+# ------------------------------------------------------------------
+# COMANDO 2: GESTIONE SOLDI DEPOSITO FAZIONE
+# ------------------------------------------------------------------
+@app_commands.command(
+    name="staff_soldi_deposito",
+    description="Aggiunge o rimuove soldi dal deposito fazione (Staff)."
+)
+@app_commands.describe(
+    fazione="Nome della fazione",
+    azione="Aggiungi o Rimuovi",
+    importo="Ammontare di denaro"
+)
+@app_commands.choices(azione=[
+    app_commands.Choice(name="Aggiungi", value="aggiungi"),
+    app_commands.Choice(name="Rimuovi", value="rimuovi")
+])
+@app_commands.autocomplete(
+    fazione=fazione_autocomplete
+)
+async def staff_soldi_deposito(
+    interaction: discord.Interaction,
+    fazione: str,
+    azione: app_commands.Choice[str],
+    importo: float
+):
+    # Controllo del ruolo Staff
+    if not ha_ruolo_staff(interaction):
+        return await interaction.response.send_message(
+            "❌ Non hai i permessi necessari per usare questo comando.", 
+            ephemeral=True
+        )
+
+    await interaction.response.defer(ephemeral=True)
+
+    if importo <= 0:
+        return await interaction.followup.send("❌ L'importo deve essere maggiore di 0.", ephemeral=True)
+
+    fac_res = supabase.table("factions").select("*").eq("name", fazione).execute()
+    if not fac_res.data:
+        return await interaction.followup.send(f"❌ La fazione `{fazione}` non esiste.", ephemeral=True)
+
+    current_wallet = fac_res.data[0].get("wallet", 0.0) or 0.0
+
+    if azione.value == "aggiungi":
+        new_wallet = current_wallet + importo
+    else:
+        if current_wallet < importo:
+            return await interaction.followup.send(
+                f"❌ Impossibile rimuovere €{importo:,.2f}. Il saldo attuale è di €{current_wallet:,.2f}.",
+                ephemeral=True
+            )
+        new_wallet = current_wallet - importo
+
+    # Aggiornamento tabella factions
+    supabase.table("factions").update({"wallet": new_wallet}).eq("name", fazione).execute()
+
+    # Sincronizzazione tabella faction_vaults
+    vault_res = supabase.table("faction_vaults").select("*").eq("faction_name", fazione).execute()
+    if vault_res.data:
+        supabase.table("faction_vaults")\
+            .update({"cash_balance": new_wallet})\
+            .eq("faction_name", fazione)\
+            .execute()
+    else:
+        supabase.table("faction_vaults").insert({
+            "faction_name": fazione,
+            "cash_balance": new_wallet
+        }).execute()
+
+    verb = "Aggiunti" if azione.value == "aggiungi" else "Rimosso"
+    await interaction.followup.send(
+        f"💵 **{verb} €{importo:,.2f}** al deposito di **{fazione}**.\n"
+        f"💰 Nuovo saldo attuale: **€{new_wallet:,.2f}**",
+        ephemeral=True
+    )
 
 @bot.tree.command(
     name="avvia_minatore", description="Inizia la sessione di lavoro in miniera"
@@ -6620,75 +6870,24 @@ async def renderizza_fattura_immagine(fattura) -> discord.File:
     return discord.File(buffer, filename="fattura.png")
 
 
-@bot.tree.command(
-    name="emetti_fattura", description="Emetti una nuova fattura aziendale."
-)
-@app_commands.describe(
-    azienda="Nome dell'azienda emittente",
-    utente="Il cittadino destinatario della fattura",
-    importo="Importo in denaro",
-    causale="Motivo della fattura",
-)
-async def emetti_fattura(
-    interaction: discord.Interaction,
-    azienda: str,
-    utente: discord.Member,
-    importo: float,
-    causale: str,
-):
+@bot.tree.command(name="emetti_fattura", description="Emetti una nuova fattura aziendale.")
+@app_commands.describe(azienda="Nome dell'azienda emittente", utente="Il cittadino destinatario della fattura", importo="Importo in denaro", causale="Motivo della fattura")
+async def emetti_fattura(interaction: discord.Interaction, azienda: str, utente: discord.Member, importo: float, causale: str):
     await interaction.response.defer(ephemeral=False)
-
     data_oggi = datetime.datetime.now().strftime("%d/%m/%Y")
     emittente_nome = interaction.user.display_name
-
-    res = (
-        supabase.table("invoices")
-        .insert({
-            "discord_id": str(utente.id),
-            "destinatario": utente.display_name,
-            "emittente": emittente_nome,
-            "azienda": azienda,
-            "importo": importo,
-            "causale": causale,
-            "data": data_oggi,
-            "status": "Da Pagare",
-        })
-        .execute()
-    )
-
+    res = supabase.table("invoices").insert({"discord_id": str(utente.id), "destinatario": utente.display_name, "emittente": emittente_nome, "azienda": azienda, "importo": importo, "causale": causale, "data": data_oggi, "status": "Da Pagare"}).execute()
     if not res.data:
-        await interaction.followup.send(
-            "❌ Errore durante la creazione della fattura nel database.",
-            ephemeral=True,
-        )
+        await interaction.followup.send("❌ Errore durante la creazione della fattura nel database.", ephemeral=True)
         return
-
     nuova_fattura = res.data[0]
-
     file = await renderizza_fattura_immagine(ultima)
-
-    embed = discord.Embed(
-        title="📑 Nuova Fattura Emessa",
-        description=f"Fattura emessa con successo per {utente.mention} a nome dell'azienda **{azienda}**!",
-        color=discord.Color.from_rgb(15, 23, 42),
-    )
+    embed = discord.Embed(title="📑 Nuova Fattura Emessa", description=f"Fattura emessa con successo per {utente.mention} a nome dell'azienda **{azienda}**!", color=discord.Color.from_rgb(15, 23, 42))
     embed.set_image(url=f"attachment://fattura_{nuova_fattura['id']}.png")
     embed.set_footer(text="Evren City OS • Sistema Fiscale")
-
     await interaction.followup.send(embed=embed, file=file)
-
     try:
-        dm_embed = discord.Embed(
-            title="💳 Nuova Fattura Ricevuta",
-            description=(
-                f"Ti è stata emessa una nuova fattura a nome dell'azienda **{azienda}** "
-                f"per un importo di **€ {importo:,.2f}**.\n\n"
-                f"💬 **Causale:** {causale}\n\n"
-                f"Usa il comando </mie_fatture:0> in città per visualizzare l'anteprima "
-                f"dettagliata ed effettuare il pagamento."
-            ),
-            color=discord.Color.from_rgb(220, 38, 38),
-        )
+        dm_embed = discord.Embed(title="💳 Nuova Fattura Ricevuta", description=f"Ti è stata emessa una nuova fattura a nome dell'azienda **{azienda}** per un importo di **€ {importo:,.2f}**.\n\n💬 **Causale:** {causale}\n\nUsa il comando </mie_fatture:0> in città per visualizzare l'anteprima dettagliata ed effettuare il pagamento.", color=discord.Color.from_rgb(220, 38, 38))
         dm_embed.set_footer(text="Evren City OS • Sistema Fiscale")
         await utente.send(embed=dm_embed)
     except discord.Forbidden:
@@ -6810,68 +7009,28 @@ class FabbricaFattureView(discord.ui.View):
     super().__init__(timeout=180)
     self.add_item(PagaFatturaSelect(fatture))
 
-@bot.tree.command(
-    name="mie_fatture", description="Visualizza e paga le tue fatture in sospeso."
-)
+@bot.tree.command(name="mie_fatture", description="Visualizza e paga le tue fatture in sospeso.")
 async def mie_fatture(interaction: discord.Interaction):
-  # 1. Impedisce il timeout di Discord
-  await interaction.response.defer(ephemeral=False)
-
-  res = (
-      supabase.table("invoices")
-      .select("*")
-      .eq("discord_id", str(interaction.user.id))
-      .order("id", desc=True)
-      .execute()
-  )
-
-  if not res.data:
-    await interaction.followup.send(
-        "❌ Non hai alcuna fattura registrata a tuo carico.", ephemeral=True
-    )
-    return
-
-  fatture = res.data
-  ultima = fatture[0]
-
-  # 2. Generazione dell'immagine con Playwright
-# --- SOSTITUISCI QUESTO BLOCCO ---
-# img_io = await renderizza_fattura_immagine(ultima)
-# file = discord.File(img_io, filename=f"fattura_{ultima['id']}.png")
-# --- CON QUESTO ---
-file = await renderizza_fattura_immagine(ultima)
-
-  embed = discord.Embed(
-      title="📑 Gestione Fatture Personali",
-      description=(
-          "Ecco l'anteprima della tua fattura più recente. Usa il menu sotto"
-          " per pagare quelle in sospeso."
-      ),
-      color=discord.Color.from_rgb(15, 23, 42),
-  )
-  embed.set_image(url=f"attachment://fattura_{ultima['id']}.png")
-
-  if len(fatture) > 1:
-    storico_testo = ""
-    for f in fatture[1:]:
-      storico_testo += (
-          f"• **#{f['id']}** | {f['azienda']} | € {f['importo']:,.2f} |"
-          f" `{f['status']}`\n"
-      )
-    if len(storico_testo) > 1024:
-      storico_testo = storico_testo[:1021] + "..."
-    embed.add_field(
-        name="📜 Storico Fatture Precedenti",
-        value=storico_testo,
-        inline=False,
-    )
-
-  embed.set_footer(text="Evren City OS • Sistema Fiscale")
-
-  view = FabbricaFattureView(fatture)
-  
-  # 3. Invio tramite followup
-  await interaction.followup.send(embed=embed, file=file, view=view)
+    await interaction.response.defer(ephemeral=False)
+    res = supabase.table("invoices").select("*").eq("discord_id", str(interaction.user.id)).order("id", desc=True).execute()
+    if not res.data:
+        await interaction.followup.send("❌ Non hai alcuna fattura registrata a tuo carico.", ephemeral=True)
+        return
+    fatture = res.data
+    ultima = fatture[0]
+    file = await renderizza_fattura_immagine(ultima)
+    embed = discord.Embed(title="📑 Gestione Fatture Personali", description="Ecco l'anteprima della tua fattura più recente. Usa il menu sotto per pagare quelle in sospeso.", color=discord.Color.from_rgb(15, 23, 42))
+    embed.set_image(url=f"attachment://fattura_{ultima['id']}.png")
+    if len(fatture) > 1:
+        storico_testo = ""
+        for f in fatture[1:]:
+            storico_testo += f"• **#{f['id']}** | {f['azienda']} | € {f['importo']:,.2f} | `{f['status']}`\n"
+        if len(storico_testo) > 1024:
+            storico_testo = storico_testo[:1021] + "..."
+        embed.add_field(name="📜 Storico Fatture Precedenti", value=storico_testo, inline=False)
+    embed.set_footer(text="Evren City OS • Sistema Fiscale")
+    view = FabbricaFattureView(fatture)
+    await interaction.followup.send(embed=embed, file=file, view=view)
 
 import aiohttp
 
