@@ -6618,6 +6618,8 @@ async def renderizza_fattura_immagine(fattura) -> discord.File:
     buffer = io.BytesIO(screenshot_bytes)
     buffer.seek(0)
     return discord.File(buffer, filename="fattura.png")
+
+
 @bot.tree.command(
     name="emetti_fattura", description="Emetti una nuova fattura aziendale."
 )
@@ -6634,13 +6636,11 @@ async def emetti_fattura(
     importo: float,
     causale: str,
 ):
-    # 1. Rispondi subito a Discord per evitare lo scadere dei 3 secondi
     await interaction.response.defer(ephemeral=False)
 
     data_oggi = datetime.datetime.now().strftime("%d/%m/%Y")
     emittente_nome = interaction.user.display_name
 
-    # 2. Inserimento nel database
     res = (
         supabase.table("invoices")
         .insert({
@@ -6665,7 +6665,6 @@ async def emetti_fattura(
 
     nuova_fattura = res.data[0]
 
-    # 3. Generazione dell'immagine della fattura
     file = await renderizza_fattura_immagine(ultima)
 
     embed = discord.Embed(
@@ -6676,10 +6675,8 @@ async def emetti_fattura(
     embed.set_image(url=f"attachment://fattura_{nuova_fattura['id']}.png")
     embed.set_footer(text="Evren City OS • Sistema Fiscale")
 
-    # 4. Invia l'anteprima nel canale pubblico
     await interaction.followup.send(embed=embed, file=file)
 
-    # 5. Invia un messaggio privato (DM) al destinatario
     try:
         dm_embed = discord.Embed(
             title="💳 Nuova Fattura Ricevuta",
@@ -6695,7 +6692,6 @@ async def emetti_fattura(
         dm_embed.set_footer(text="Evren City OS • Sistema Fiscale")
         await utente.send(embed=dm_embed)
     except discord.Forbidden:
-        # Gestisce il caso in cui l'utente ha i DM chiusi o ha bloccato il bot
         pass
 
 # --- INTERFACCIA PER IL PAGAMENTO DELLE FATTURE ---
