@@ -3836,12 +3836,26 @@ async def me(interaction: discord.Interaction, azione: str):
   # Invia il messaggio direttamente nel canale in cui è stato eseguito il comando
   await interaction.channel.send(embed=embed)
 
+
+import discord
+from discord import ui
+import asyncio
+import random
+
+# Assicurati che 'supabase', 'bot', 'RUOLO_RICHIESTO_ID' e 'riproduci_audio_canale' siano già definiti nel tuo progetto principale.
 @bot.tree.command(name="compra", description="Acquista un oggetto dallo shop verificando fondi e requisiti.")
-@app_commands.describe(item="Nome dell'oggetto da acquistare")
+@app_commands.describe(
+    item="Nome dell'oggetto da acquistare",
+    quantita="Quantità da acquistare (default: 1)"
+)
 @app_commands.autocomplete(item=shop_item_autocomplete)
-async def compra(interaction: discord.Interaction, item: str):
+async def compra(interaction: discord.Interaction, item: str, quantita: int = 1):
     user = interaction.user
     user_id = str(user.id)
+
+    if quantita < 1:
+        await interaction.response.send_message("❌ La quantità deve essere almeno pari a 1.", ephemeral=True)
+        return
 
     res_item = supabase.table("custom_items").select("*").ilike("name", item).execute()
     if not res_item.data:
@@ -3849,23 +3863,30 @@ async def compra(interaction: discord.Interaction, item: str):
         return
 
     item_data = res_item.data[0]
-    prezzo = item_data.get("price", 0)
+    prezzo_unitario = item_data.get("price", 0)
     required_role_id = item_data.get("required_role_id")
     item_name = item_data.get("name")
     category = item_data.get("category", "Generale")
-    weight = item_data.get("weight", 0.1)
+    weight_unitario = item_data.get("weight", 0.1)
+
+    # Le armi con matricola solitamente si acquistano una alla volta
+    if category.lower() in ["armi", "arma"] and quantita > 1:
+        await interaction.response.send_message("❌ Non puoi acquistare più armi contemporaneamente a causa della generazione della matricola. Imposta quantità a 1.", ephemeral=True)
+        return
 
     if required_role_id:
         if not any(r.id == int(required_role_id) for r in user.roles):
             await interaction.response.send_message(f"❌ Non possiedi il ruolo richiesto per poter acquistare **{item_name}**.", ephemeral=True)
             return
 
+    prezzo_totale = prezzo_unitario * quantita
+
     res_user = supabase.table("users").select("wallet").eq("discord_id", user_id).execute()
     contanti_attuali = res_user.data[0].get("wallet", 0) if res_user.data else 0
 
-    if contanti_attuali < prezzo:
+    if contanti_attuali < prezzo_totale:
         await interaction.response.send_message(
-            f"❌ Fondi insufficienti! Hai **€ {contanti_attuali:,.2f}**, ma l'oggetto costa **€ {prezzo:,.2f}**.",
+            f"❌ Fondi insufficienti! Hai **€ {contanti_attuali:,.2f}**, ma il totale è **€ {prezzo_totale:,.2f}** (Prezzo unitario: € {prezzo_unitario:,.2f} x {quantita}).",
             ephemeral=True
         )
         return
@@ -3873,7 +3894,6 @@ async def compra(interaction: discord.Interaction, item: str):
     nome_finale_oggetto = item_name
     matricola_testo = ""
 
-    # Usiamo direttamente 'category' (con la c minuscola) che hai definito all'inizio della funzione
     if category.lower() in ["armi", "arma"]:
         parte1 = "".join(random.choices(string.digits + string.ascii_uppercase, k=4))
         parte2 = "".join(random.choices(string.digits + string.ascii_uppercase, k=4))
@@ -3882,31 +3902,28 @@ async def compra(interaction: discord.Interaction, item: str):
         nome_finale_oggetto = f"{item_name} [{matricola}]"
         matricola_testo = f"\nMatricola: **{matricola}**"
 
-    nuovo_saldo = contanti_attuali - prezzo
+    nuovo_saldo = contanti_attuali - prezzo_totale
     supabase.table("users").update({"wallet": nuovo_saldo}).eq("discord_id", user_id).execute()
+
+    peso_totale = weight_unitario * quantita
 
     supabase.table("inventory").insert({
         "discord_id": user_id,
         "item_name": nome_finale_oggetto,
         "category": category,
-        "weight": weight,
-        "quantity": 1
+        "weight": peso_totale,
+        "quantity": quantita
     }).execute()
+
+    testo_quantita = f" (Quantità: {quantita})" if quantita > 1 else ""
 
     await interaction.response.send_message(
         f"✅ Acquisto effettuato con successo!\n"
-        f"Hai comprato: **{nome_finale_oggetto}** per **€ {prezzo:,.2f}**."
+        f"Hai comprato: **{nome_finale_oggetto}**{testo_quantita} per **€ {prezzo_totale:,.2f}**."
         f"{matricola_testo}\n"
         f"Nuovo saldo contanti: **€ {nuovo_saldo:,.2f}**",
         ephemeral=True
     )
-
-import discord
-from discord import ui
-import asyncio
-import random
-
-# Assicurati che 'supabase', 'bot', 'RUOLO_RICHIESTO_ID' e 'riproduci_audio_canale' siano già definiti nel tuo progetto principale.
 
 # ==========================================
 # 📱 TELEFONO E RUBRICA
@@ -5137,6 +5154,103 @@ async def crea_item(
 
     await interaction.response.send_message(embed=embed)
 
+import discord
+from discord import ui
+import random
+
+# --- MODALE PER LA SCELTA DELLA QUANTITÀ ---
+class QuantityModal(ui.Modal, title="Seleziona la quantità"):
+    quantita_input = ui.TextInput(
+        label="Quantità da utilizzare",
+        placeholder="Inserisci un numero...",
+        default="1",
+        min_length=1,
+        max_length=5
+    )
+
+    def __init__(self, user_id: int, inv_item: dict):
+        super().__init__()
+        self.user_id = user_id
+        self.inv_item = inv_item
+
+    async def on_submit(self, interaction: discord.Interaction):
+        if interaction.user.id != self.user_id:
+            return
+
+        # Valida che sia un numero intero positivo
+        try:
+            qty_da_usare = int(self.quantita_input.value)
+        except ValueError:
+            await interaction.response.send_message("❌ Devi inserire un numero valido.", ephemeral=True)
+            return
+
+        qty_disponibile = self.inv_item.get("quantity", 1)
+        if qty_da_usare < 1:
+            await interaction.response.send_message("❌ La quantità deve essere almeno pari a 1.", ephemeral=True)
+            return
+        
+        if qty_da_usare > qty_disponibile:
+            await interaction.response.send_message(f"❌ Ne possiedi solo **{qty_disponibile}** unità nell'inventario.", ephemeral=True)
+            return
+
+        item_inv_id = self.inv_item.get("id")
+        name = self.inv_item.get("item_name")
+        category = self.inv_item.get("category")
+
+        # Controlli personalizzati sull'oggetto (probabilità e boost)
+        custom_res = supabase.table("custom_items").select("*").eq("name", name).execute()
+        rate = 100
+        boost_unitario = 0.0
+        if custom_res.data:
+            rate = custom_res.data[0].get("probability", 100.0)
+            boost_unitario = custom_res.data[0].get("backpack_capacity", 0.0)
+
+        roll = random.randint(1, 100)
+        if roll > rate:
+            await interaction.response.send_message(f"❌ **Azione Fallita!** Hai provato a usare **{name}** (x{qty_da_usare}), ma la prova non è riuscita ({roll}% su {rate}%).", ephemeral=True)
+            return
+
+        action_msg = ""
+        # Esempio di gestione basata sul tipo (moltiplicando il boost se è uno zaino, ecc.)
+        if category == "cibo":
+            action_msg = f"🍕 Hai mangiato **{name}** (x{qty_da_usare}). Fame ripristinata!"
+        elif category == "bevanda":
+            action_msg = f"🥤 Hai bevuto **{name}** (x{qty_da_usare}). Sete placata!"
+        elif category == "medicina":
+            action_msg = f"💊 Hai usato **{name}** (x{qty_da_usare}). Ti senti in piena salute!"
+        elif category == "droga":
+            action_msg = f"🌿 Hai consumato **{name}** (x{qty_da_usare}). Iniziano i primi effetti..."
+        elif category == "chiavi":
+            action_msg = f"🔑 Hai sbloccato la serratura con **{name}** (x{qty_da_usare})."
+        elif category == "scassinamento":
+            action_msg = f"🔓 **Scassinamento riuscito!** Hai aperto il blocco con **{name}** (x{qty_da_usare})."
+        elif category == "arma":
+            action_msg = f"⚔️ Hai impugnato **{name}**."
+        elif category == "zaino":
+            u_data = get_or_create_user(self.user_id, interaction.user.name)
+            curr_max = float(u_data.get("max_weight", 10.0))
+            boost_totale = boost_unitario * qty_da_usare
+            new_max = curr_max + boost_totale
+            supabase.table("users").update({"max_weight": new_max}).eq("discord_id", str(self.user_id)).execute()
+            action_msg = f"🎒 **Zaini Indossati (x{qty_da_usare})!** Capienza inventario aumentata di **+{boost_totale} kg** (Totale: `{new_max} kg`)."
+        elif category == "utility":
+            action_msg = f"🛠️ Hai utilizzato l'oggetto di utilità **{name}** (x{qty_da_usare})."
+        elif category == "edilizia":
+            action_msg = f"🏗️ Hai impiegato **{name}** (x{qty_da_usare}) per le operazioni di cantiere."
+        elif category == "altro":
+            action_msg = f"📦 Hai utilizzato **{name}** (x{qty_da_usare})."
+
+        # Aggiornamento o rimozione dal Database in base alla quantità scalata
+        if qty_disponibile > qty_da_usare:
+            nuova_quantita = qty_disponibile - qty_da_usare
+            supabase.table("inventory").update({"quantity": nuova_quantita}).eq("id", item_inv_id).execute()
+        else:
+            supabase.table("inventory").delete().eq("id", item_inv_id).execute()
+
+        await interaction.response.send_message(f"✅ {action_msg}", ephemeral=True)
+
+
+# --- VIEW PRINCIPALE CON SELECT MENU ---
 class InventoryUseView(ui.View):
     def __init__(self, user_id: int, user_items: list):
         super().__init__(timeout=120)
@@ -5150,7 +5264,7 @@ class InventoryUseView(ui.View):
             options.append(discord.SelectOption(
                 label=f"{name} (x{item.get('quantity', 1)})",
                 value=str(item.get("id")),
-                description=f"Cat: {cat.capitalize()} | Peso: {w}kg"
+                description=f"Cat: {cat.capitalize()} | Peso unitario: {w}kg"
             ))
             
         if options:
@@ -5159,7 +5273,8 @@ class InventoryUseView(ui.View):
             self.add_item(self.select)
 
     async def use_item_callback(self, interaction: discord.Interaction):
-        if interaction.user.id != self.user_id: return
+        if interaction.user.id != self.user_id:
+            return
 
         item_inv_id = int(self.select.values[0])
         res = supabase.table("inventory").select("*").eq("id", item_inv_id).execute()
@@ -5168,56 +5283,9 @@ class InventoryUseView(ui.View):
             return
 
         inv_item = res.data[0]
-        name = inv_item.get("item_name")
-        category = inv_item.get("category")
         
-        custom_res = supabase.table("custom_items").select("*").eq("name", name).execute()
-        rate = 100
-        boost = 0.0
-        if custom_res.data:
-            rate = custom_res.data[0].get("probability", 100.0)
-            boost = custom_res.data[0].get("backpack_capacity", 0.0)
-
-        roll = random.randint(1, 100)
-        if roll > rate:
-            await interaction.response.send_message(f"❌ **Azione Fallita!** Hai usato **{name}**, ma la prova non è riuscita ({roll}% su {rate}%).", ephemeral=True)
-            return
-
-        action_msg = ""
-        if category == "cibo":
-            action_msg = f"🍕 Hai mangiato **{name}**. Fame ripristinata!"
-        elif category == "bevanda":
-            action_msg = f"🥤 Hai bevuto **{name}**. Sete placata!"
-        elif category == "medicina":
-            action_msg = f"💊 Hai usato **{name}**. Ti senti in piena salute!"
-        elif category == "droga":
-            action_msg = f"🌿 Hai consumato **{name}**. Iniziano i primi effetti..."
-        elif category == "chiavi":
-            action_msg = f"🔑 Hai sbloccato la serratura con **{name}**."
-        elif category == "scassinamento":
-            action_msg = f"🔓 **Scassinamento riuscito!** Hai aperto il blocco con **{name}**."
-        elif category == "arma":
-            action_msg = f"⚔️ Hai impugnato **{name}**."
-        elif category == "zaino":
-            u_data = get_or_create_user(self.user_id, interaction.user.name)
-            curr_max = float(u_data.get("max_weight", 10.0))
-            new_max = curr_max + boost
-            supabase.table("users").update({"max_weight": new_max}).eq("discord_id", str(self.user_id)).execute()
-            action_msg = f"🎒 **Zaino Indossato!** Capienza inventario aumentata di **+{boost} kg** (Totale: `{new_max} kg`)."
-        elif category == "utility":
-            action_msg = f"🛠️ Hai utilizzato l'oggetto di utilità **{name}**."
-        elif category == "edilizia":
-            action_msg = f"🏗️ Hai impiegato **{name}** per le operazioni di cantiere/costruzione."
-        elif category == "altro":
-            action_msg = f"📦 Hai utilizzato **{name}**."
-
-        qty = inv_item.get("quantity", 1)
-        if qty > 1:
-            supabase.table("inventory").update({"quantity": qty - 1}).eq("id", item_inv_id).execute()
-        else:
-            supabase.table("inventory").delete().eq("id", item_inv_id).execute()
-
-        await interaction.response.send_message(f"✅ {action_msg}", ephemeral=True)
+        # Invece di consumarlo subito, inviamo il modale per chiedere la quantità
+        await interaction.response.send_modal(QuantityModal(self.user_id, inv_item))
 
 
 @bot.tree.command(name="inventario", description="Visualizza i tuoi oggetti e il limite di peso.")
