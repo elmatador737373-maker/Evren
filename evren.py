@@ -2789,11 +2789,17 @@ import discord
 from discord import app_commands, ui
 from discord.ext import tasks
 
+
+# --- GESTORE ERRORE PER RUOLO MANCANTE ---
+from datetime import datetime, timedelta, timezone
+import random
+from typing import Optional
+import discord
+from discord import app_commands
+from discord.ext import tasks
+
 # --- CONFIGURAZIONE ---
-ID_RUOLO_EDILIZIA = 1534986071211769996  # ID del ruolo edilizia
-NOME_FAZIONE_EDILIZIA = (
-    "Edilizia"  # Nome esatto della fazione nella tabella 'faction_inventory'
-)
+ID_RUOLO_EDILIZIA = "1534986071211769996"  # ID del ruolo edilizia (stringa per compatibilità SQL)
 
 # --- LISTA MATERIALI DISPONIBILI ---
 LISTA_MATERIALI_DISPONIBILI = [
@@ -2808,266 +2814,311 @@ LISTA_MATERIALI_DISPONIBILI = [
 ]
 
 
+# --- UTILITY PER RECUPERARE LA FAZIONE DAL RUOLO ---
+def get_nome_fazione_da_ruolo() -> Optional[str]:
+  """Recupera dinamicamente il nome della fazione associata al ruolo edilizia
+
+  tramite la tabella faction_roles.
+  """
+  try:
+    res = (
+        supabase.table("faction_roles")
+        .select("faction_name")
+        .eq("role_id", str(ID_RUOLO_EDILIZIA))
+        .execute()
+    )
+    if res.data:
+      return res.data[0]["faction_name"]
+  except Exception as e:
+    print(f"Errore nel recupero della fazione dal ruolo: {e}")
+  return None
+
+
 # --- UTILITY TEMPO ---
 def format_tempo_rimanente(secondi: int) -> str:
-    if secondi <= 0:
-        return "Completato"
-    ore, resto = divmod(secondi, 3600)
-    minuti, sec = divmod(resto, 60)
-    if ore > 0:
-        return f"{ore}h {minuti}m"
-    elif minuti > 0:
-        return f"{minuti}m {sec}s"
-    return f"{sec}s"
+  if secondi <= 0:
+    return "Completato"
+  ore, resto = divmod(secondi, 3600)
+  minuti, sec = divmod(resto, 60)
+  if ore > 0:
+    return f"{ore}h {minuti}m"
+  elif minuti > 0:
+    return f"{minuti}m {sec}s"
+  return f"{sec}s"
 
 
 # --- GENERATORE EMBED ---
 def generate_cantiere_embed(cantiere: dict) -> discord.Embed:
-    tot_richiesti = sum(mat["totale"] for mat in cantiere["materiali"])
-    tot_consumati = sum(
-        mat.get("consumati", 0) for mat in cantiere["materiali"]
-    )
-    progresso = (
-        int((tot_consumati / tot_richiesti) * 100) if tot_richiesti > 0 else 100
-    )
+  tot_richiesti = sum(mat["totale"] for mat in cantiere["materiali"])
+  tot_consumati = sum(mat.get("consumati", 0) for mat in cantiere["materiali"])
+  progresso = (
+      int((tot_consumati / tot_richiesti) * 100) if tot_richiesti > 0 else 100
+  )
 
-    # Calcolo tempo rimanente reale dal timestamp target (ISO 8601 UTC)
-    if cantiere["paused"]:
-        tempo_rimanente = cantiere.get("tempo_rimanente_pausa", 0)
-    else:
-        end_dt = datetime.fromisoformat(cantiere["end_time"])
-        now_dt = datetime.now(timezone.utc)
-        tempo_rimanente = max(0, int((end_dt - now_dt).total_seconds()))
+  is_paused = cantiere.get("paused", True)
+  tempo_rimanente = cantiere.get("tempo_rimanente", 0)
 
-    tempo_str = format_tempo_rimanente(tempo_rimanente)
+  if not is_paused and "end_time" in cantiere and cantiere["end_time"]:
+    try:
+      end_dt = datetime.fromisoformat(cantiere["end_time"])
+      now_dt = datetime.now(timezone.utc)
+      tempo_rimanente = max(0, int((end_dt - now_dt).total_seconds()))
+    except Exception:
+      pass
 
-    embed = discord.Embed(
-        title="🏗️ Cantiere in Costruzione",
-        color=discord.Color.from_rgb(43, 45, 49),
-    )
-    embed.add_field(
-        name="Azienda Costruttrice:", value=cantiere["azienda"], inline=False
-    )
-    embed.add_field(
-        name="Indirizzo Immobile:", value=cantiere["address"], inline=False
-    )
-    embed.add_field(
-        name="Progresso Totale:", value=f"`{progresso}%`", inline=False
-    )
+  tempo_str = format_tempo_rimanente(tempo_rimanente)
 
-    mat_text = ""
-    for mat in cantiere["materiali"]:
-        status = "✅" if mat.get("consumati", 0) >= mat["totale"] else "📦"
-        mat_text += f"{status} **{mat['nome']}**: Lavorati `{mat.get('consumati', 0)}/{mat['totale']}`\n"
-    embed.add_field(
-        name="Materiali Richiesti dal Deposito:", value=mat_text, inline=False
-    )
+  embed = discord.Embed(
+      title="🏗️ Cantiere in Costruzione",
+      color=discord.Color.from_rgb(43, 45, 49),
+  )
+  embed.add_field(
+      name="Azienda Costruttrice:", value=cantiere["azienda"], inline=False
+  )
+  embed.add_field(
+      name="Indirizzo Immobile:", value=cantiere["address"], inline=False
+  )
+  embed.add_field(
+      name="Progresso Totale:", value=f"`{progresso}%`", inline=False
+  )
 
-    builder_tag = f"<@{cantiere['builder_id']}>"
-    operai_ids = cantiere.get("operai_ids", [])
-    operai_tags = (
-        ", ".join([f"<@{uid}>" for uid in operai_ids])
-        if operai_ids
-        else "Nessuno"
-    )
+  mat_text = ""
+  for mat in cantiere["materiali"]:
+    status = "✅" if mat.get("consumati", 0) >= mat["totale"] else "📦"
+    mat_text += f"{status} **{mat['nome']}**: Lavorati `{mat.get('consumati', 0)}/{mat['totale']}`\n"
+  embed.add_field(
+      name="Materiali Richiesti dal Deposito:", value=mat_text, inline=False
+  )
 
-    embed.add_field(
-        name="Responsabile Cantiere:", value=builder_tag, inline=True
-    )
-    embed.add_field(
-        name=f"Operai Assegnati ({len(operai_ids)}/4):",
-        value=operai_tags,
-        inline=True,
-    )
+  builder_tag = f"<@{cantiere['builder_id']}>"
+  operai_ids = cantiere.get("operai_ids", [])
+  if isinstance(operai_ids, str):
+    import json
 
-    embed.add_field(
-        name="Tempo rimanente stimato:", value=f"`{tempo_str}`", inline=False
-    )
+    try:
+      operai_ids = json.loads(operai_ids)
+    except:
+      operai_ids = []
 
-    if cantiere["paused"]:
-        embed.set_footer(
-            text="⚠️ Cantiere in pausa: materiali esauriti nel deposito Edilizia! Depositatene altri per riprendere."
+  operai_tags = (
+      ", ".join([f"<@{uid}>" for uid in operai_ids])
+      if operai_ids
+      else "Nessuno"
+  )
+
+  embed.add_field(name="Responsabile Cantiere:", value=builder_tag, inline=True)
+  embed.add_field(
+      name=f"Operai Assegnati ({len(operai_ids)}/4):",
+      value=operai_tags,
+      inline=True,
+  )
+
+  embed.add_field(
+      name="Tempo rimanente stimato:", value=f"`{tempo_str}`", inline=False
+  )
+
+  if is_paused:
+    embed.set_footer(
+        text=(
+            "⚠️ Cantiere in pausa: materiali esauriti nel deposito associato"
+            " al ruolo Edilizia! Depositatene altri per riprendere."
         )
-    else:
-        embed.set_footer(
-            text="🔨 Lavori in corso... Prelievo materiali dal deposito automatico."
-        )
+    )
+  else:
+    embed.set_footer(
+        text="🔨 Lavori in corso... Prelievo materiali dal deposito automatico."
+    )
 
-    return embed
+  return embed
 
 
 # --- LOOP DI AVANZAMENTO GLOBALE AUTO-GESTITO ---
 @tasks.loop(seconds=60)
 async def gestore_cantieri_loop():
-    res_cantieri = supabase.table("cantieri").select("*").execute()
+  res_cantieri = supabase.table("cantieri").select("*").execute()
 
-    if not res_cantieri.data:
-        return
+  if not res_cantieri.data:
+    return
 
-    now_dt = datetime.now(timezone.utc)
+  # Recupera il nome della fazione associata al ruolo edilizia
+  nome_fazione = get_nome_fazione_da_ruolo()
+  if not nome_fazione:
+    return  # Se non trova la fazione associata al ruolo, salta il ciclo
 
-    for cantiere in res_cantieri.data:
-        msg_id = cantiere["message_id"]
-        channel_id = int(cantiere["channel_id"])
+  now_dt = datetime.now(timezone.utc)
 
-        channel = bot.get_channel(channel_id)
-        if not channel:
-            try:
-                channel = await bot.fetch_channel(channel_id)
-            except discord.HTTPException:
-                continue
+  for cantiere in res_cantieri.data:
+    msg_id = cantiere["message_id"]
+    channel_id = int(cantiere.get("channel_id", 0))
+    if not channel_id:
+      continue
 
-        try:
-            msg = await channel.fetch_message(int(msg_id))
-        except discord.HTTPException:
-            continue
+    channel = bot.get_channel(channel_id)
+    if not channel:
+      try:
+        channel = await bot.fetch_channel(channel_id)
+      except discord.HTTPException:
+        continue
 
-        materiali_list = cantiere["materiali"]
-        tutti_completati = True
-        mancano_materiali = False
+    try:
+      msg = await channel.fetch_message(int(msg_id))
+    except discord.HTTPException:
+      continue
 
-        # Tenta di prelevare i materiali direttamente da faction_inventory
-        for mat in materiali_list:
-            consumati = mat.get("consumati", 0)
-            if consumati < mat["totale"]:
-                tutti_completati = False
+    materiali_list = cantiere["materiali"]
+    if isinstance(materiali_list, str):
+      import json
 
-                # Controlla la disponibilità nel deposito della fazione edilizia
-                inv_res = (
-                    supabase.table("faction_inventory")
-                    .select("*")
-                    .eq("faction_name", NOME_FAZIONE_EDILIZIA)
-                    .ilike("item_name", f"%{mat['nome']}%")
-                    .execute()
-                )
+      try:
+        materiali_list = json.loads(materiali_list)
+      except:
+        materiali_list = []
 
-                if inv_res.data and inv_res.data[0]["quantity"] > 0:
-                    item_deposito = inv_res.data[0]
-                    nuova_qta = item_deposito["quantity"] - 1
+    tutti_completati = True
+    mancano_materiali = False
 
-                    # Aggiorna o elimina l'item dal deposito
-                    if nuova_qta > 0:
-                        supabase.table("faction_inventory").update(
-                            {"quantity": nuova_qta}
-                        ).eq("id", item_deposito["id"]).execute()
-                    else:
-                        supabase.table("faction_inventory").delete().eq(
-                            "id", item_deposito["id"]
-                        ).execute()
+    # Tenta di prelevare i materiali dal deposito della fazione associata al ruolo
+    for mat in materiali_list:
+      consumati = mat.get("consumati", 0)
+      if consumati < mat["totale"]:
+        tutti_completati = False
 
-                    # Incrementa i lavorati nel cantiere
-                    mat["consumati"] = consumati + 1
-                else:
-                    mancano_materiali = True
+        inv_res = (
+            supabase.table("faction_inventory")
+            .select("*")
+            .eq("faction_name", nome_fazione)
+            .ilike("item_name", f"%{mat['nome']}%")
+            .execute()
+        )
 
-        # Se tutti i materiali sono stati elaborati
-        if tutti_completati:
-            supabase.table("registered_properties").insert(
-                {
-                    "discord_id": cantiere["builder_id"],
-                    "address": cantiere["address"],
-                    "property_type": f"Edificio ({cantiere['grandezza'].capitalize()})",
-                }
+        if inv_res.data and inv_res.data[0]["quantity"] > 0:
+          item_deposito = inv_res.data[0]
+          nuova_qta = item_deposito["quantity"] - 1
+
+          if nuova_qta > 0:
+            supabase.table("faction_inventory").update(
+                {"quantity": nuova_qta}
+            ).eq("id", item_deposito["id"]).execute()
+          else:
+            supabase.table("faction_inventory").delete().eq(
+                "id", item_deposito["id"]
             ).execute()
 
-            supabase.table("cantieri").delete().eq(
-                "message_id", msg_id
-            ).execute()
-
-            try:
-                dm_embed = discord.Embed(
-                    title="🎉 Costruzione Completata!",
-                    description=f"Il cantiere gestito da **{cantiere['azienda']}** presso **{cantiere['address']}** è stato completato ed è stato registrato ufficialmente!",
-                    color=discord.Color.green(),
-                )
-                user = await bot.fetch_user(int(cantiere["builder_id"]))
-                if user:
-                    await user.send(embed=dm_embed)
-            except discord.HTTPException:
-                pass
-
-            try:
-                embed_completato = generate_cantiere_embed(cantiere)
-                embed_completato.title = "🎉 Cantiere Completato!"
-                embed_completato.color = discord.Color.green()
-                await msg.edit(embed=embed_completato, view=None)
-            except discord.HTTPException:
-                pass
-
-            continue
-
-        # Gestione Pause / Ripristini per mancanza/presenza materiali
-        was_paused = cantiere.get("paused", False)
-        end_dt = datetime.fromisoformat(cantiere["end_time"])
-
-        if mancano_materiali:
-            if not was_paused:
-                # Entra in pausa: congeliamo il tempo rimanente attuale
-                tempo_rimanente_pausa = max(
-                    0, int((end_dt - now_dt).total_seconds())
-                )
-                supabase.table("cantieri").update(
-                    {
-                        "materiali": materiali_list,
-                        "paused": True,
-                        "tempo_rimanente_pausa": tempo_rimanente_pausa,
-                    }
-                ).eq("message_id", msg_id).execute()
-
-                cantiere["materiali"] = materiali_list
-                cantiere["paused"] = True
-                cantiere["tempo_rimanente_pausa"] = tempo_rimanente_pausa
-            else:
-                supabase.table("cantieri").update(
-                    {"materiali": materiali_list}
-                ).eq("message_id", msg_id).execute()
-                cantiere["materiali"] = materiali_list
+          mat["consumati"] = consumati + 1
         else:
-            if was_paused:
-                # Riparte dalla pausa: ricalcoliamo il nuovo end_time futuro
-                tempo_rimanente_pausa = cantiere.get(
-                    "tempo_rimanente_pausa", 0
-                )
-                nuovo_end_dt = datetime.now(timezone.utc) + timedelta(
-                    seconds=tempo_rimanente_pausa
-                )
-                nuovo_end_str = nuovo_end_dt.isoformat()
+          mancano_materiali = True
 
-                supabase.table("cantieri").update(
-                    {
-                        "materiali": materiali_list,
-                        "paused": False,
-                        "end_time": nuovo_end_str,
-                    }
-                ).eq("message_id", msg_id).execute()
+    # Se tutti i materiali sono stati elaborati
+    if tutti_completati:
+      supabase.table("registered_properties").insert({
+          "discord_id": cantiere["builder_id"],
+          "address": cantiere["address"],
+          "property_type": f"Edificio ({cantiere['grandezza'].capitalize()})",
+      }).execute()
 
-                cantiere["materiali"] = materiali_list
-                cantiere["paused"] = False
-                cantiere["end_time"] = nuovo_end_str
-            else:
-                supabase.table("cantieri").update(
-                    {"materiali": materiali_list}
-                ).eq("message_id", msg_id).execute()
-                cantiere["materiali"] = materiali_list
+      supabase.table("cantieri").delete().eq("message_id", msg_id).execute()
 
+      try:
+        dm_embed = discord.Embed(
+            title="🎉 Costruzione Completata!",
+            description=(
+                f"Il cantiere gestito da **{cantiere['azienda']}** presso"
+                f" **{cantiere['address']}** è stato completato ed è stato"
+                " registrato ufficialmente!"
+            ),
+            color=discord.Color.green(),
+        )
+        user = await bot.fetch_user(int(cantiere["builder_id"]))
+        if user:
+          await user.send(embed=dm_embed)
+      except discord.HTTPException:
+        pass
+
+      try:
+        embed_completato = generate_cantiere_embed(cantiere)
+        embed_completato.title = "🎉 Cantiere Completato!"
+        embed_completato.color = discord.Color.green()
+        await msg.edit(embed=embed_completato, view=None)
+      except discord.HTTPException:
+        pass
+
+      continue
+
+    was_paused = cantiere.get("paused", True)
+    end_time_str = cantiere.get("end_time")
+
+    if mancano_materiali:
+      if not was_paused and end_time_str:
         try:
-            await msg.edit(embed=generate_cantiere_embed(cantiere))
-        except discord.HTTPException:
+          end_dt = datetime.fromisoformat(end_time_str)
+          tempo_rimanente = max(0, int((end_dt - now_dt).total_seconds()))
+        except:
+          tempo_rimanente = cantiere.get("tempo_rimanente", 0)
+
+        supabase.table("cantieri").update({
+            "materiali": materiali_list,
+            "paused": True,
+            "tempo_rimanente": tempo_rimanente,
+        }).eq("message_id", msg_id).execute()
+
+        cantiere["materiali"] = materiali_list
+        cantiere["paused"] = True
+        cantiere["tempo_rimanente"] = tempo_rimanente
+      else:
+        supabase.table("cantieri").update(
+            {"materiali": materiali_list}
+        ).eq("message_id", msg_id).execute()
+        cantiere["materiali"] = materiali_list
+    else:
+      tempo_rimanente = cantiere.get("tempo_rimanente", 0)
+      nuovo_end_dt = datetime.now(timezone.utc) + timedelta(
+          seconds=tempo_rimanente
+      )
+      nuovo_end_str = nuovo_end_dt.isoformat()
+
+      if was_paused:
+        supabase.table("cantieri").update({
+            "materiali": materiali_list,
+            "paused": False,
+            "end_time": nuovo_end_str,
+        }).eq("message_id", msg_id).execute()
+
+        cantiere["materiali"] = materiali_list
+        cantiere["paused"] = False
+        cantiere["end_time"] = nuovo_end_str
+      else:
+        if end_time_str:
+          try:
+            end_dt = datetime.fromisoformat(end_time_str)
+            tempo_rimanente = max(0, int((end_dt - now_dt).total_seconds()))
+          except:
             pass
 
+        supabase.table("cantieri").update({
+            "materiali": materiali_list,
+            "paused": False,
+            "tempo_rimanente": tempo_rimanente,
+        }).eq("message_id", msg_id).execute()
+        cantiere["materiali"] = materiali_list
 
-# --- EVENTO ON_READY PER RIPRISTINARE I CANTIERI ED AVVIARE IL LOOP ---
+    try:
+      await msg.edit(embed=generate_cantiere_embed(cantiere))
+    except discord.HTTPException:
+      pass
+
+
+# --- EVENTO ON_READY PER AVVIARE IL LOOP ---
 @bot.event
 async def on_ready():
-    if not gestore_cantieri_loop.is_running():
-        gestore_cantieri_loop.start()
+  if not gestore_cantieri_loop.is_running():
+    gestore_cantieri_loop.start()
 
 
 # --- COMANDO /costruisci ---
 @bot.tree.command(
     name="costruisci", description="Avvia un nuovo cantiere di costruzione"
 )
-@app_commands.checks.has_role(ID_RUOLO_EDILIZIA)
+@app_commands.checks.has_role(int(ID_RUOLO_EDILIZIA))
 @app_commands.describe(
     azienda="Nome dell'azienda costruttrice",
     address="Indirizzo dell'immobile",
@@ -3094,72 +3145,58 @@ async def costruisci(
     operaio3: Optional[discord.Member] = None,
     operaio4: Optional[discord.Member] = None,
 ):
-    await interaction.response.defer()
+  await interaction.response.defer()
 
-    operai_selezionati = [
-        op for op in [operaio1, operaio2, operaio3, operaio4] if op is not None
-    ]
-    operai_ids = []
-    for op in operai_selezionati:
-        op_id_str = str(op.id)
-        if (
-            op_id_str != str(interaction.user.id)
-            and op_id_str not in operai_ids
-        ):
-            operai_ids.append(op_id_str)
+  operai_selezionati = [
+      op for op in [operaio1, operaio2, operaio3, operaio4] if op is not None
+  ]
+  operai_ids = []
+  for op in operai_selezionati:
+    op_id_str = str(op.id)
+    if op_id_str != str(interaction.user.id) and op_id_str not in operai_ids:
+      operai_ids.append(op_id_str)
 
-    config_grandezza = {
-        "piccolo": {"durata_sec": 1800, "range_mat": (10, 30), "num_mat": 2},
-        "medio": {"durata_sec": 3600, "range_mat": (30, 60), "num_mat": 3},
-        "grande": {"durata_sec": 7200, "range_mat": (60, 100), "num_mat": 4},
-    }
+  config_grandezza = {
+      "piccolo": {"durata_sec": 1800, "range_mat": (10, 30), "num_mat": 2},
+      "medio": {"durata_sec": 3600, "range_mat": (30, 60), "num_mat": 3},
+      "grande": {"durata_sec": 7200, "range_mat": (60, 100), "num_mat": 4},
+  }
 
-    cfg = config_grandezza[grandezza.value]
-    materiali_scelti = random.sample(
-        LISTA_MATERIALI_DISPONIBILI, cfg["num_mat"]
+  cfg = config_grandezza[grandezza.value]
+  materiali_scelti = random.sample(LISTA_MATERIALI_DISPONIBILI, cfg["num_mat"])
+
+  lista_materiali_struttura = []
+  for mat_nome in materiali_scelti:
+    mat_totale = random.randint(*cfg["range_mat"])
+    lista_materiali_struttura.append(
+        {"nome": mat_nome, "totale": mat_totale, "consumati": 0}
     )
 
-    lista_materiali_struttura = []
-    for mat_nome in materiali_scelti:
-        mat_totale = random.randint(*cfg["range_mat"])
-        lista_materiali_struttura.append(
-            {"nome": mat_nome, "totale": mat_totale, "consumati": 0}
-        )
+  end_dt = datetime.now(timezone.utc) + timedelta(seconds=cfg["durata_sec"])
 
-    end_dt = datetime.now(timezone.utc) + timedelta(seconds=cfg["durata_sec"])
+  cantiere_data = {
+      "builder_id": str(interaction.user.id),
+      "azienda": azienda,
+      "address": address,
+      "grandezza": grandezza.value,
+      "tempo_rimanente": cfg["durata_sec"],
+      "paused": False,
+      "materiali": lista_materiali_struttura,
+      "operai_ids": operai_ids,
+      "end_time": end_dt.isoformat(),
+  }
 
-    cantiere_data = {
-        "builder_id": str(interaction.user.id),
-        "azienda": azienda,
-        "address": address,
-        "grandezza": grandezza.value,
-        "end_time": end_dt.isoformat(),
-        "tempo_rimanente_pausa": cfg["durata_sec"],
-        "materiali": lista_materiali_struttura,
-        "operai_ids": operai_ids,
-        "paused": False,
-    }
+  msg = await interaction.followup.send(
+      embed=discord.Embed(description="Creazione cantiere in corso...")
+  )
 
-    embed = generate_cantiere_embed(cantiere_data)
-    msg = await interaction.followup.send(embed=embed)
+  cantiere_data["message_id"] = str(msg.id)
+  cantiere_data["channel_id"] = str(msg.channel.id)
 
-    cantiere_data["message_id"] = str(msg.id)
-    cantiere_data["channel_id"] = str(msg.channel.id)
+  supabase.table("cantieri").insert(cantiere_data).execute()
 
-    supabase.table("cantieri").insert(cantiere_data).execute()
-
-
-# --- GESTORE ERRORE PER RUOLO MANCANTE ---
-@costruisci.error
-async def costruisci_error(
-    interaction: discord.Interaction, error: app_commands.AppCommandError
-):
-    if isinstance(error, app_commands.MissingRole):
-        await interaction.response.send_message(
-            f"❌ Devi possedere il ruolo <@&{ID_RUOLO_EDILIZIA}> per utilizzare questo comando!",
-            ephemeral=True,
-        )
-
+  embed = generate_cantiere_embed(cantiere_data)
+  await msg.edit(embed=embed)
 
 @bot.tree.command(name="playtest", description="Testa la riproduzione di un brano audio")
 async def playtest(interaction: discord.Interaction, query: str = "https://www.youtube.com/watch?v=dQw4w9WgXcQ"):
@@ -5955,10 +5992,18 @@ class CadSearchPlateModal(ui.Modal, title="🔍 Ricerca Veicolo per Targa"):
         doc_res = supabase.table("documents").select("*").eq("discord_id", owner_id).execute()
         owner_name = f"{doc_res.data[0]['name']} {doc_res.data[0]['surname']}" if doc_res.data else "Sconosciuto"
 
+        # Query per recuperare eventuali modifiche registrate per questa targa
+        mods_res = supabase.table("vehicle_modifications").select("mod_type, details").eq("plate", plate_search).execute()
+        if mods_res.data:
+            mods_text = "\n".join([f"• **{m['mod_type']}**: {m['details']}" for m in mods_res.data])
+        else:
+            mods_text = "*Nessuna modifica registrata.*"
+
         embed = discord.Embed(title=f"🚔 CAD - Risultato Ricerca Targa: {plate_search}", color=embed_color)
         embed.add_field(name="🚗 Modello Veicolo", value=f"`{vehicle.get('model')}`", inline=True)
         embed.add_field(name="🏷️ Targa", value=f"`{plate_search}`", inline=True)
         embed.add_field(name="📌 Stato Veicolo", value=vehicle_status, inline=False)
+        embed.add_field(name="🔧 Modifiche Installate", value=mods_text, inline=False)
         embed.add_field(name="👤 Intestatario RP", value=f"`{owner_name}`", inline=False)
         embed.add_field(name="🌐 Account Discord", value=f"<@{owner_id}>", inline=False)
 
@@ -6230,11 +6275,30 @@ class PoliceCadDetailView(ui.View):
 
     @ui.button(label="🚗 Proprietà", style=discord.ButtonStyle.success, row=0)
     async def btn_prop(self, interaction: discord.Interaction, button: ui.Button):
+        await interaction.response.defer()
+
         v_res = supabase.table("registered_vehicles").select("*").eq("discord_id", self.target_id_str).execute()
         h_res = supabase.table("registered_properties").select("*").eq("discord_id", self.target_id_str).execute()
         s_v_res = supabase.table("seized_vehicles").select("*").eq("discord_id", self.target_id_str).eq("status", "Sequestrato").execute()
 
-        v_text = "\n".join([f"• **{v['model']}** - Targa: `{v['plate']}`" for v in v_res.data]) if v_res.data else "*Nessun veicolo.*"
+        # Recupero ed elaborazione veicoli registrati + eventuali modifiche
+        if v_res.data:
+            v_lines = []
+            for v in v_res.data:
+                plate = v['plate']
+                line = f"• **{v['model']}** - Targa: `{plate}`"
+                
+                # Query modifiche per questa targa
+                mods_res = supabase.table("vehicle_modifications").select("mod_type, details").eq("plate", plate).execute()
+                if mods_res.data:
+                    mods_str = ", ".join([f"{m['mod_type']} ({m['details']})" for m in mods_res.data])
+                    line += f"\n  └ 🔧 *Modifiche:* {mods_str}"
+                
+                v_lines.append(line)
+            v_text = "\n".join(v_lines)
+        else:
+            v_text = "*Nessun veicolo.*"
+
         h_text = "\n".join([f"• **{h['address']}** ({h['property_type']})" for h in h_res.data]) if h_res.data else "*Nessun immobile.*"
         s_v_text = "\n".join([f"• 🚨 **{v['model']}** (Targa: `{v['plate']}`) - Motivo: `{v['reason']}`" for v in s_v_res.data]) if s_v_res.data else "*Nessun veicolo sequestrato.*"
 
@@ -6243,7 +6307,7 @@ class PoliceCadDetailView(ui.View):
             description=f"### 🚗 Veicoli Registrati:\n{v_text}\n\n### 🚨 Veicoli Sequestrati:\n{s_v_text}\n\n### 🏠 Immobili:\n{h_text}",
             color=discord.Color.dark_green(),
         )
-        await interaction.response.edit_message(embed=embed, view=self)
+        await interaction.edit_original_response(embed=embed, view=self)
 
     @ui.button(label="📦 Oggetti Sequestrati", style=discord.ButtonStyle.secondary, row=0)
     async def btn_seized_items(self, interaction: discord.Interaction, button: ui.Button):
@@ -7426,6 +7490,81 @@ async def registra_veicolo(interaction: discord.Interaction, proprietario: disco
     supabase.table("registered_vehicles").insert({"discord_id": str(proprietario.id), "model": modello, "plate": targa.upper()}).execute()
     embed = discord.Embed(title="🚗 Veicolo Immatricolato", description=f"• Proprietario: {proprietario.mention}\n• Modello: `{modello}`\n• Targa: `{targa.upper()}`", color=discord.Color.green())
     await interaction.response.send_message(embed=embed, ephemeral=False)
+
+# --- CONFIGURAZIONE ---
+# Inserisci gli ID di tutti i ruoli meccanico abilitati
+RUOLI_MECCANICI_IDS = [
+    1257782342504812688,  # ID Ruolo Meccanico Capo
+    1253460183053504582,  # ID Ruolo Meccanico Standard
+]
+
+# --- COMANDO /registra_modifiche ---
+@bot.tree.command(
+    name="registra_modifiche",
+    description="Registra le modifiche apportate a un veicolo nel database"
+)
+@app_commands.checks.has_any_role(*RUOLI_MECCANICI_IDS)
+@app_commands.describe(
+    targa="Targa del veicolo",
+    tipo_modifica="Categoria della modifica (es. Motore, Estetica, Freni, Blindo)",
+    dettagli="Descrizione dettagliata dei componenti o interventi effettuati",
+    costo="Costo totale dell'intervento"
+)
+async def registra_modifiche(
+    interaction: discord.Interaction,
+    targa: str,
+    tipo_modifica: str,
+    dettagli: str,
+    costo: float
+):
+    await interaction.response.defer(ephemeral=True)
+
+    targa_clean = targa.upper().strip()
+
+    mod_data = {
+        "plate": targa_clean,
+        "mod_type": tipo_modifica,
+        "details": dettagli,
+        "cost": costo,
+        "installed_by": str(interaction.user.id),
+        "created_at": datetime.now(timezone.utc).isoformat()
+    }
+
+    try:
+        supabase.table("vehicle_modifications").insert(mod_data).execute()
+        
+        embed = discord.Embed(
+            title="🔧 Modifica Veicolo Registrata",
+            color=discord.Color.blue(),
+            timestamp=datetime.now(timezone.utc)
+        )
+        embed.add_field(name="Targa Veicolo:", value=f"`{targa_clean}`", inline=True)
+        embed.add_field(name="Tipo Modifica:", value=tipo_modifica, inline=True)
+        embed.add_field(name="Costo:", value=f"€{costo:,.2f}", inline=True)
+        embed.add_field(name="Dettagli Intervento:", value=dettagli, inline=False)
+        embed.add_field(name="Meccanico:", value=f"<@{interaction.user.id}>", inline=False)
+
+        await interaction.followup.send(embed=embed, ephemeral=False)
+
+    except Exception as e:
+        await interaction.followup.send(
+            f"❌ Si è verificato un errore durante la registrazione su Supabase:\n`{str(e)}`", 
+            ephemeral=True
+        )
+
+
+# --- GESTORE ERRORE RUOLI MANCANTI ---
+@registra_modifiche.error
+async def registra_modifiche_error(
+    interaction: discord.Interaction, 
+    error: app_commands.AppCommandError
+):
+    if isinstance(error, app_commands.MissingAnyRole):
+        ruoli_mentions = ", ".join([f"<@&{r_id}>" for r_id in RUOLI_MECCANICI_IDS])
+        await interaction.response.send_message(
+            f"❌ Devi possedere almeno uno dei seguenti ruoli per utilizzare questo comando:\n{ruoli_mentions}",
+            ephemeral=True
+        )
 
 
 @bot.tree.command(name="registra_patente", description="[MOTORIZZAZIONE] Rilascia una patente di guida.")
