@@ -1201,6 +1201,7 @@ async def staff_info_error(interaction: discord.Interaction, error: app_commands
             await interaction.response.send_message("❌ **Accesso Negato:** Non possiedi il ruolo Staff necessario per usare questo comando.", ephemeral=True)
 
 # 3. Gestione Soldi Staff
+# 5. Gestisci Soldi (Staff)
 @bot.tree.command(
     name="gestisci_soldi",
     description="Aggiunge o rimuove soldi (Contanti o Banca) a un utente.",
@@ -1264,13 +1265,14 @@ async def gestisci_soldi(
     # Aggiorna il bilancio
     supabase.table("users").update({tipo_conto: new_bal}).eq("discord_id", str(utente.id)).execute()
 
-    # Log della transazione
-    supabase.table("transactions_log").insert({
-        "discord_id": str(utente.id),
-        "type": f"staff_{azione}_{tipo_conto}",
-        "amount": importo,
-        "description": f"Azione staff di {interaction.user}"
-    }).execute()
+    # Log della transazione (salva solo se il conto scelto è la banca)
+    if tipo_conto == "bank":
+        supabase.table("transactions_log").insert({
+            "discord_id": str(utente.id),
+            "type": f"staff_{azione}_{tipo_conto}",
+            "amount": importo,
+            "description": f"Azione staff di {interaction.user}"
+        }).execute()
 
     await interaction.response.send_message(
         f"Modificato il saldo di {utente.mention} con successo.",
@@ -1505,27 +1507,10 @@ async def paga(
     supabase.table("users").update({"wallet": new_sender_wallet}).eq("discord_id", sender_id).execute()
     supabase.table("users").update({"wallet": new_recipient_wallet}).eq("discord_id", recipient_id).execute()
 
-    # Log Transazioni
-    supabase.table("transactions_log").insert([
-        {
-            "discord_id": sender_id,
-            "type": "transfer_out",
-            "amount": importo,
-            "description": f"Pagamento a {destinatario.display_name}"
-        },
-        {
-            "discord_id": recipient_id,
-            "type": "transfer_in",
-            "amount": importo,
-            "description": f"Ricevuto da {interaction.user.display_name}"
-        }
-    ]).execute()
-
     await interaction.response.send_message(
         f"Hai inviato **{importo}€** in contanti a {destinatario.mention}.",
         ephemeral=False,
     )
-
 
 # 5. Passa Oggetti ad un altro utente
 @bot.tree.command(
@@ -7615,7 +7600,6 @@ async def registra_casa(interaction: discord.Interaction, proprietario: discord.
 async def on_ready():
     await bot.tree.sync()
     bot.add_view(PannelloAnagrafeView())
-    bot.add_view(MaterialiView())
     bot.add_view(DistributorePannelloView(supabase_client=supabase))
     bot.add_view(ApprovazioneStipendioView())
     print(f"✅ Bot online come {bot.user}")
