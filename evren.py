@@ -6192,11 +6192,15 @@ class PoliceCadDetailView(ui.View):
     async def btn_transazioni(
         self, interaction: discord.Interaction, button: ui.Button
     ):
+        # Assicurati che self.tx_per_page sia definito nella classe (es. self.tx_per_page = 5 o simile)
+        if not hasattr(self, "tx_per_page"):
+            self.tx_per_page = 5
+
         # Fetch delle transazioni dell'utente dal database
         res = (
             supabase.table("transactions_log")
             .select("*")
-            .eq("discord_id", self.target_id_str)
+            .eq("discord_id", str(self.target_id_str))
             .order("created_at", desc=True)
             .execute()
         )
@@ -6225,7 +6229,7 @@ class PoliceCadDetailView(ui.View):
                 data_raw = tx.get("created_at", "")[:10]
 
                 lines.append(
-                    f"• **Importo:** `${amount:,.2f}` | **Tipo:** `{tx_type}`\n"
+                    f"• **Importo:** `{amount:,.2f}€` | **Tipo:** `{tx_type}`\n"
                     f"  └ **Causale:** {description} (`{data_raw}`)"
                 )
 
