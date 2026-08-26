@@ -2775,7 +2775,6 @@ from discord import app_commands, ui
 from discord.ext import tasks
 
 
-# --- GESTORE ERRORE PER RUOLO MANCANTE ---
 from datetime import datetime, timedelta, timezone
 import random
 from typing import Optional
@@ -2784,7 +2783,8 @@ from discord import app_commands
 from discord.ext import tasks
 
 # --- CONFIGURAZIONE ---
-ID_RUOLO_EDILIZIA = "1534986071211769996"  # ID del ruolo edilizia (stringa per compatibilità SQL)
+ID_RUOLO_EDILIZIA = 1534986071211769996  # ID del ruolo edilizia
+NOME_FAZIONE_EDILIZIA = "Edilizia"  # Nome esatto della fazione nella tabella 'faction_inventory'
 
 # --- LISTA MATERIALI DISPONIBILI ---
 LISTA_MATERIALI_DISPONIBILI = [
@@ -2797,26 +2797,6 @@ LISTA_MATERIALI_DISPONIBILI = [
     "Pietra",
     "Tegole",
 ]
-
-
-# --- UTILITY PER RECUPERARE LA FAZIONE DAL RUOLO ---
-def get_nome_fazione_da_ruolo() -> Optional[str]:
-  """Recupera dinamicamente il nome della fazione associata al ruolo edilizia
-
-  tramite la tabella faction_roles.
-  """
-  try:
-    res = (
-        supabase.table("faction_roles")
-        .select("faction_name")
-        .eq("role_id", str(ID_RUOLO_EDILIZIA))
-        .execute()
-    )
-    if res.data:
-      return res.data[0]["faction_name"]
-  except Exception as e:
-    print(f"Errore nel recupero della fazione dal ruolo: {e}")
-  return None
 
 
 # --- UTILITY TEMPO ---
@@ -2840,10 +2820,11 @@ def generate_cantiere_embed(cantiere: dict) -> discord.Embed:
       int((tot_consumati / tot_richiesti) * 100) if tot_richiesti > 0 else 100
   )
 
-  is_paused = cantiere.get("paused", True)
+  is_paused = cantiere.get("paused", False)
   tempo_rimanente = cantiere.get("tempo_rimanente", 0)
 
-  if not is_paused and "end_time" in cantiere and cantiere["end_time"]:
+  # Calcolo matematico rigoroso basato sull'orario assoluto end_time (resistente ai riavvii)
+  if not is_paused and cantiere.get("end_time"):
     try:
       end_dt = datetime.fromisoformat(cantiere["end_time"])
       now_dt = datetime.now(timezone.utc)
@@ -2904,10 +2885,7 @@ def generate_cantiere_embed(cantiere: dict) -> discord.Embed:
 
   if is_paused:
     embed.set_footer(
-        text=(
-            "⚠️ Cantiere in pausa: materiali esauriti nel deposito associato"
-            " al ruolo Edilizia! Depositatene altri per riprendere."
-        )
+        text="⚠️ Cantiere in pausa: materiali esauriti nel deposito Edilizia! Depositatene altri per riprendere."
     )
   else:
     embed.set_footer(
@@ -2924,11 +2902,6 @@ async def gestore_cantieri_loop():
 
   if not res_cantieri.data:
     return
-
-  # Recupera il nome della fazione associata al ruolo edilizia
-  nome_fazione = get_nome_fazione_da_ruolo()
-  if not nome_fazione:
-    return  # Se non trova la fazione associata al ruolo, salta il ciclo
 
   now_dt = datetime.now(timezone.utc)
 
@@ -2962,16 +2935,17 @@ async def gestore_cantieri_loop():
     tutti_completati = True
     mancano_materiali = False
 
-    # Tenta di prelevare i materiali dal deposito della fazione associata al ruolo
+    # Tenta di prelevare i materiali direttamente da faction_inventory
     for mat in materiali_list:
       consumati = mat.get("consumati", 0)
       if consumati < mat["totale"]:
         tutti_completati = False
 
+        # Controlla la disponibilità nel deposito della fazione edilizia
         inv_res = (
             supabase.table("faction_inventory")
             .select("*")
-            .eq("faction_name", nome_fazione)
+            .eq("faction_name", NOME_FAZIONE_EDILIZIA)
             .ilike("item_name", f"%{mat['nome']}%")
             .execute()
         )
@@ -2993,7 +2967,7 @@ async def gestore_cantieri_loop():
         else:
           mancano_materiali = True
 
-    # Se tutti i materiali sono stati elaborati
+    # Se tutti i materiali sono stati elaborati (Cantiere completato)
     if tutti_completati:
       supabase.table("registered_properties").insert({
           "discord_id": cantiere["builder_id"],
@@ -3029,9 +3003,10 @@ async def gestore_cantieri_loop():
 
       continue
 
-    was_paused = cantiere.get("paused", True)
+    was_paused = cantiere.get("paused", False)
     end_time_str = cantiere.get("end_time")
 
+    # Gestione esaurimento materiali (Mette in pausa e congela il tempo residuo)
     if mancano_materiali:
       if not was_paused and end_time_str:
         try:
@@ -3046,45 +3021,41 @@ async def gestore_cantieri_loop():
             "tempo_rimanente": tempo_rimanente,
         }).eq("message_id", msg_id).execute()
 
-        cantiere["materiali"] = materiali_list
         cantiere["paused"] = True
         cantiere["tempo_rimanente"] = tempo_rimanente
       else:
         supabase.table("cantieri").update(
             {"materiali": materiali_list}
         ).eq("message_id", msg_id).execute()
-        cantiere["materiali"] = materiali_list
-    else:
-      tempo_rimanente = cantiere.get("tempo_rimanente", 0)
-      nuovo_end_dt = datetime.now(timezone.utc) + timedelta(
-          seconds=tempo_rimanente
-      )
-      nuovo_end_str = nuovo_end_dt.isoformat()
 
+      cantiere["materiali"] = materiali_list
+
+    # Gestione ripresa lavori (Se i materiali sono presenti, ricalcola o mantiene la scadenza assoluta)
+    else:
       if was_paused:
+        # Se era in pausa e ora ci sono materiali, ricalcoliamo un nuovo end_time partendo dai secondi rimasti salvati
+        tempo_rimanente = cantiere.get("tempo_rimanente", 0)
+        nuovo_end_dt = datetime.now(timezone.utc) + timedelta(
+            seconds=tempo_rimanente
+        )
+        nuovo_end_str = nuovo_end_dt.isoformat()
+
         supabase.table("cantieri").update({
             "materiali": materiali_list,
             "paused": False,
             "end_time": nuovo_end_str,
+            "tempo_rimanente": tempo_rimanente,
         }).eq("message_id", msg_id).execute()
 
-        cantiere["materiali"] = materiali_list
         cantiere["paused"] = False
         cantiere["end_time"] = nuovo_end_str
       else:
-        if end_time_str:
-          try:
-            end_dt = datetime.fromisoformat(end_time_str)
-            tempo_rimanente = max(0, int((end_dt - now_dt).total_seconds()))
-          except:
-            pass
+        # Lavori attivi: aggiorna solo i progressi dei materiali nel DB mantenendo intatto l'end_time originale
+        supabase.table("cantieri").update(
+            {"materiali": materiali_list}
+        ).eq("message_id", msg_id).execute()
 
-        supabase.table("cantieri").update({
-            "materiali": materiali_list,
-            "paused": False,
-            "tempo_rimanente": tempo_rimanente,
-        }).eq("message_id", msg_id).execute()
-        cantiere["materiali"] = materiali_list
+      cantiere["materiali"] = materiali_list
 
     try:
       await msg.edit(embed=generate_cantiere_embed(cantiere))
@@ -3092,18 +3063,13 @@ async def gestore_cantieri_loop():
       pass
 
 
-# --- EVENTO ON_READY PER AVVIARE IL LOOP ---
-@bot.event
-async def on_ready():
-  if not gestore_cantieri_loop.is_running():
-    gestore_cantieri_loop.start()
 
 
 # --- COMANDO /costruisci ---
 @bot.tree.command(
     name="costruisci", description="Avvia un nuovo cantiere di costruzione"
 )
-@app_commands.checks.has_role(int(ID_RUOLO_EDILIZIA))
+@app_commands.checks.has_role(ID_RUOLO_EDILIZIA)
 @app_commands.describe(
     azienda="Nome dell'azienda costruttrice",
     address="Indirizzo dell'immobile",
@@ -3159,7 +3125,13 @@ async def costruisci(
 
   end_dt = datetime.now(timezone.utc) + timedelta(seconds=cfg["durata_sec"])
 
+  msg = await interaction.followup.send(
+      embed=discord.Embed(description="Creazione cantiere in corso...")
+  )
+
   cantiere_data = {
+      "message_id": str(msg.id),
+      "channel_id": str(msg.channel.id),
       "builder_id": str(interaction.user.id),
       "azienda": azienda,
       "address": address,
@@ -3170,13 +3142,6 @@ async def costruisci(
       "operai_ids": operai_ids,
       "end_time": end_dt.isoformat(),
   }
-
-  msg = await interaction.followup.send(
-      embed=discord.Embed(description="Creazione cantiere in corso...")
-  )
-
-  cantiere_data["message_id"] = str(msg.id)
-  cantiere_data["channel_id"] = str(msg.channel.id)
 
   supabase.table("cantieri").insert(cantiere_data).execute()
 
@@ -7602,11 +7567,15 @@ async def registra_casa(interaction: discord.Interaction, proprietario: discord.
 
 @bot.event
 async def on_ready():
-    await bot.tree.sync()
-    bot.add_view(PannelloAnagrafeView())
-    bot.add_view(DistributorePannelloView(supabase_client=supabase))
-    bot.add_view(ApprovazioneStipendioView())
-    print(f"✅ Bot online come {bot.user}")
+  await bot.tree.sync()
+  bot.add_view(PannelloAnagrafeView())
+  bot.add_view(DistributorePannelloView(supabase_client=supabase))
+  bot.add_view(ApprovazioneStipendioView())
+
+  if not gestore_cantieri_loop.is_running():
+    gestore_cantieri_loop.start()
+
+  print(f"✅ Bot online come {bot.user}")
 
 if __name__ == "__main__":
     flask_thread = threading.Thread(target=run_flask)
