@@ -76,7 +76,7 @@ bot = commands.Bot(command_prefix="!", intents=intents)
 
 async def my_setup_hook():
     node = wavelink.Node(
-        uri="https://bot-rp-i4o9.onrender.com",
+        uri="https://bot-rp-a07c.onrender.com",
         password="youshallnotpass"  # Inserisci la tua password se l'hai cambiata nel file application.yml
     )
 
