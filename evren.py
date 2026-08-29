@@ -6892,7 +6892,7 @@ async def renderizza_fattura_immagine(fattura) -> discord.File:
     api_key = "Evren"
     
     # Endpoint del tuo nuovo servizio su Render
-    render_url = "https://htmlevren.onrender.com/v1/image"
+    render_url = "https://evren-axuv.onrender.com"
     
     headers = {
         "Authorization": aiohttp.encode_basic_auth(str(user_id), str(api_key))
@@ -7400,7 +7400,7 @@ async def renderizza_html_in_immagine(html_content: str) -> discord.File:
     api_key = "Evren"
     
     # Endpoint puntato al tuo servizio Render
-    render_url = "https://htmlevren.onrender.com/v1/image"
+    render_url = "https://evren-axuv.onrender.com"
     
     payload = {
         "html": html_content,
