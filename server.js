@@ -139,7 +139,7 @@ async function processRender(req, res) {
 }
 
 // Endpoint principale con gestione in coda
-app.post('/v1/image', authenticate, (req, res) => {
+app.post('/', authenticate, (req, res) => {
   enqueueRender(() => processRender(req, res));
 });
 
