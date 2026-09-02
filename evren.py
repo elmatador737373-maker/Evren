@@ -285,7 +285,7 @@ async def wipe_user(interaction: discord.Interaction, utente: discord.User):
         )
 
 
-from datetime import datetime
+import datetime
 import discord
 from discord import app_commands
 from discord.ext import commands
@@ -2328,7 +2328,7 @@ class SelezioneRuoloView(ui.View):
 
 # --- FUNZIONE AVVIO TURNO SU DB ---
 async def avvia_turno_database(interaction: discord.Interaction, ruolo: discord.Role, tariffa: float):
-    now_iso = datetime.datetime.now(datetime.timezone.utc).isoformat()
+    now_iso = datetime.now(timezone.utc).isoformat()
     supabase.table("turni_attivi").upsert({
         "user_id": str(interaction.user.id),
         "role_id": str(ruolo.id),
