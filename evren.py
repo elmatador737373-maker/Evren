@@ -712,6 +712,158 @@ async def avvia_minatore(
 
     await interaction.followup.send(embed=embed)
 
+import discord
+from discord import app_commands
+
+
+# --- AUTOCOMPLETE PER IL TRASFERIMENTO VEICOLI ---
+async def veicoli_trasferimento_autocomplete(
+    interaction: discord.Interaction,
+    current: str,
+) -> list[app_commands.Choice[str]]:
+    user_id = str(interaction.user.id)
+
+    # Recupera solo i veicoli posseduti dall'utente che usa il comando
+    res = (
+        supabase.table("registered_vehicles")
+        .select("plate, model")
+        .eq("discord_id", user_id)
+        .execute()
+    )
+
+    choices = []
+    if res.data:
+        for vehicle in res.data:
+            targa = vehicle.get("plate", "N/A")
+            modello = vehicle.get("model", "Veicolo Sconosciuto")
+            display_text = f"{modello} [{targa}]"
+
+            # Filtra in base a ciò che digita l'utente
+            if current.lower() in display_text.lower():
+                choices.append(app_commands.Choice(name=display_text, value=targa))
+
+    return choices[:25]
+
+
+# --- COMANDO /trasferisci_veicolo ---
+@bot.tree.command(
+    name="trasferisci_veicolo",
+    description="Passa la proprietà di un tuo veicolo immatricolato a un altro cittadino.",
+)
+@app_commands.describe(
+    veicolo="Seleziona il veicolo da trasferire",
+    nuovo_proprietario="Il cittadino a cui vuoi intestare il veicolo",
+)
+@app_commands.autocomplete(veicolo=veicoli_trasferimento_autocomplete)
+async def trasferisci_veicolo(
+    interaction: discord.Interaction,
+    veicolo: str,  # Riceve la targa selezionata
+    nuovo_proprietario: discord.Member,
+):
+    await interaction.response.defer()
+
+    mittente_id = str(interaction.user.id)
+    destinatario_id = str(nuovo_proprietario.id)
+
+    # 1. Controllo: Non si può trasferire a se stessi o a dei bot
+    if mittente_id == destinatario_id:
+        return await interaction.followup.send(
+            "❌ Non puoi trasferire un veicolo a te stesso!", ephemeral=True
+        )
+
+    if nuovo_proprietario.bot:
+        return await interaction.followup.send(
+            "❌ Non puoi trasferire un veicolo a un Bot!", ephemeral=True
+        )
+
+    # 2. Verifica se il veicolo appartiene effettivamente a chi usa il comando
+    v_res = (
+        supabase.table("registered_vehicles")
+        .select("*")
+        .eq("discord_id", mittente_id)
+        .eq("plate", veicolo)
+        .execute()
+    )
+
+    if not v_res.data:
+        return await interaction.followup.send(
+            "❌ Questo veicolo non ti appartiene o non è immatricolato a tuo nome.",
+            ephemeral=True,
+        )
+
+    v_data = v_res.data[0]
+    targa = v_data.get("plate")
+    modello = v_data.get("model")
+
+    # 3. Controllo Sequestro: Un veicolo sequestrato NON può essere trasferito
+    seized_res = (
+        supabase.table("seized_vehicles")
+        .select("id")
+        .eq("plate", targa)
+        .eq("status", "Sequestrato")
+        .execute()
+    )
+
+    if seized_res.data:
+        return await interaction.followup.send(
+            f"❌ Il veicolo **{modello}** (`{targa}`) è **sotto sequestro**! Impossibile effettuare il passaggio di proprietà.",
+            ephemeral=True,
+        )
+
+    # 4. Aggiorna il proprietario su Supabase (registered_vehicles)
+    upd_res = (
+        supabase.table("registered_vehicles")
+        .update({"discord_id": destinatario_id})
+        .eq("plate", targa)
+        .execute()
+    )
+
+    if not upd_res.data:
+        return await interaction.followup.send(
+            "❌ Si è verificato un errore durante l'aggiornamento della proprietà sul database.",
+            ephemeral=True,
+        )
+
+    # 5. Recupero Dati Anagrafici dal Documento del nuovo proprietario (se presente)
+    doc_res = (
+        supabase.table("documents")
+        .select("name, surname")
+        .eq("discord_id", destinatario_id)
+        .execute()
+    )
+
+    if doc_res.data:
+        doc = doc_res.data[0]
+        nome_nuovo_prop = f"{doc.get('name', '')} {doc.get('surname', '')}".strip()
+    else:
+        nome_nuovo_prop = nuovo_proprietario.display_name
+
+    # 6. Embed di Conferma Trasferimento
+    embed = discord.Embed(
+        title="📑 PASSAGGIO DI PROPRIETÀ COMPLETATO",
+        description="Il trasferimento del veicolo è stato registrato ufficialmente presso la motorizzazione.",
+        color=discord.Color.blue(),
+    )
+
+    embed.add_field(name="🚘 Modello Veicolo", value=f"**{modello}**", inline=True)
+    embed.add_field(name="🔢 Targa", value=f"`{targa}`", inline=True)
+    embed.add_field(
+        name="👤 Vecchio Proprietario",
+        value=interaction.user.mention,
+        inline=False,
+    )
+    embed.add_field(
+        name="🔑 Nuovo Proprietario",
+        value=f"{nuovo_proprietario.mention} (*{nome_nuovo_prop}*)",
+        inline=False,
+    )
+
+    embed.set_footer(
+        text="State Department of Motor Vehicles",
+        icon_url=interaction.guild.icon.url if interaction.guild and interaction.guild.icon else None,
+    )
+
+    await interaction.followup.send(embed=embed)
 
 # --- COMANDO /fine_minatore ---
 @bot.tree.command(
@@ -1046,6 +1198,131 @@ async def rimuovi_oggetto(
         f"Rimossi **{quantita}x {nome_oggetto}** dall'inventario di {utente.mention}.",
         ephemeral=True,
     )
+import discord
+from discord import app_commands
+
+# ID del ruolo Staff abilitato alla cancellazione
+
+
+
+# --- AUTOCOMPLETE PER L'ELIMINAZIONE VEICOLI ---
+async def elimina_veicolo_autocomplete(
+    interaction: discord.Interaction,
+    current: str,
+) -> list[app_commands.Choice[str]]:
+    # Recupera l'utente selezionato dall'opzione 'utente' nel comando
+    target_user_id = interaction.namespace.utente
+
+    if not target_user_id:
+        return []
+
+    # Cerca i veicoli registrati a nome dell'utente selezionato
+    res = (
+        supabase.table("registered_vehicles")
+        .select("plate, model")
+        .eq("discord_id", str(target_user_id))
+        .execute()
+    )
+
+    choices = []
+    if res.data:
+        for vehicle in res.data:
+            targa = vehicle.get("plate", "N/A")
+            modello = vehicle.get("model", "Veicolo Sconosciuto")
+            display_text = f"{modello} [{targa}]"
+
+            # Filtra i risultati durante la digitazione
+            if current.lower() in display_text.lower():
+                choices.append(app_commands.Choice(name=display_text, value=targa))
+
+    return choices[:25]
+
+
+# --- COMANDO /elimina_veicolo ---
+@bot.tree.command(
+    name="elimina_veicolo",
+    description="Elimina definitivamente un veicolo dal database (Solo Staff).",
+)
+@app_commands.describe(
+    utente="L'utente a cui eliminare il veicolo",
+    veicolo="Seleziona il veicolo da eliminare",
+)
+@app_commands.autocomplete(veicolo=elimina_veicolo_autocomplete)
+async def elimina_veicolo(
+    interaction: discord.Interaction,
+    utente: discord.Member,
+    veicolo: str,  # Riceve la targa del veicolo selezionata
+):
+    # 1. Verifica Ruolo Staff
+    if not isinstance(interaction.user, discord.Member):
+        return
+
+    staff_role_id = int(RUOLO_STAFF_ID)
+    ha_permesso = any(role.id == staff_role_id for role in interaction.user.roles)
+
+    if not ha_permesso:
+        return await interaction.response.send_message(
+            "❌ Non hai i permessi dello Staff per eseguire questo comando.",
+            ephemeral=True,
+        )
+
+    await interaction.response.defer(ephemeral=True)
+
+    target_id_str = str(utente.id)
+
+    # 2. Recupera i dettagli del veicolo per la conferma prima di eliminarlo
+    v_res = (
+        supabase.table("registered_vehicles")
+        .select("*")
+        .eq("discord_id", target_id_str)
+        .eq("plate", veicolo)
+        .execute()
+    )
+
+    if not v_res.data:
+        return await interaction.followup.send(
+            f"❌ Impossibile trovare il veicolo con targa `{veicolo}` per l'utente {utente.mention}.",
+            ephemeral=True,
+        )
+
+    modello = v_res.data[0].get("model", "Veicolo Sconosciuto")
+
+    # 3. Rimuovi il veicolo dalla tabella 'registered_vehicles'
+    del_res = (
+        supabase.table("registered_vehicles")
+        .delete()
+        .eq("discord_id", target_id_str)
+        .eq("plate", veicolo)
+        .execute()
+    )
+
+    if not del_res.data:
+        return await interaction.followup.send(
+            "❌ Errore durante l'eliminazione del veicolo dal database.",
+            ephemeral=True,
+        )
+
+    # 4. Rimuovi eventuali record del veicolo anche dalla tabella 'seized_vehicles'
+    supabase.table("seized_vehicles").delete().eq("plate", veicolo).execute()
+
+    # 5. Embed di risposta per lo Staff
+    embed = discord.Embed(
+        title="🗑️ VEICOLO ELIMINATO CON SUCCESSO",
+        description="Il veicolo è stato rimosso definitivamente dal registro motorizzazione.",
+        color=discord.Color.red(),
+    )
+
+    embed.add_field(
+        name="👤 Utente", value=f"{utente.mention} (`{utente.id}`)", inline=False
+    )
+    embed.add_field(name="🚘 Modello", value=f"**{modello}**", inline=True)
+    embed.add_field(name="🔢 Targa", value=f"`{veicolo}`", inline=True)
+    embed.set_footer(
+        text=f"Azione eseguita da: {interaction.user.display_name}",
+        icon_url=interaction.user.display_avatar.url,
+    )
+
+    await interaction.followup.send(embed=embed, ephemeral=True)
 
 # ==========================================
 # 🗑️ VIEW E TASTO CANCELLAZIONE DOCUMENTI
