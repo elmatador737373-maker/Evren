@@ -2341,7 +2341,7 @@ async def avvia_turno_database(interaction: discord.Interaction, ruolo: discord.
         title="⏱️ Turno Iniziato",
         description=f"Buon lavoro {interaction.user.mention}! Il tuo turno è stato registrato.",
         color=discord.Color.blue(),
-        timestamp=datetime.datetime.now()
+        timestamp = datetime.now()
     )
     embed.add_field(name="💼 Mansione Selezionata", value=f"```{ruolo.name}```", inline=False)
     embed.add_field(name="💵 Tariffa Oraria", value=f"**{tariffa:,.2f}$/h**", inline=True)
