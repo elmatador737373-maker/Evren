@@ -7555,6 +7555,464 @@ async def mostra_documento(interaction: discord.Interaction):
         "🪪 Ecco la tua carta d'identità ufficiale:", file=file_documento
     )
 
+import asyncio
+import random
+import string
+import discord
+from discord import app_commands
+
+# ID del ruolo Polizia
+import random
+import string
+import discord
+from discord import app_commands
+
+
+# --- 1. GENERATORE HTML STILE LIBRETTO AMERICANO ---
+def genera_html_libretto(
+    proprietario: str,
+    targa: str,
+    modello: str,
+    stato_sequestro: str = "REGOLARE",
+) -> str:
+    # Genera un VIN fittizio coerente con la targa per completare l'estetica USA
+    vin_fittizio = f"1FA6P8CF{targa.upper()[:3]}92837"
+
+    # Colore dello stato (Rosso se sequestrato, Verde se regolare)
+    colore_stato = "#dc2626" if "SEQUESTRATO" in stato_sequestro else "#16a34a"
+
+    return f"""
+    <!DOCTYPE html>
+    <html lang="en">
+    <head>
+        <meta charset="UTF-8">
+        <style>
+            * {{ box-sizing: border-box; margin: 0; padding: 0; }}
+            body {{
+                width: 800px;
+                height: 520px;
+                background-color: #f7f4ea;
+                font-family: 'Courier New', Courier, monospace;
+                padding: 25px;
+                color: #1a1a1a;
+            }}
+            .card {{
+                border: 6px double #1e3a8a;
+                height: 100%;
+                padding: 25px;
+                background-color: #faf8f2;
+                box-shadow: inset 0 0 10px rgba(0,0,0,0.05);
+                display: flex;
+                flex-direction: column;
+                justify-content: space-between;
+                position: relative;
+            }}
+            .header {{
+                text-align: center;
+                border-bottom: 2px solid #1e3a8a;
+                padding-bottom: 12px;
+            }}
+            .header h1 {{
+                font-size: 24px;
+                letter-spacing: 2px;
+                color: #1e3a8a;
+                font-weight: bold;
+                text-transform: uppercase;
+            }}
+            .header h2 {{
+                font-size: 13px;
+                color: #4b5563;
+                letter-spacing: 1px;
+            }}
+            .watermark {{
+                position: absolute;
+                top: 50%;
+                left: 50%;
+                transform: translate(-50%, -50%) rotate(-25deg);
+                font-size: 75px;
+                color: rgba(30, 58, 138, 0.04);
+                font-weight: bold;
+                pointer-events: none;
+                white-space: nowrap;
+            }}
+            .grid {{
+                display: grid;
+                grid-template-columns: 1fr 1fr;
+                gap: 20px;
+                margin-top: 15px;
+            }}
+            .field {{
+                border-bottom: 1px dashed #94a3b8;
+                padding-bottom: 4px;
+            }}
+            .field.full {{
+                grid-column: span 2;
+            }}
+            .label {{
+                font-size: 10px;
+                font-weight: bold;
+                color: #64748b;
+                text-transform: uppercase;
+                display: block;
+            }}
+            .value {{
+                font-size: 17px;
+                font-weight: bold;
+                color: #0f172a;
+                text-transform: uppercase;
+            }}
+            .footer {{
+                border-top: 2px solid #1e3a8a;
+                padding-top: 12px;
+                display: flex;
+                justify-content: space-between;
+                align-items: center;
+            }}
+            .stamp {{
+                border: 2px solid {colore_stato};
+                color: {colore_stato};
+                padding: 4px 12px;
+                font-weight: bold;
+                font-size: 13px;
+                border-radius: 4px;
+                transform: rotate(-2deg);
+                text-transform: uppercase;
+            }}
+        </style>
+    </head>
+    <body>
+        <div class="card">
+            <div class="watermark">OFFICIAL TITLE</div>
+            
+            <div class="header">
+                <h1>Department of Motor Vehicles</h1>
+                <h2>CERTIFICATE OF VEHICLE REGISTRATION & TITLE</h2>
+            </div>
+
+            <div class="grid">
+                <div class="field full">
+                    <span class="label">Registered Owner (Intestatario)</span>
+                    <span class="value">{proprietario}</span>
+                </div>
+
+                <div class="field">
+                    <span class="label">Plate Number (Targa)</span>
+                    <span class="value" style="color: #1e3a8a; font-size: 22px;">{targa}</span>
+                </div>
+
+                <div class="field">
+                    <span class="label">Vehicle Identification No. (VIN)</span>
+                    <span class="value">{vin_fittizio}</span>
+                </div>
+
+                <div class="field full">
+                    <span class="label">Make & Model (Modello Veicolo)</span>
+                    <span class="value">{modello}</span>
+                </div>
+            </div>
+
+            <div class="footer">
+                <span style="font-size: 9px; color: #64748b;">STATE OF CALIFORNIA / NEVADA • OFFICIAL REGISTRATION DOCUMENT</span>
+                <div class="stamp">{stato_sequestro}</div>
+            </div>
+        </div>
+    </body>
+    </html>
+    """
+
+
+# --- 2. AUTOCOMPLETE DINAMICO (Attinge da public.registered_vehicles) ---
+async def veicoli_autocomplete(
+    interaction: discord.Interaction,
+    current: str,
+) -> list[app_commands.Choice[str]]:
+    user_id = str(interaction.user.id)
+
+    # Interroga esattamente la tabella registered_vehicles
+    res = (
+        supabase.table("registered_vehicles")
+        .select("plate, model")
+        .eq("discord_id", user_id)
+        .execute()
+    )
+
+    choices = []
+    if res.data:
+        for vehicle in res.data:
+            targa = vehicle.get("plate", "N/A")
+            modello = vehicle.get("model", "Veicolo Sconosciuto")
+            display_text = f"{modello} [{targa}]"
+
+            # Filtra i risultati mentre l'utente digita
+            if current.lower() in display_text.lower():
+                choices.append(app_commands.Choice(name=display_text, value=targa))
+
+    return choices[:25]
+
+
+# --- 3. COMANDO SLASH /libretto_veicolo ---
+@bot.tree.command(
+    name="libretto_veicolo",
+    description="Mostra il libretto di circolazione ufficiale di un tuo veicolo.",
+)
+@app_commands.describe(veicolo="Seleziona il veicolo registrato a tuo nome")
+@app_commands.autocomplete(veicolo=veicoli_autocomplete)
+async def libretto_veicolo(
+    interaction: discord.Interaction,
+    veicolo: str,  # Riceve la targa selezionata dall'autocomplete
+):
+    await interaction.response.defer(ephemeral=False)
+    user_id = str(interaction.user.id)
+
+    # 1. Recupera il veicolo dalla tabella 'registered_vehicles'
+    v_res = (
+        supabase.table("registered_vehicles")
+        .select("*")
+        .eq("discord_id", user_id)
+        .eq("plate", veicolo)
+        .execute()
+    )
+
+    if not v_res.data:
+        return await interaction.followup.send(
+            "❌ Veicolo non trovato o non immatricolato a tuo nome.",
+            ephemeral=True,
+        )
+
+    v_data = v_res.data[0]
+    targa = v_data.get("plate", "N/A")
+    modello = v_data.get("model", "N/A")
+
+    # 2. Recupera il Nome e Cognome Reale dalla tabella 'documents'
+    doc_res = (
+        supabase.table("documents")
+        .select("name, surname")
+        .eq("discord_id", user_id)
+        .execute()
+    )
+
+    if doc_res.data:
+        doc = doc_res.data[0]
+        proprietario = f"{doc.get('name', '')} {doc.get('surname', '')}".strip()
+    else:
+        # Fallback al nome utente Discord se il documento non è stato ancora creato
+        proprietario = interaction.user.display_name
+
+    # 3. Controlla se il veicolo è sotto sequestro dalla tabella 'seized_vehicles'
+    seized_res = (
+        supabase.table("seized_vehicles")
+        .select("id")
+        .eq("plate", targa)
+        .eq("status", "Sequestrato")
+        .execute()
+    )
+
+    stato_sequestro = "SEQUESTRATO" if seized_res.data else "REGOLARE"
+
+    # 4. Generazione HTML e Rendering dell'immagine
+    html_code = genera_html_libretto(
+        proprietario=proprietario,
+        targa=targa,
+        modello=modello,
+        stato_sequestro=stato_sequestro,
+    )
+
+    try:
+        file_img = await renderizza_html_in_immagine(html_code)
+        await interaction.followup.send(
+            f"🚗 **Libretto di Circolazione:** {modello} (`{targa}`)",
+            file=file_img,
+        )
+    except Exception as e:
+        await interaction.followup.send(
+            f"❌ Errore durante il rendering del libretto: `{e}`",
+            ephemeral=True,
+        )
+
+
+# --- FUNZIONE HELPER: Recupera e renderizza il documento di uno specifico utente ---
+async def ottieni_file_documento(member: discord.Member) -> discord.File | str:
+    user_id = str(member.id)
+
+    # 1. Recupero dal DB usando l'ID dell'utente selezionato
+    response = (
+        supabase.table("documents")
+        .select("*")
+        .eq("discord_id", user_id)
+        .execute()
+    )
+
+    if not response.data:
+        return f"❌ {member.mention} non possiede ancora un documento registrato!"
+
+    doc = response.data[0]
+    doc_number = doc.get("doc_number")
+
+    # 2. Generazione numero documento se non presente
+    if not doc_number:
+        lettere = "".join(random.choices(string.ascii_uppercase, k=2))
+        numeri = "".join(random.choices(string.digits, k=6))
+        doc_number = f"{lettere}{numeri}"
+        supabase.table("documents").update({"doc_number": doc_number}).eq(
+            "discord_id", user_id
+        ).execute()
+
+    # 3. Controllo ruoli per la residenza sull'utente perquisito
+    RUOLO_LOS_ANGELES = 1536072707878420541
+    RUOLO_MESSICO = 1536072848224034856
+
+    user_role_ids = [role.id for role in member.roles]
+
+    if RUOLO_MESSICO in user_role_ids:
+        residenza_utente = "Messico"
+    elif RUOLO_LOS_ANGELES in user_role_ids:
+        residenza_utente = "Los Angeles"
+    else:
+        residenza_utente = "Los Angeles"
+
+    # 4. Generazione HTML e rendering immagine
+    html_content = await genera_carta_identita(
+        discord_id=member.id,
+        residenza=residenza_utente,
+        nome=doc["name"],
+        cognome=doc["surname"],
+        birth_date=doc["birth_date"],
+        birth_place=doc["birth_place"],
+        cf=doc["cf"],
+        doc_number=doc_number,
+        photo_url=doc["photo_url"],
+        colore_occhi=doc["eye_color"],
+        colore_capelli=doc["hair_color"],
+        segni_particolari=doc["distinct_marks"],
+    )
+
+    return await renderizza_html_in_immagine(html_content)
+
+
+# --- VIEW DISCORD CON IL PULSANTE PER MOSTRARE IL DOCUMENTO ---
+class DocumentoPerquisizioneView(discord.ui.View):
+
+    def __init__(self, target_user: discord.Member):
+        super().__init__(timeout=180)  # Il pulsante resta attivo per 3 minuti
+        self.target_user = target_user
+
+    @discord.ui.button(
+        label="📄 Mostra Documento", style=discord.ButtonStyle.primary
+    )
+    async def mostra_documento_btn(
+        self, interaction: discord.Interaction, button: discord.ui.Button
+    ):
+        await interaction.response.defer(ephemeral=True)
+
+        # Genera e recupera il documento dell'UTENTE PERQUISITO
+        esito = await ottieni_file_documento(self.target_user)
+
+        if isinstance(esito, discord.File):
+            await interaction.followup.send(file=esito, ephemeral=True)
+        else:
+            await interaction.followup.send(esito, ephemeral=True)
+
+
+# --- COMANDO /perquisii ---
+@bot.tree.command(
+    name="perquisci",
+    description="Esegui una perquisizione su un cittadino (Solo Polizia).",
+)
+@app_commands.describe(utente="Il cittadino da perquisire")
+async def perquisii(interaction: discord.Interaction, utente: discord.Member):
+    # 1. Controllo Permessi Ruolo Polizia
+    if not isinstance(interaction.user, discord.Member):
+        return
+
+    staff_id = int(RUOLO_POLIZIA_ID)
+    ha_permesso = any(role.id == staff_id for role in interaction.user.roles)
+
+    if not ha_permesso:
+        return await interaction.response.send_message(
+            "❌ Non hai i permessi necessari per eseguire una perquisizione.",
+            ephemeral=True,
+        )
+
+    await interaction.response.defer()
+
+    # 2. Barra di avanzamento animata
+    total_steps = 5
+    sleep_interval = 1.0  # Durata totale: 5 secondi
+
+    embed = discord.Embed(
+        title="🔍 PERQUISIZIONE IN CORSO...",
+        description=f"L'agente {interaction.user.mention} sta perquisendo {utente.mention}.\n\n`[░░░░░░░░░░] 0%`",
+        color=discord.Color.blue(),
+    )
+    await interaction.followup.send(embed=embed)
+
+    for i in range(1, total_steps + 1):
+        await asyncio.sleep(sleep_interval)
+        percentage = int((i / total_steps) * 100)
+        filled_blocks = "▓" * (i * 2)
+        empty_blocks = "░" * (10 - (i * 2))
+
+        progress_bar = f"`[{filled_blocks}{empty_blocks}] {percentage}%`"
+
+        embed.description = f"L'agente {interaction.user.mention} sta perquisendo {utente.mention}.\n\n{progress_bar}"
+        await interaction.edit_original_response(embed=embed)
+
+    target_id_str = str(utente.id)
+
+    # 3. Recupero Soldi Contanti da Supabase (Tabella 'users')
+    user_res = (
+        supabase.table("users")
+        .select("wallet")
+        .eq("discord_id", target_id_str)
+        .execute()
+    )
+
+    soldi_contanti = 0.0
+    if user_res.data:
+        soldi_contanti = user_res.data[0].get("wallet", 0.0) or 0.0
+
+    # 4. Recupero Inventario Oggetti da Supabase (Tabella 'inventory')
+    inv_res = (
+        supabase.table("inventory")
+        .select("item_name, quantity")
+        .eq("discord_id", target_id_str)
+        .execute()
+    )
+
+    if inv_res.data:
+        oggetti_str = "\n".join(
+            [f"• **{item['item_name']}** x{item['quantity']}" for item in inv_res.data]
+        )
+    else:
+        oggetti_str = "❌ *Nessun oggetto trovato nelle tasche.*"
+
+    # 5. Embed Finale con Contanti, Inventario e Tasto Documento
+    embed_finale = discord.Embed(
+        title="📋 ESITO PERQUISIZIONE",
+        description=f"Perquisizione completata su {utente.mention} da parte di {interaction.user.mention}.",
+        color=discord.Color.green(),
+    )
+
+    embed_finale.add_field(
+        name="💵 Denaro Contante Trovato",
+        value=f"**€{soldi_contanti:,.2f}**",
+        inline=False,
+    )
+
+    embed_finale.add_field(
+        name="📦 Oggetti Trovati nell'Inventario",
+        value=oggetti_str,
+        inline=False,
+    )
+
+    embed_finale.set_footer(
+        text=f"ID Agente: {interaction.user.id}",
+        icon_url=interaction.user.display_avatar.url,
+    )
+
+    view = DocumentoPerquisizioneView(target_user=utente)
+    await interaction.edit_original_response(embed=embed_finale, view=view)
+
 # --- COMANDI REGISTRAZIONE ISTITUZIONALE ---
 
 @bot.tree.command(name="registra_veicolo", description="[MOTORIZZAZIONE] Registra un veicolo con targa.")
