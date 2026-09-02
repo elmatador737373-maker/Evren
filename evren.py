@@ -16,6 +16,7 @@ from playwright.async_api import async_playwright
 import imageio_ffmpeg
 import wavelink  # <--- ASSICURATI CHE QUESTO CI SIA IN CIMA AL FILE
 import re
+import datetime
 
 load_dotenv()
 
@@ -578,7 +579,6 @@ async def staff_soldi_deposito(
         f"💰 Nuovo saldo attuale: **€{new_wallet:,.2f}**"
     )
 
-from datetime import datetime, timezone
 import discord
 from discord import app_commands
 
@@ -3096,7 +3096,6 @@ import discord
 from discord import app_commands, ui
 from discord.ext import commands, tasks
 
-from datetime import datetime, timezone
 import random
 from typing import Optional
 import discord
@@ -3106,7 +3105,6 @@ from discord.ext import tasks
 
 import json
 import random
-from datetime import datetime, timedelta, timezone
 from typing import Optional
 
 import discord
@@ -8304,7 +8302,6 @@ async def registra_veicolo(interaction: discord.Interaction, proprietario: disco
 
 import discord
 from discord import app_commands
-from datetime import datetime, timezone
 
 # --- CONFIGURAZIONE ---
 RUOLI_MECCANICI_IDS = [
