@@ -7883,12 +7883,37 @@ def genera_html_libretto(
     targa: str,
     modello: str,
     stato_sequestro: str = "REGOLARE",
+    modifiche: list[dict] = None,
 ) -> str:
-    # Genera un VIN fittizio coerente con la targa per completare l'estetica USA
+    # Genera un VIN fittizio coerente con la targa
     vin_fittizio = f"1FA6P8CF{targa.upper()[:3]}92837"
 
     # Colore dello stato (Rosso se sequestrato, Verde se regolare)
     colore_stato = "#dc2626" if "SEQUESTRATO" in stato_sequestro else "#16a34a"
+
+    # Formattazione lista modifiche
+    if modifiche:
+        mod_html_list = "".join(
+            [
+                f"<li><b>{mod.get('mod_type', 'Modifica')}:</b> {mod.get('details', 'N/D')}</li>"
+                for mod in modifiche
+            ]
+        )
+        modifiche_block = f"""
+        <div class="field full">
+            <span class="label">Approved Vehicle Modifications (Modifiche Approvate)</span>
+            <ul class="mod-list">
+                {mod_html_list}
+            </ul>
+        </div>
+        """
+    else:
+        modifiche_block = """
+        <div class="field full">
+            <span class="label">Approved Vehicle Modifications (Modifiche Approvate)</span>
+            <span class="value" style="font-size: 13px; color: #64748b;">NESSUNA MODIFICA REGISTRATA (STOCK)</span>
+        </div>
+        """
 
     return f"""
     <!DOCTYPE html>
@@ -7899,7 +7924,7 @@ def genera_html_libretto(
             * {{ box-sizing: border-box; margin: 0; padding: 0; }}
             body {{
                 width: 800px;
-                height: 520px;
+                height: 580px;
                 background-color: #f7f4ea;
                 font-family: 'Courier New', Courier, monospace;
                 padding: 25px;
@@ -7908,7 +7933,7 @@ def genera_html_libretto(
             .card {{
                 border: 6px double #1e3a8a;
                 height: 100%;
-                padding: 25px;
+                padding: 20px 25px;
                 background-color: #faf8f2;
                 box-shadow: inset 0 0 10px rgba(0,0,0,0.05);
                 display: flex;
@@ -7919,7 +7944,7 @@ def genera_html_libretto(
             .header {{
                 text-align: center;
                 border-bottom: 2px solid #1e3a8a;
-                padding-bottom: 12px;
+                padding-bottom: 10px;
             }}
             .header h1 {{
                 font-size: 24px;
@@ -7947,8 +7972,8 @@ def genera_html_libretto(
             .grid {{
                 display: grid;
                 grid-template-columns: 1fr 1fr;
-                gap: 20px;
-                margin-top: 15px;
+                gap: 12px 20px;
+                margin-top: 10px;
             }}
             .field {{
                 border-bottom: 1px dashed #94a3b8;
@@ -7965,14 +7990,23 @@ def genera_html_libretto(
                 display: block;
             }}
             .value {{
-                font-size: 17px;
+                font-size: 16px;
                 font-weight: bold;
                 color: #0f172a;
                 text-transform: uppercase;
             }}
+            .mod-list {{
+                list-style-type: square;
+                padding-left: 18px;
+                margin-top: 3px;
+                font-size: 12px;
+                color: #1e293b;
+                max-height: 75px;
+                overflow: hidden;
+            }}
             .footer {{
                 border-top: 2px solid #1e3a8a;
-                padding-top: 12px;
+                padding-top: 10px;
                 display: flex;
                 justify-content: space-between;
                 align-items: center;
@@ -8006,7 +8040,7 @@ def genera_html_libretto(
 
                 <div class="field">
                     <span class="label">Plate Number (Targa)</span>
-                    <span class="value" style="color: #1e3a8a; font-size: 22px;">{targa}</span>
+                    <span class="value" style="color: #1e3a8a; font-size: 20px;">{targa}</span>
                 </div>
 
                 <div class="field">
@@ -8018,6 +8052,8 @@ def genera_html_libretto(
                     <span class="label">Make & Model (Modello Veicolo)</span>
                     <span class="value">{modello}</span>
                 </div>
+
+                {modifiche_block}
             </div>
 
             <div class="footer">
@@ -8037,7 +8073,6 @@ async def veicoli_autocomplete(
 ) -> list[app_commands.Choice[str]]:
     user_id = str(interaction.user.id)
 
-    # Interroga esattamente la tabella registered_vehicles
     res = (
         supabase.table("registered_vehicles")
         .select("plate, model")
@@ -8052,9 +8087,10 @@ async def veicoli_autocomplete(
             modello = vehicle.get("model", "Veicolo Sconosciuto")
             display_text = f"{modello} [{targa}]"
 
-            # Filtra i risultati mentre l'utente digita
             if current.lower() in display_text.lower():
-                choices.append(app_commands.Choice(name=display_text, value=targa))
+                choices.append(
+                    app_commands.Choice(name=display_text, value=targa)
+                )
 
     return choices[:25]
 
@@ -8068,7 +8104,7 @@ async def veicoli_autocomplete(
 @app_commands.autocomplete(veicolo=veicoli_autocomplete)
 async def libretto_veicolo(
     interaction: discord.Interaction,
-    veicolo: str,  # Riceve la targa selezionata dall'autocomplete
+    veicolo: str,  # Riceve la targa selezionata
 ):
     await interaction.response.defer(ephemeral=False)
     user_id = str(interaction.user.id)
@@ -8104,10 +8140,9 @@ async def libretto_veicolo(
         doc = doc_res.data[0]
         proprietario = f"{doc.get('name', '')} {doc.get('surname', '')}".strip()
     else:
-        # Fallback al nome utente Discord se il documento non è stato ancora creato
         proprietario = interaction.user.display_name
 
-    # 3. Controlla se il veicolo è sotto sequestro dalla tabella 'seized_vehicles'
+    # 3. Controlla se il veicolo è sotto sequestro
     seized_res = (
         supabase.table("seized_vehicles")
         .select("id")
@@ -8118,12 +8153,23 @@ async def libretto_veicolo(
 
     stato_sequestro = "SEQUESTRATO" if seized_res.data else "REGOLARE"
 
-    # 4. Generazione HTML e Rendering dell'immagine
+    # 4. Recupera le eventuali modifiche dalla tabella 'vehicle_modifications'
+    mod_res = (
+        supabase.table("vehicle_modifications")
+        .select("mod_type, details")
+        .eq("plate", targa)
+        .execute()
+    )
+
+    modifiche = mod_res.data if mod_res.data else []
+
+    # 5. Generazione HTML e Rendering dell'immagine
     html_code = genera_html_libretto(
         proprietario=proprietario,
         targa=targa,
         modello=modello,
         stato_sequestro=stato_sequestro,
+        modifiche=modifiche,
     )
 
     try:
@@ -8137,7 +8183,6 @@ async def libretto_veicolo(
             f"❌ Errore durante il rendering del libretto: `{e}`",
             ephemeral=True,
         )
-
 
 # --- FUNZIONE HELPER: Recupera e renderizza il documento di uno specifico utente ---
 async def ottieni_file_documento(member: discord.Member) -> discord.File | str:
@@ -8222,35 +8267,22 @@ class DocumentoPerquisizioneView(discord.ui.View):
             await interaction.followup.send(esito, ephemeral=True)
 
 
-# --- COMANDO /perquisii ---
+# --- COMANDO /perquisici ---
 @bot.tree.command(
     name="perquisci",
-    description="Esegui una perquisizione su un cittadino (Solo Polizia).",
+    description="Esegui una perquisizione su un cittadino.",
 )
 @app_commands.describe(utente="Il cittadino da perquisire")
 async def perquisii(interaction: discord.Interaction, utente: discord.Member):
-    # 1. Controllo Permessi Ruolo Polizia
-    if not isinstance(interaction.user, discord.Member):
-        return
-
-    staff_id = int(RUOLO_POLIZIA_ID)
-    ha_permesso = any(role.id == staff_id for role in interaction.user.roles)
-
-    if not ha_permesso:
-        return await interaction.response.send_message(
-            "❌ Non hai i permessi necessari per eseguire una perquisizione.",
-            ephemeral=True,
-        )
-
     await interaction.response.defer()
 
-    # 2. Barra di avanzamento animata
+    # 1. Barra di avanzamento animata
     total_steps = 5
     sleep_interval = 1.0  # Durata totale: 5 secondi
 
     embed = discord.Embed(
         title="🔍 PERQUISIZIONE IN CORSO...",
-        description=f"L'agente {interaction.user.mention} sta perquisendo {utente.mention}.\n\n`[░░░░░░░░░░] 0%`",
+        description=f"{interaction.user.mention} sta perquisendo {utente.mention}.\n\n`[░░░░░░░░░░] 0%`",
         color=discord.Color.blue(),
     )
     await interaction.followup.send(embed=embed)
@@ -8263,12 +8295,12 @@ async def perquisii(interaction: discord.Interaction, utente: discord.Member):
 
         progress_bar = f"`[{filled_blocks}{empty_blocks}] {percentage}%`"
 
-        embed.description = f"L'agente {interaction.user.mention} sta perquisendo {utente.mention}.\n\n{progress_bar}"
+        embed.description = f"{interaction.user.mention} sta perquisendo {utente.mention}.\n\n{progress_bar}"
         await interaction.edit_original_response(embed=embed)
 
     target_id_str = str(utente.id)
 
-    # 3. Recupero Soldi Contanti da Supabase (Tabella 'users')
+    # 2. Recupero Soldi Contanti da Supabase (Tabella 'users')
     user_res = (
         supabase.table("users")
         .select("wallet")
@@ -8280,7 +8312,7 @@ async def perquisii(interaction: discord.Interaction, utente: discord.Member):
     if user_res.data:
         soldi_contanti = user_res.data[0].get("wallet", 0.0) or 0.0
 
-    # 4. Recupero Inventario Oggetti da Supabase (Tabella 'inventory')
+    # 3. Recupero Inventario Oggetti da Supabase (Tabella 'inventory')
     inv_res = (
         supabase.table("inventory")
         .select("item_name, quantity")
@@ -8295,7 +8327,7 @@ async def perquisii(interaction: discord.Interaction, utente: discord.Member):
     else:
         oggetti_str = "❌ *Nessun oggetto trovato nelle tasche.*"
 
-    # 5. Embed Finale con Contanti, Inventario e Tasto Documento
+    # 4. Embed Finale con Contanti, Inventario e Tasto Documento
     embed_finale = discord.Embed(
         title="📋 ESITO PERQUISIZIONE",
         description=f"Perquisizione completata su {utente.mention} da parte di {interaction.user.mention}.",
@@ -8315,7 +8347,7 @@ async def perquisii(interaction: discord.Interaction, utente: discord.Member):
     )
 
     embed_finale.set_footer(
-        text=f"ID Agente: {interaction.user.id}",
+        text=f"Eseguita da: {interaction.user.display_name}",
         icon_url=interaction.user.display_avatar.url,
     )
 
