@@ -3153,26 +3153,28 @@ def generate_cantiere_embed(cantiere: dict) -> discord.Embed:
 
     tot_richiesti = sum(mat.get("totale", 0) for mat in materiali_list)
     tot_consumati = sum(mat.get("consumati", 0) for mat in materiali_list)
-    progresso = min(100, int((tot_consumati / tot_richiesti) * 100)) if tot_richiesti > 0 else 100
+    progresso = (
+        min(100, int((tot_consumati / tot_richiesti) * 100))
+        if tot_richiesti > 0
+        else 100
+    )
 
     is_paused = cantiere.get("paused", False)
     tempo_rimanente = cantiere.get("tempo_rimanente", 0)
 
-# ... altro codice ...
+    # Calcolo tempo residuo
+    if not is_paused and cantiere.get("end_time"):
+        try:
+            end_dt = datetime.datetime.fromisoformat(cantiere["end_time"])
 
-# Calcolo tempo residuo
-if not is_paused and cantiere.get("end_time"):
-    try:
-        end_dt = datetime.datetime.fromisoformat(cantiere["end_time"])
-        
-        # Gestione fuso orario per evitare TypeError
-        if end_dt.tzinfo is None:
-            end_dt = end_dt.replace(tzinfo=datetime.timezone.utc)
-            
-        now_dt = datetime.datetime.now(datetime.timezone.utc)
-        tempo_rimanente = max(0, int((end_dt - now_dt).total_seconds()))
-    except Exception:
-        pass
+            # Gestione fuso orario per evitare TypeError
+            if end_dt.tzinfo is None:
+                end_dt = end_dt.replace(tzinfo=datetime.timezone.utc)
+
+            now_dt = datetime.datetime.now(datetime.timezone.utc)
+            tempo_rimanente = max(0, int((end_dt - now_dt).total_seconds()))
+        except Exception:
+            pass
 
     tempo_str = format_tempo_rimanente(tempo_rimanente)
 
@@ -3180,16 +3182,28 @@ if not is_paused and cantiere.get("end_time"):
         title="🏗️ Cantiere in Costruzione",
         color=discord.Color.from_rgb(43, 45, 49),
     )
-    embed.add_field(name="Azienda Costruttrice:", value=cantiere["azienda"], inline=False)
-    embed.add_field(name="Indirizzo Immobile:", value=cantiere["address"], inline=False)
-    embed.add_field(name="Progresso Totale:", value=f"`{progresso}%`", inline=False)
+    embed.add_field(
+        name="Azienda Costruttrice:", value=cantiere["azienda"], inline=False
+    )
+    embed.add_field(
+        name="Indirizzo Immobile:", value=cantiere["address"], inline=False
+    )
+    embed.add_field(
+        name="Progresso Totale:", value=f"`{progresso}%`", inline=False
+    )
 
     mat_text = ""
     for mat in materiali_list:
-        status = "✅" if mat.get("consumati", 0) >= mat.get("totale", 0) else "📦"
+        status = (
+            "✅" if mat.get("consumati", 0) >= mat.get("totale", 0) else "📦"
+        )
         mat_text += f"{status} **{mat['nome']}**: Consumati dal deposito `{mat.get('consumati', 0)}/{mat['totale']}`\n"
-    
-    embed.add_field(name="Materiali Prelevati dal Deposito:", value=mat_text, inline=False)
+
+    embed.add_field(
+        name="Materiali Prelevati dal Deposito:",
+        value=mat_text,
+        inline=False,
+    )
 
     builder_tag = f"<@{cantiere['builder_id']}>"
     operai_ids = cantiere.get("operai_ids", [])
@@ -3199,11 +3213,23 @@ if not is_paused and cantiere.get("end_time"):
         except Exception:
             operai_ids = []
 
-    operai_tags = ", ".join([f"<@{uid}>" for uid in operai_ids]) if operai_ids else "Nessuno (Solo responsabile)"
+    operai_tags = (
+        ", ".join([f"<@{uid}>" for uid in operai_ids])
+        if operai_ids
+        else "Nessuno (Solo responsabile)"
+    )
 
-    embed.add_field(name="Responsabile Cantiere:", value=builder_tag, inline=True)
-    embed.add_field(name=f"Operai Assegnati ({len(operai_ids)}/4):", value=operai_tags, inline=True)
-    embed.add_field(name="Tempo rimanente stimato:", value=f"`{tempo_str}`", inline=False)
+    embed.add_field(
+        name="Responsabile Cantiere:", value=builder_tag, inline=True
+    )
+    embed.add_field(
+        name=f"Operai Assegnati ({len(operai_ids)}/4):",
+        value=operai_tags,
+        inline=True,
+    )
+    embed.add_field(
+        name="Tempo rimanente stimato:", value=f"`{tempo_str}`", inline=False
+    )
 
     if is_paused:
         embed.set_footer(
@@ -3214,6 +3240,7 @@ if not is_paused and cantiere.get("end_time"):
             text="🔨 Lavori in corso... Prelievo automatico dei materiali dal deposito fazione ad ogni minuto."
         )
     return embed
+
 
 
 # --- LOOP DI AVANZAMENTO GLOBALE AUTO-GESTITO ---
