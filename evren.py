@@ -3213,7 +3213,6 @@ if not is_paused and cantiere.get("end_time"):
         embed.set_footer(
             text="🔨 Lavori in corso... Prelievo automatico dei materiali dal deposito fazione ad ogni minuto."
         )
-
     return embed
 
 
