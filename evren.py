@@ -2349,9 +2349,9 @@ async def avvia_turno_database(interaction: discord.Interaction, ruolo: discord.
     embed.set_thumbnail(url=interaction.user.display_avatar.url)
 
     if interaction.response.is_done():
-        await interaction.followup.send(embed=embed, ephemeral=True)
+        await interaction.followup.send(embed=embed, ephemeral=False)
     else:
-        await interaction.response.send_message(embed=embed, ephemeral=True)
+        await interaction.response.send_message(embed=embed, ephemeral=False)
 
 
 # --- MODAL PER MODIFICARE L'IMPORTO ---
@@ -5377,7 +5377,7 @@ async def deposito_fazione(interaction: discord.Interaction, fazione: str):
   embed.set_footer(text="Evren City OS • Gestione Risorse Fazione")
 
   view = FactionVaultView(fazione)
-  await interaction.response.send_message(embed=embed, view=view, ephemeral=True)
+  await interaction.response.send_message(embed=embed, view=view, ephemeral=False)
 
 # --- SHOP OS ---
 
