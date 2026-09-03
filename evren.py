@@ -660,7 +660,7 @@ async def avvia_minatore(
         )
 
     pickaxe_used = inv_res.data[0]["item_name"]
-    now_utc = datetime.now(timezone.utc)
+    now_utc = datetime.datetime.now(datetime.timezone.utc)
     mat_info = MATERIALS_DATA[materiale.value]
     
     # Nome materiale formattato con emoji
@@ -2329,7 +2329,7 @@ class SelezioneRuoloView(ui.View):
 
 # --- FUNZIONE AVVIO TURNO SU DB ---
 async def avvia_turno_database(interaction: discord.Interaction, ruolo: discord.Role, tariffa: float):
-    now_iso = datetime.now(timezone.utc).isoformat()
+    now_iso = datetime.datetime.now(datetime.timezone.utc).isoformat()
     supabase.table("turni_attivi").upsert({
         "user_id": str(interaction.user.id),
         "role_id": str(ruolo.id),
