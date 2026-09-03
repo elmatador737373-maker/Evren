@@ -2342,7 +2342,7 @@ async def avvia_turno_database(interaction: discord.Interaction, ruolo: discord.
         title="⏱️ Turno Iniziato",
         description=f"Buon lavoro {interaction.user.mention}! Il tuo turno è stato registrato.",
         color=discord.Color.blue(),
-        timestamp = datetime.now()
+        timestamp = datetime.datetime.now()
     )
     embed.add_field(name="💼 Mansione Selezionata", value=f"```{ruolo.name}```", inline=False)
     embed.add_field(name="💵 Tariffa Oraria", value=f"**{tariffa:,.2f}$/h**", inline=True)
@@ -3158,14 +3158,21 @@ def generate_cantiere_embed(cantiere: dict) -> discord.Embed:
     is_paused = cantiere.get("paused", False)
     tempo_rimanente = cantiere.get("tempo_rimanente", 0)
 
-    # Calcolo tempo residuo
-    if not is_paused and cantiere.get("end_time"):
-        try:
-            end_dt = datetime.fromisoformat(cantiere["end_time"])
-            now_dt = datetime.now(timezone.utc)
-            tempo_rimanente = max(0, int((end_dt - now_dt).total_seconds()))
-        except Exception:
-            pass
+# ... altro codice ...
+
+# Calcolo tempo residuo
+if not is_paused and cantiere.get("end_time"):
+    try:
+        end_dt = datetime.datetime.fromisoformat(cantiere["end_time"])
+        
+        # Gestione fuso orario per evitare TypeError
+        if end_dt.tzinfo is None:
+            end_dt = end_dt.replace(tzinfo=datetime.timezone.utc)
+            
+        now_dt = datetime.datetime.now(datetime.timezone.utc)
+        tempo_rimanente = max(0, int((end_dt - now_dt).total_seconds()))
+    except Exception:
+        pass
 
     tempo_str = format_tempo_rimanente(tempo_rimanente)
 
@@ -3218,7 +3225,7 @@ async def gestore_cantieri_loop():
     if not res_cantieri.data:
         return
 
-    now_dt = datetime.now(timezone.utc)
+    now_dt = datetime.datetime.now(timezone.utc)
 
     for cantiere in res_cantieri.data:
         msg_id = cantiere["message_id"]
@@ -3453,7 +3460,7 @@ async def costruisci(
             {"nome": mat_nome, "totale": mat_totale, "consumati": 0}
         )
 
-    end_dt = datetime.now(timezone.utc) + timedelta(seconds=cfg["durata_sec"])
+    end_dt = datetime.datetime.now(timezone.utc) + timedelta(seconds=cfg["durata_sec"])
 
     msg = await interaction.followup.send(
         embed=discord.Embed(description="Creazione cantiere in corso...")
@@ -8361,7 +8368,7 @@ async def registra_modifiche(
         embed = discord.Embed(
             title="🔧 Modifica Veicolo Registrata",
             color=discord.Color.blue(),
-            timestamp=datetime.now(timezone.utc)
+            timestamp=datetime.datetime.now(timezone.utc)
         )
         embed.add_field(name="Targa Veicolo:", value=f"`{targa_clean}`", inline=True)
         embed.add_field(name="Tipo Modifica:", value=tipo_modifica, inline=True)
