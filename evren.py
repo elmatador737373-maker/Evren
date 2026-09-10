@@ -5377,7 +5377,7 @@ async def deposito_fazione(interaction: discord.Interaction, fazione: str):
   embed.set_footer(text="Evren City OS • Gestione Risorse Fazione")
 
   view = FactionVaultView(fazione)
-  await interaction.response.send_message(embed=embed, view=view, ephemeral=False)
+  await interaction.response.send_message(embed=embed, view=view, ephemeral=True)
 
 # --- SHOP OS ---
 
