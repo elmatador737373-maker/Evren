@@ -322,23 +322,23 @@ def ha_ruolo_staff(interaction: discord.Interaction) -> bool:
 async def fazione_autocomplete(
     interaction: discord.Interaction, current: str
 ) -> list[app_commands.Choice[str]]:
-    if not ha_ruolo_staff(interaction):
-        return []
+  try:
+    # Interroga la tabella per ottenere tutte le fazioni registrate
+    res = supabase.table("faction_roles").select("faction_name").execute()
 
-    try:
-        res = (
-            supabase.table("factions")
-            .select("name")
-            .ilike("name", f"%{current}%")
-            .limit(25)
-            .execute()
-        )
-        return [
-            app_commands.Choice(name=row["name"], value=row["name"])
-            for row in res.data
-        ]
-    except Exception:
-        return []
+    if not res.data:
+      return []
+
+    # Estrae i nomi unici delle fazioni
+    fazioni = list(set(row["faction_name"] for row in res.data))
+
+    # Filtra le fazioni in base a ciò che l'utente sta digitando (current)
+    filtered = [f for f in fazioni if current.lower() in f.lower()]
+
+    # Restituisce le scelte formattate per Discord (massimo 25)
+    return [app_commands.Choice(name=f, value=f) for f in filtered[:25]]
+  except Exception:
+    return []
 
 
 async def oggetto_custom_autocomplete(
