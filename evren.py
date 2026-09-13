@@ -1560,7 +1560,7 @@ async def gestisci_soldi(
     importo: float,
 ):
     # Controllo Staff direttamente nel comando
-    if not any(role.id == RUOLO_STAFF_ID for role in interaction.user.roles):
+    if not any(role.id == 1253460147003723867 for role in interaction.user.roles):
         await interaction.response.send_message(
             "Non hai i permessi necessari per usare questo comando.", ephemeral=True
         )
