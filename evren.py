@@ -1532,6 +1532,12 @@ async def staff_info_error(interaction: discord.Interaction, error: app_commands
 
 # 3. Gestione Soldi Staff
 # 5. Gestisci Soldi (Staff)
+import discord
+from discord import app_commands
+
+CANALE_LOG_ID = 1252225064242253955  # Inserisci qui l'ID del canale log
+
+
 @bot.tree.command(
     name="gestisci_soldi",
     description="Aggiunge o rimuove soldi (Contanti o Banca) a un utente.",
@@ -1562,7 +1568,8 @@ async def gestisci_soldi(
     # Controllo Staff direttamente nel comando
     if not any(role.id == 1253460147003723867 for role in interaction.user.roles):
         await interaction.response.send_message(
-            "Non hai i permessi necessari per usare questo comando.", ephemeral=True
+            "Non hai i permessi necessari per usare questo comando.",
+            ephemeral=True,
         )
         return
 
@@ -1572,7 +1579,12 @@ async def gestisci_soldi(
         )
         return
 
-    user_res = supabase.table("users").select("wallet, bank").eq("discord_id", str(utente.id)).execute()
+    user_res = (
+        supabase.table("users")
+        .select("wallet, bank")
+        .eq("discord_id", str(utente.id))
+        .execute()
+    )
     if not user_res.data:
         await interaction.response.send_message(
             "L'utente non è registrato nel database.", ephemeral=True
@@ -1593,19 +1605,59 @@ async def gestisci_soldi(
         new_bal = current_bal + importo
 
     # Aggiorna il bilancio
-    supabase.table("users").update({tipo_conto: new_bal}).eq("discord_id", str(utente.id)).execute()
+    supabase.table("users").update({tipo_conto: new_bal}).eq(
+        "discord_id", str(utente.id)
+    ).execute()
 
-    # Log della transazione (salva solo se il conto scelto è la banca)
+    # Log nel database
     if tipo_conto == "bank":
-        supabase.table("transactions_log").insert({
-            "discord_id": str(utente.id),
-            "type": f"staff_{azione}_{tipo_conto}",
-            "amount": importo,
-            "description": f"Azione staff di {interaction.user}"
-        }).execute()
+        supabase.table("transactions_log").insert(
+            {
+                "discord_id": str(utente.id),
+                "type": f"staff_{azione}_{tipo_conto}",
+                "amount": importo,
+                "description": f"Azione staff di {interaction.user}",
+            }
+        ).execute()
+
+    # Invio log sul canale Discord
+    log_channel = interaction.guild.get_channel(CANALE_LOG_ID)
+    if log_channel is None:
+        try:
+            log_channel = await interaction.client.fetch_channel(CANALE_LOG_ID)
+        except (discord.NotFound, discord.Forbidden):
+            log_channel = None
+
+    if log_channel:
+        colore = discord.Color.green() if azione == "add" else discord.Color.red()
+        nome_azione = "Aggiunta Fondi" if azione == "add" else "Rimozione Fondi"
+        conto_label = "Banca" if tipo_conto == "bank" else "Contanti (Wallet)"
+
+        embed = discord.Embed(
+            title=f"Log Economia — {nome_azione}",
+            color=colore,
+            timestamp=discord.utils.utcnow(),
+        )
+        embed.add_field(
+            name="Staffer",
+            value=f"{interaction.user.mention} (`{interaction.user.id}`)",
+            inline=False,
+        )
+        embed.add_field(
+            name="Destinatario",
+            value=f"{utente.mention} (`{utente.id}`)",
+            inline=False,
+        )
+        embed.add_field(name="Conto", value=conto_label, inline=True)
+        embed.add_field(name="Importo", value=f"{importo:.2f}€", inline=True)
+        embed.add_field(
+            name="Nuovo Saldo", value=f"{new_bal:.2f}€", inline=True
+        )
+
+        await log_channel.send(embed=embed)
 
     await interaction.response.send_message(
-        f"Modificato il saldo di {utente.mention} con successo.",
+        f"Modificato il saldo di {utente.mention} con successo. Nuovo saldo: **{new_bal:.2f}€**.",
         ephemeral=True,
     )
 
