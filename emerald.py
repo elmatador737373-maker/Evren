@@ -303,7 +303,7 @@ async def on_member_join(member):
         )
         
         # Incolla qui il tuo link di visualizzazione di ImgBB (es. https://ibb.co/AbCdEfG)
-        link_img_1 = "https://ibb.co/RRzLjV8"
+        link_img_1 = "https://i.ibb.co/xxJVFRZ/IMG-2155.jpg"
         embed.set_image(url=converti_link_imgbb(link_img_1))
         
         embed.set_footer(text="Buon divertimento dallo Staff di Emerald RP!")
@@ -321,7 +321,7 @@ async def on_member_remove(member):
         )
         
         # Incolla qui il tuo link di visualizzazione di ImgBB per l'addio
-        link_img_2 = "https://ibb.co/wZ0GvQq6"
+        link_img_2 = "https://i.ibb.co/mrDZxyKz/IMG-2156.jpg"
         embed.set_image(url=converti_link_imgbb(link_img_2))
         
         embed.set_footer(text="A presto!")
