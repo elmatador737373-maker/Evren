@@ -283,39 +283,43 @@ import os
 import discord
 from groq import Groq
 from supabase import create_client, Client
+import os
+import discord
+from groq import Groq
+from supabase import create_client, Client
 
 # ==========================================
-# 🧠 E.V.A. - CONNESSIONE DATABASE INDIPENDENTE
+# 🧠 E.V.A. - CONFIGURAZIONE & DATABASE SEPARATO
 # ==========================================
+TUO_ID_DISCORD = 1191824316376043580  # Inserisci il tuo ID Discord numerico reale
+
 EVA_SUPABASE_URL = os.getenv("EVA_SUPABASE_URL")
 EVA_SUPABASE_KEY = os.getenv("EVA_SUPABASE_KEY")
-
-# Creiamo un client separato solo per il "cervello" dell'IA
-eva_supabase: Client = create_client(EVA_SUPABASE_URL, EVA_SUPABASE_KEY)
-
-# ==========================================
-# 🧠 E.V.A. - EMERALD VIRTUAL ASSISTANT (GROQ)
-# ==========================================
-TUO_ID_DISCORD = 1097516828055572522  # Il tuo ID Discord
 GROQ_API_KEY = os.getenv("GROQ_API_KEY")
 
+# Client Supabase dedicato esclusivamente a E.V.A.
+eva_supabase: Client = create_client(EVA_SUPABASE_URL, EVA_SUPABASE_KEY)
+
+# Client Groq per l'Intelligenza Artificiale
 groq_client = Groq(api_key=GROQ_API_KEY)
 
+
+# ==========================================
+# 💾 FUNZIONI DI MEMORIA (DATABASE INDIPENDENTE)
+# ==========================================
 def salva_memoria(user_id: str, informazione: str):
-    """Archivia un dato sensibile nel database INDIPENDENTE di E.V.A."""
+    """Archivia un nuovo fatto nel database isolato di E.V.A."""
     try:
-        # Nota: usiamo eva_supabase invece di supabase
         eva_supabase.table("ai_memories").insert({
             "user_id": str(user_id),
             "memory_text": informazione
         }).execute()
     except Exception as e:
-        print(f"[E.V.A. MEMORY ERROR] Violazione in scrittura DB Indipendente: {e}")
+        print(f"[E.V.A. MEMORY ERROR] Scrittura fallita: {e}")
 
 def recupera_memorie(user_id: str) -> str:
-    """Estrae i dati storici dell'utente dal database dedicato di E.V.A."""
+    """Estrae i ricordi storici dell'utente dal database dedicato."""
     try:
-        # Nota: usiamo eva_supabase invece di supabase
         res = (
             eva_supabase.table("ai_memories")
             .select("memory_text")
@@ -328,59 +332,69 @@ def recupera_memorie(user_id: str) -> str:
             return "Nessun dato pregresso in archivio."
         return "\n".join([f"🔹 {m['memory_text']}" for m in res.data])
     except Exception as e:
-        print(f"[E.V.A. MEMORY ERROR] Violazione in lettura DB Indipendente: {e}")
+        print(f"[E.V.A. MEMORY ERROR] Lettura fallita: {e}")
         return "Archivio di memoria temporaneamente inaccessibile."
 
+
 # ==========================================
-# 📩 EVENTO MESSAGGI (MAIN LOOP)
+# 📩 EVENTO MESSAGGI: RADAR OFFLINE & E.V.A.
 # ==========================================
 @bot.event
 async def on_message(message: discord.Message):
-    # Ignora i log di sistema (bot)
+    # Ignora i messaggi inviati dai bot per evitare loop
     if message.author.bot:
         return
 
     # ----------------------------------------------------
-    # 1. RADAR DI STATO: CONTROLLO OFFLINE
+    # 1. RADAR DI STATO: CONTROLLO OFFLINE (SE TI TAGGANO)
     # ----------------------------------------------------
     if any(mention.id == TUO_ID_DISCORD for mention in message.mentions):
         if message.guild:
             target_member = message.guild.get_member(TUO_ID_DISCORD)
-            # Verifica se sei disconnesso dalla matrice
-            if target_member and target_member.status in [discord.Status.offline, discord.Status.invisible]:
-                embed_offline = discord.Embed(
-                    title="📡 Rilevamento Segnale Fallito",
-                    description=(
-                        f"L'utente {target_member.mention} non è attualmente collegato ai nodi di **Emerald City**.\n\n"
-                        f"> *Il tuo ping è stato registrato nei log di rete. Il destinatario riceverà notifica della tua ricerca alla sua prossima connessione.*"
-                    ),
-                    color=discord.Color.from_rgb(30, 41, 59) # Slate scuro elegante
-                )
-                embed_offline.set_footer(text="Emerald OS • Terminale di Comunicazione", icon_url=message.guild.icon.url if message.guild.icon else None)
-                await message.reply(embed=embed_offline, mention_author=False)
+            
+            if target_member:
+                # Verifica se lo stato è offline o invisibile
+                is_offline = target_member.status in [discord.Status.offline, discord.Status.invisible]
+                
+                if is_offline:
+                    embed_offline = discord.Embed(
+                        title="📡 Rilevamento Segnale Fallito",
+                        description=(
+                            f"L'utente {target_member.mention} non è attualmente collegato ai nodi di **Emerald City**.\n\n"
+                            f"> *Il tuo ping è stato registrato nei log di rete. Il destinatario riceverà notifica della tua ricerca alla sua prossima connessione.*"
+                        ),
+                        color=discord.Color.from_rgb(30, 41, 59) # Slate scuro formale
+                    )
+                    embed_offline.set_footer(
+                        text="Emerald OS • Terminale di Comunicazione", 
+                        icon_url=message.guild.icon.url if message.guild.icon else None
+                    )
+                    await message.reply(embed=embed_offline, mention_author=False)
+                # NOTA: Se sei ONLINE, il codice prosegue senza fare nulla, esattamente come richiesto.
 
     # ----------------------------------------------------
-    # 2. E.V.A. - L'ASSISTENTE CHE IMPARA (MENZIONE AL BOT)
+    # 2. E.V.A. - ASSISTENTE AI CHE IMPARA (SE TAGGANO IL BOT)
     # ----------------------------------------------------
     if bot.user in message.mentions:
         testo_pulito = message.content.replace(f"<@{bot.user.id}>", "").strip()
         user_id_str = str(message.author.id)
 
+        # Se ti taggano senza scrivere nulla
         if not testo_pulito:
             embed_greet = discord.Embed(
                 description="✨ Salve. Sono **E.V.A.**, l'intelligenza di sistema di Emerald OS.\nCome posso esserle utile oggi?",
-                color=discord.Color.from_rgb(46, 204, 113) # Verde Smeraldo
+                color=discord.Color.from_rgb(46, 204, 113) # Verde Smeraldo Emerald RP
             )
             await message.reply(embed=embed_greet, mention_author=False)
             return
 
         async with message.channel.typing():
-            # Recupera il profilo dell'utente (dal DB E.V.A. separato)
+            # Recupera lo storico dei ricordi dal DB separato di E.V.A.
             memorie_storiche = recupera_memorie(user_id_str)
 
             system_prompt = f"""
 Sei E.V.A. (Emerald Virtual Assistant), un'intelligenza artificiale di classe S integrata nel mainframe di Emerald RP.
-Il tuo tono è elegante, analitico, estremamente cortese e vagamente formale, simile a J.A.R.V.I.S.
+Il tuo tono è elegante, analitico, estremamente cortese e formale (stile J.A.R.V.I.S.).
 Chiami sempre l'interlocutore dandogli del "Lei" o chiamandolo "Signore/Signora".
 
 Ecco il database di ciò che conosci dell'utente {message.author.display_name}:
@@ -389,10 +403,11 @@ Ecco il database di ciò che conosci dell'utente {message.author.display_name}:
 Istruzioni CORE:
 1. Rispondi alla richiesta in lingua italiana con classe ed efficienza.
 2. Se l'utente ti comunica nuovi dettagli (es. "Faccio il poliziotto", "Ho comprato una Nissan", "Il mio nome è Alex"), devi estrarre il dato e inserirlo ALLA FINE del tuo messaggio in questo formato: [MEMORY: L'utente fa il poliziotto].
-3. L'uso di [MEMORY: ...] è limitato solo alle informazioni che meritano di essere salvate nel database a lungo termine. Non usarlo per i saluti.
+3. L'uso di [MEMORY: ...] è limitato solo alle informazioni che meritano di essere salvate nel database a lungo termine. Non usarlo per i saluti o le domande generiche.
 """
 
             try:
+                # Chiamata alle API di Groq
                 chat_completion = groq_client.chat.completions.create(
                     messages=[
                         {"role": "system", "content": system_prompt},
@@ -406,25 +421,29 @@ Istruzioni CORE:
                 risposta_grezza = chat_completion.choices[0].message.content
                 memoria_salvata = False
 
+                # Analisi della risposta per estrarre eventuali memorie da salvare
                 if "[MEMORY:" in risposta_grezza:
                     parti = risposta_grezza.split("[MEMORY:")
                     testo_da_inviare = parti[0].strip()
                     nuovo_fatto = parti[1].replace("]", "").strip()
 
-                    # Scrittura nel database Supabase separato
+                    # Salvataggio nel database Supabase isolato
                     salva_memoria(user_id_str, nuovo_fatto)
                     memoria_salvata = True
                 else:
                     testo_da_inviare = risposta_grezza.strip()
 
+                # Creazione dell'Embed di risposta in stile Emerald OS
                 embed_ai = discord.Embed(
                     description=testo_da_inviare,
                     color=discord.Color.from_rgb(46, 204, 113)
                 )
                 embed_ai.set_author(name="E.V.A. System", icon_url=bot.user.display_avatar.url)
                 
-                msg_risposta = await message.reply(embed=embed_ai, mention_author=False)
+                # Invia la risposta all'utente
+                await message.reply(embed=embed_ai, mention_author=False)
 
+                # Feedback visivo: aggiunge una reazione 💾 se ha imparato un nuovo dettaglio
                 if memoria_salvata:
                     await message.add_reaction("💾")
 
@@ -436,6 +455,7 @@ Istruzioni CORE:
                 )
                 await message.reply(embed=embed_err, mention_author=False)
 
+    # Permette al bot di continuare a elaborare tutti gli altri comandi (slash e prefisso)
     await bot.process_commands(message)
 
 # ==========================================
