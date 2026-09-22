@@ -413,7 +413,7 @@ Istruzioni CORE:
                         {"role": "system", "content": system_prompt},
                         {"role": "user", "content": testo_pulito}
                     ],
-                    model="llama-3.3-70b-versatile",
+                    model="llama-3.1-8b-instant",
                     temperature=0.5,
                     max_tokens=800,
                 )
