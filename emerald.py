@@ -279,6 +279,54 @@ async def notifica_utente_dm(bot_client: commands.Bot, user_id: int, embed: disc
     except Exception:
         pass
 
+import discord
+
+def converti_link_imgbb(url_visualizzazione):
+    """Converte un link di visualizzazione ImgBB (ibb.co) in link diretto (i.ibb.co)"""
+    if "ibb.co/" in url_visualizzazione and not "i.ibb.co/" in url_visualizzazione:
+        # Sostituisce il dominio e aggiunge l'estensione se manca alla fine
+        url_diretto = url_visualizzazione.replace("ibb.co/", "i.ibb.co/")
+        if not url_diretto.endswith((".png", ".jpg", ".jpeg", ".gif", ".webp")):
+            url_diretto += ".png" # Fallback comune, ma è meglio usare il link corretto
+        return url_diretto
+    return url_visualizzazione
+
+# --- BENVENUTO ---
+@bot.event
+async def on_member_join(member):
+    channel = bot.get_channel(1549740605595455651)
+    if channel:
+        embed = discord.Embed(
+            title="Benvenuto in Emerald RP! 🌴",
+            description=f"Benvenuto/a {member.mention}! Siamo felici di averti qui in città.\n\nRicordati di leggere il regolamento prima di iniziare il tuo roleplay!",
+            color=discord.Color.green()
+        )
+        
+        # Incolla qui il tuo link di visualizzazione di ImgBB (es. https://ibb.co/AbCdEfG)
+        link_img_1 = "https://ibb.co/RRzLjV8"
+        embed.set_image(url=converti_link_imgbb(link_img_1))
+        
+        embed.set_footer(text="Buon divertimento dallo Staff di Emerald RP!")
+        await channel.send(embed=embed)
+
+# --- ADDIO ---
+@bot.event
+async def on_member_remove(member):
+    channel = bot.get_channel(1549740607247876137)
+    if channel:
+        embed = discord.Embed(
+            title="Arrivederci! 👋",
+            description=f"Addio {member.mention}, ci dispiace vederti andare via da Emerald RP. Le porte della città saranno sempre aperte per un tuo ritorno.",
+            color=discord.Color.red()
+        )
+        
+        # Incolla qui il tuo link di visualizzazione di ImgBB per l'addio
+        link_img_2 = "https://ibb.co/wZ0GvQq6"
+        embed.set_image(url=converti_link_imgbb(link_img_2))
+        
+        embed.set_footer(text="A presto!")
+        await channel.send(embed=embed)
+
 import os
 import discord
 from groq import Groq
@@ -2622,17 +2670,6 @@ async def registra_casa(interaction: discord.Interaction, proprietario: discord.
 # ==========================================
 # ⚡ EVENTI BOT (ON_READY, JOIN, REACTION)
 # ==========================================
-@bot.event
-async def on_member_join(member: discord.Member):
-    welcome = (
-        f"✦ **BENVENUTO SU EMERALD RP!** ✦\n"
-        f"Benvenuto nella nostra community, {member.mention}! Consulta i canali guida per iniziare la tua storia.\n"
-        f"Il tuo futuro ti aspetta a Emerald City!"
-    )
-    try:
-        await member.send(content=welcome, view=WelcomeButtonsView())
-    except Exception:
-        pass
 
 @bot.event
 async def on_raw_reaction_add(payload):
