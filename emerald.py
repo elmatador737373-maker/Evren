@@ -401,11 +401,6 @@ class CreaDocumentiStep1Modal(ui.Modal, title="🪪 Anagrafe — Emerald RP (1/2
     data_nascita = ui.TextInput(label="Data di Nascita", placeholder="Es. 14/08/1995", required=True, max_length=20)
     luogo_nascita = ui.TextInput(label="Luogo di Nascita", placeholder="Es. Los Angeles", required=True, max_length=50)
 
-    self.add_item(nome)
-    self.add_item(cognome)
-    self.add_item(data_nascita)
-    self.add_item(luogo_nascita)
-
     async def on_submit(self, interaction: discord.Interaction):
         nome_val = self.nome.value.strip()
         cognome_val = self.cognome.value.strip()
