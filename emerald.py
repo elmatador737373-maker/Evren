@@ -507,23 +507,23 @@ Istruzioni CORE:
     await bot.process_commands(message)
 
 # ==========================================
-# 🔍 AUTOCOMPLETE FUNCTIONS
+# 🔍 AUTOCOMPLETE FUNCTIONS (OTTIMIZZATI)
 # ==========================================
 async def fazione_autocomplete(interaction: discord.Interaction, current: str) -> list[app_commands.Choice[str]]:
-    res = supabase.table("faction_roles").select("faction_name").execute()
+    res = await asyncio.to_thread(lambda: supabase.table("faction_roles").select("faction_name").execute())
     fazioni = list(set(row["faction_name"] for row in (res.data or [])))
     return [app_commands.Choice(name=f, value=f) for f in fazioni if current.lower() in f.lower()][:25]
 
 async def oggetto_custom_autocomplete(interaction: discord.Interaction, current: str) -> list[app_commands.Choice[str]]:
-    res = supabase.table("custom_items").select("name").ilike("name", f"%{current}%").limit(25).execute()
+    res = await asyncio.to_thread(lambda: supabase.table("custom_items").select("name").ilike("name", f"%{current}%").limit(25).execute())
     return [app_commands.Choice(name=row["name"], value=row["name"]) for row in (res.data or [])]
 
 async def shop_item_autocomplete(interaction: discord.Interaction, current: str) -> list[app_commands.Choice[str]]:
-    res = supabase.table("custom_items").select("name").ilike("name", f"%{current}%").limit(25).execute()
+    res = await asyncio.to_thread(lambda: supabase.table("custom_items").select("name").ilike("name", f"%{current}%").limit(25).execute())
     return [app_commands.Choice(name=i["name"], value=i["name"]) for i in (res.data or [])]
 
 async def veicoli_trasferimento_autocomplete(interaction: discord.Interaction, current: str) -> list[app_commands.Choice[str]]:
-    res = supabase.table("registered_vehicles").select("plate, model").eq("discord_id", str(interaction.user.id)).execute()
+    res = await asyncio.to_thread(lambda: supabase.table("registered_vehicles").select("plate, model").eq("discord_id", str(interaction.user.id)).execute())
     choices = []
     for v in (res.data or []):
         display = f"{v.get('model', 'Veicolo')} [{v.get('plate', 'N/A')}]"
@@ -532,21 +532,21 @@ async def veicoli_trasferimento_autocomplete(interaction: discord.Interaction, c
     return choices[:25]
 
 async def sender_inventory_autocomplete(interaction: discord.Interaction, current: str) -> list[app_commands.Choice[str]]:
-    res = supabase.table("inventory").select("item_name, quantity").eq("discord_id", str(interaction.user.id)).gt("quantity", 0).ilike("item_name", f"%{current}%").limit(25).execute()
+    res = await asyncio.to_thread(lambda: supabase.table("inventory").select("item_name, quantity").eq("discord_id", str(interaction.user.id)).gt("quantity", 0).ilike("item_name", f"%{current}%").limit(25).execute())
     return [app_commands.Choice(name=f"{r['item_name']} (x{r['quantity']})", value=r["item_name"]) for r in (res.data or [])]
 
 async def target_user_inventory_autocomplete(interaction: discord.Interaction, current: str) -> list[app_commands.Choice[str]]:
     target = interaction.namespace.utente
     if not target:
         return []
-    res = supabase.table("inventory").select("item_name, quantity").eq("discord_id", str(target.id)).gt("quantity", 0).ilike("item_name", f"%{current}%").limit(25).execute()
+    res = await asyncio.to_thread(lambda: supabase.table("inventory").select("item_name, quantity").eq("discord_id", str(target.id)).gt("quantity", 0).ilike("item_name", f"%{current}%").limit(25).execute())
     return [app_commands.Choice(name=f"{r['item_name']} (x{r['quantity']})", value=r["item_name"]) for r in (res.data or [])]
 
 async def elimina_veicolo_autocomplete(interaction: discord.Interaction, current: str) -> list[app_commands.Choice[str]]:
     target_id = interaction.namespace.utente
     if not target_id:
         return []
-    res = supabase.table("registered_vehicles").select("plate, model").eq("discord_id", str(target_id)).execute()
+    res = await asyncio.to_thread(lambda: supabase.table("registered_vehicles").select("plate, model").eq("discord_id", str(target_id)).execute())
     choices = []
     for v in (res.data or []):
         display = f"{v.get('model', 'Veicolo')} [{v.get('plate', 'N/A')}]"
@@ -555,7 +555,7 @@ async def elimina_veicolo_autocomplete(interaction: discord.Interaction, current
     return choices[:25]
 
 async def item_id_autocomplete(interaction: discord.Interaction, current: str) -> list[app_commands.Choice[str]]:
-    res = supabase.table("custom_items").select("id, name").ilike("name", f"%{current}%").limit(25).execute()
+    res = await asyncio.to_thread(lambda: supabase.table("custom_items").select("id, name").ilike("name", f"%{current}%").limit(25).execute())
     return [app_commands.Choice(name=i["name"], value=str(i["id"])) for i in (res.data or [])]
 
 
