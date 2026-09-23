@@ -2273,27 +2273,6 @@ async def setup_anagrafe(interaction: discord.Interaction):
     await interaction.channel.send(embed=embed, view=PannelloAnagrafeView())
     await interaction.response.send_message("✅ Pannello Anagrafe generato con successo.", ephemeral=True)
 
-@bot.tree.command(name="setup_distributore", description="[STAFF] Genera il distributore di braccialetti ospedalieri")
-@app_commands.checks.has_role(RUOLO_STAFF_ID)
-async def setup_distributore(interaction: discord.Interaction):
-    embed = discord.Embed(
-        title="🏥 Distributore Emergenza Sanitaria", 
-        description="Ritira qui il tuo braccialetto medico SOS utile alle forze dell'ordine e EMS per identificarti in caso di emergenza.", 
-        color=EmeraldColor.RED
-    )
-    await interaction.channel.send(embed=embed, view=DistributorePannelloView())
-    await interaction.response.send_message("✅ Distributore generato con successo.", ephemeral=True)
-
-@bot.tree.command(name="setup_benvenuto", description="[STAFF] Genera i bottoni rapidi di benvenuto")
-@app_commands.checks.has_role(RUOLO_STAFF_ID)
-async def setup_benvenuto(interaction: discord.Interaction):
-    embed = discord.Embed(
-        title="🌟 Benvenuti su Emerald RP!",
-        description="Usa i bottoni sottostanti per esplorare velocemente le risorse fondamentali della città.",
-        color=EmeraldColor.MAIN
-    )
-    await interaction.channel.send(embed=embed, view=WelcomeButtonsView())
-    await interaction.response.send_message("✅ Bottoni di benvenuto generati.", ephemeral=True)
 
 @bot.tree.command(name="elimina_veicolo", description="Rimuove definitivamente un veicolo dai registri (Staff).")
 @app_commands.autocomplete(veicolo=elimina_veicolo_autocomplete)
