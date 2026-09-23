@@ -2157,6 +2157,144 @@ async def rimuovi_oggetto(interaction: discord.Interaction, utente: discord.Memb
 
     await interaction.response.send_message(f"🗑️ Rimossi **{min(quantita, disp)}x {nome_oggetto}** a {utente.mention}.", ephemeral=True)
 
+# ==========================================
+# 🆕 COMANDI MANCANTI (DOCUMENTI, VEICOLI, FATTURE, SETUP)
+# ==========================================
+
+@bot.tree.command(name="documento", description="Mostra il tuo documento d'identità o quello di un cittadino")
+async def mostra_documento(interaction: discord.Interaction, utente: discord.Member = None):
+    target = utente or interaction.user
+    doc = supabase.table("documents").select("*").eq("discord_id", str(target.id)).execute()
+    if not doc.data:
+        return await interaction.response.send_message("❌ Nessun documento trovato per questo cittadino.", ephemeral=True)
+    
+    roles = [r.id for r in target.roles]
+    embed = build_id_embed(doc.data[0], target.id, roles)
+    await interaction.response.send_message(embed=embed)
+
+@bot.tree.command(name="carica_foto_documento", description="Aggiunge una foto tessera al tuo documento d'identità")
+async def carica_foto_documento(interaction: discord.Interaction, foto: discord.Attachment):
+    await interaction.response.defer(ephemeral=True)
+    doc = supabase.table("documents").select("discord_id").eq("discord_id", str(interaction.user.id)).execute()
+    if not doc.data:
+        return await interaction.followup.send("❌ Devi prima registrarti all'anagrafe!")
+    if not foto.content_type.startswith("image/"):
+        return await interaction.followup.send("❌ Formato non valido. Carica un file immagine (PNG/JPG).")
+    
+    try:
+        foto_url = await upload_to_imgbb(foto)
+        supabase.table("documents").update({"photo_url": foto_url}).eq("discord_id", str(interaction.user.id)).execute()
+        await interaction.followup.send("✅ Foto aggiornata con successo! Usa `/documento` per visualizzarla.")
+    except Exception as e:
+        await interaction.followup.send(f"❌ Errore durante il caricamento della foto: {e}")
+
+@bot.tree.command(name="libretto", description="Mostra il libretto di circolazione di un veicolo")
+async def libretto(interaction: discord.Interaction, targa: str):
+    targa = targa.upper().strip()
+    v = supabase.table("registered_vehicles").select("*").eq("plate", targa).execute()
+    if not v.data:
+        return await interaction.response.send_message("❌ Veicolo non trovato nei registri della Motorizzazione.", ephemeral=True)
+    
+    veicolo = v.data[0]
+    proprietario = interaction.guild.get_member(int(veicolo["discord_id"]))
+    nome_proprietario = proprietario.display_name if proprietario else "Sconosciuto"
+
+    mods = supabase.table("vehicle_modifications").select("*").eq("plate", targa).execute().data or []
+    sequestri = supabase.table("seized_vehicles").select("*").eq("plate", targa).eq("status", "Sequestrato").execute().data or []
+    
+    embed = build_vehicle_title_embed(nome_proprietario, targa, veicolo["model"], bool(sequestri), mods)
+    await interaction.response.send_message(embed=embed)
+
+@bot.tree.command(name="emetti_fattura", description="Emetti una fattura commerciale ad un cittadino")
+async def emetti_fattura(interaction: discord.Interaction, destinatario: discord.Member, importo: float, causale: str, azienda: str):
+    if importo <= 0:
+        return await interaction.response.send_message("❌ Importo non valido.", ephemeral=True)
+    
+    fattura_data = {
+        "destinatario_id": str(destinatario.id),
+        "destinatario": destinatario.display_name,
+        "emittente": interaction.user.display_name,
+        "emittente_id": str(interaction.user.id),
+        "azienda": azienda,
+        "causale": causale,
+        "importo": importo,
+        "data": datetime.now().strftime("%d/%m/%Y"),
+        "status": "Da Pagare"
+    }
+    
+    # Inserimento nel database (Assicurati di avere la tabella 'invoices' in Supabase)
+    res = supabase.table("invoices").insert(fattura_data).execute()
+    fattura_data["id"] = res.data[0].get("id", "N/D") if res.data else "ERROR"
+    
+    embed = build_invoice_embed(fattura_data)
+    await interaction.response.send_message(f"✅ Fattura emessa con successo a {destinatario.mention}", embed=embed)
+
+@bot.tree.command(name="paga_fattura", description="Paga una fattura commerciale in sospeso tramite Bonifico")
+async def paga_fattura(interaction: discord.Interaction, id_fattura: int):
+    f = supabase.table("invoices").select("*").eq("id", id_fattura).eq("destinatario_id", str(interaction.user.id)).execute()
+    if not f.data:
+        return await interaction.response.send_message("❌ Fattura non trovata o non intestata a te.", ephemeral=True)
+    if f.data[0].get("status") == "Pagata":
+        return await interaction.response.send_message("❌ Questa fattura è già stata saldata.", ephemeral=True)
+    
+    importo = float(f.data[0]["importo"])
+    emittente_id = f.data[0]["emittente_id"]
+    u = get_or_create_user(interaction.user.id, interaction.user.name)
+    
+    if float(u.get("bank", 0)) < importo:
+        return await interaction.response.send_message("❌ Fondi bancari insufficienti per saldare la fattura.", ephemeral=True)
+        
+    # Transazione Bancaria
+    supabase.table("users").update({"bank": float(u.get("bank", 0)) - importo}).eq("discord_id", str(interaction.user.id)).execute()
+    
+    e = supabase.table("users").select("bank").eq("discord_id", emittente_id).execute()
+    if e.data:
+        supabase.table("users").update({"bank": float(e.data[0]["bank"]) + importo}).eq("discord_id", emittente_id).execute()
+        
+    supabase.table("invoices").update({"status": "Pagata"}).eq("id", id_fattura).execute()
+    
+    f_data = f.data[0]
+    f_data["status"] = "Pagata"
+    embed = build_invoice_embed(f_data)
+    await interaction.response.send_message(f"✅ Hai saldato la fattura #{id_fattura} con successo.", embed=embed)
+
+# ==========================================
+# 🛠️ COMANDI STAFF PER POSIZIONARE I PANNELLI
+# ==========================================
+
+@bot.tree.command(name="setup_anagrafe", description="[STAFF] Genera il pannello di registrazione Anagrafe")
+@app_commands.checks.has_role(RUOLO_STAFF_ID)
+async def setup_anagrafe(interaction: discord.Interaction):
+    embed = discord.Embed(
+        title="🏛️ Ufficio Anagrafe Emerald City", 
+        description="Clicca sul pulsante sottostante per registrare i tuoi dati anagrafici e ottenere la carta d'identità.", 
+        color=EmeraldColor.MAIN
+    )
+    await interaction.channel.send(embed=embed, view=PannelloAnagrafeView())
+    await interaction.response.send_message("✅ Pannello Anagrafe generato con successo.", ephemeral=True)
+
+@bot.tree.command(name="setup_distributore", description="[STAFF] Genera il distributore di braccialetti ospedalieri")
+@app_commands.checks.has_role(RUOLO_STAFF_ID)
+async def setup_distributore(interaction: discord.Interaction):
+    embed = discord.Embed(
+        title="🏥 Distributore Emergenza Sanitaria", 
+        description="Ritira qui il tuo braccialetto medico SOS utile alle forze dell'ordine e EMS per identificarti in caso di emergenza.", 
+        color=EmeraldColor.RED
+    )
+    await interaction.channel.send(embed=embed, view=DistributorePannelloView())
+    await interaction.response.send_message("✅ Distributore generato con successo.", ephemeral=True)
+
+@bot.tree.command(name="setup_benvenuto", description="[STAFF] Genera i bottoni rapidi di benvenuto")
+@app_commands.checks.has_role(RUOLO_STAFF_ID)
+async def setup_benvenuto(interaction: discord.Interaction):
+    embed = discord.Embed(
+        title="🌟 Benvenuti su Emerald RP!",
+        description="Usa i bottoni sottostanti per esplorare velocemente le risorse fondamentali della città.",
+        color=EmeraldColor.MAIN
+    )
+    await interaction.channel.send(embed=embed, view=WelcomeButtonsView())
+    await interaction.response.send_message("✅ Bottoni di benvenuto generati.", ephemeral=True)
+
 @bot.tree.command(name="elimina_veicolo", description="Rimuove definitivamente un veicolo dai registri (Staff).")
 @app_commands.autocomplete(veicolo=elimina_veicolo_autocomplete)
 async def elimina_veicolo(interaction: discord.Interaction, utente: discord.Member, veicolo: str):
