@@ -635,6 +635,110 @@ async def wl_error_handler(interaction: discord.Interaction, error: app_commands
             ephemeral=True
         )
 
+import discord
+from discord import app_commands
+
+FOOTER_TEXT = "Emerald City RP | Ps4/Ps5 No Wl"
+
+# Ruoli da aggiungere se la Whitelist viene superata
+RUOLI_DA_AGGIUNGERE_IDS = [
+    1549740434513854475,
+    1549740436002967572,
+    1549740443023966278,
+    1549740440293609472,
+    1549740445184172072,
+    1549740444219347086
+]
+
+# Ruolo da rimuovere se la Whitelist viene superata
+RUOLO_DA_RIMUOVERE_ID = 1549740447159820298
+
+
+# ---------------- COMANDO: ESITO WHITELIST ----------------
+@bot.tree.command(name="esito-wl", description="Assegna l'esito della Whitelist a un utente")
+@app_commands.describe(
+    utente="L'utente che ha sostenuto il provino Whitelist",
+    esito="Seleziona l'esito del provino"
+)
+@app_commands.choices(esito=[
+    app_commands.Choice(name="✅ Passata", value="Passata"),
+    app_commands.Choice(name="❌ Non Passata", value="Non Passata")
+])
+@is_whitelister()  # Usa il controllo permessi per i whitelister
+async def esito_wl(interaction: discord.Interaction, utente: discord.Member, esito: app_commands.Choice[str]):
+    # Risponde subito per evitare il timeout di Discord durante l'assegnazione dei ruoli
+    await interaction.response.defer()
+
+    esito_valore = esito.value
+    is_passed = (esito_valore == "Passata")
+
+    # 1. Gestione Ruoli (solo se passata)
+    if is_passed:
+        # Aggiunta ruoli
+        roles_to_add = [interaction.guild.get_role(r_id) for r_id in RUOLI_DA_AGGIUNGERE_IDS]
+        roles_to_add = [r for r in roles_to_add if r is not None]  # Rimuove ruoli non trovati
+        if roles_to_add:
+            await utente.add_roles(*roles_to_add, reason="Whitelist superata con successo")
+
+        # Rimozione ruolo
+        role_to_remove = interaction.guild.get_role(RUOLO_DA_RIMUOVERE_ID)
+        if role_to_remove and role_to_remove in utente.roles:
+            await utente.remove_roles(role_to_remove, reason="Whitelist superata (rimozione ruolo precedente)")
+
+    # 2. Creazione Embed
+    colore = discord.Color.from_rgb(46, 204, 113) if is_passed else discord.Color.from_rgb(231, 76, 60)
+    icona_esito = "✅" if is_passed else "❌"
+
+    descrizione_dm = (
+        f"Congratulazioni {utente.mention}, hai **superato** il provino Whitelist! 🎉\n"
+        "I tuoi ruoli sul server sono stati aggiornati. Ti aspettiamo in città!"
+        if is_passed else
+        f"Ciao {utente.mention}, purtroppo il tuo provino Whitelist è risultato **non idoneo**.\n"
+        "Potrai ritentare non appena le sessioni saranno nuovamente disponibili. Ti invitiamo a ripassare il regolamento."
+    )
+
+    # Embed per i DM dell'utente
+    embed_dm = discord.Embed(
+        title="📋 Esito Provino Whitelist 📋",
+        description=descrizione_dm,
+        color=colore
+    )
+    embed_dm.add_field(name="Esito", value=f"**{icona_esito} {esito_valore}**", inline=False)
+    embed_dm.add_field(name="Esaminatore", value=interaction.user.mention, inline=False)
+    if interaction.guild.icon:
+        embed_dm.set_thumbnail(url=interaction.guild.icon.url)
+    embed_dm.set_footer(text=FOOTER_TEXT)
+
+    # Invio nei DM dell'utente
+    dm_inviato = True
+    try:
+        await utente.send(embed=embed_dm)
+    except discord.Forbidden:
+        dm_inviato = False
+
+    # 3. Embed pubblico per il canale
+    embed_canale = discord.Embed(
+        title="📋 Registrazione Esito Whitelist 📋",
+        color=colore
+    )
+    embed_canale.add_field(name="👤 Utente", value=utente.mention, inline=True)
+    embed_canale.add_field(name="📝 Esito", value=f"**{icona_esito} {esito_valore}**", inline=True)
+    embed_canale.add_field(name="👮 Esaminatore", value=interaction.user.mention, inline=False)
+    
+    if not dm_inviato:
+        embed_canale.add_field(
+            name="⚠️ Avviso DM",
+            value=f"Non è stato possibile recapitare il messaggio privato a {utente.mention} (DM chiusi).",
+            inline=False
+        )
+
+    if interaction.guild.icon:
+        embed_canale.set_thumbnail(url=interaction.guild.icon.url)
+    embed_canale.set_footer(text=FOOTER_TEXT)
+
+    # Invio nel canale taggando l'utente
+    await interaction.followup.send(content=f"Notifica Whitelist: {utente.mention}", embed=embed_canale)
+
 # ==========================================
 # 🪪 ANAGRAFE E DOCUMENTI (STEPPING MODALS)
 # ==========================================
