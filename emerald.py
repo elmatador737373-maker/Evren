@@ -558,6 +558,82 @@ async def item_id_autocomplete(interaction: discord.Interaction, current: str) -
     res = await asyncio.to_thread(lambda: supabase.table("custom_items").select("id, name").ilike("name", f"%{current}%").limit(25).execute())
     return [app_commands.Choice(name=i["name"], value=str(i["id"])) for i in (res.data or [])]
 
+import discord
+from discord import app_commands
+
+# ID del ruolo abilitato a eseguire i comandi e banner Imgur
+WHITELISTER_ROLE_ID = 1549740415626780692  # Sostituisci con l'ID reale
+BANNER_ONLINE_URL = "https://i.ibb.co/qMwDgn6z/file-0000000068b08246aef2b72533acb15d.png"
+BANNER_OFFLINE_URL = "https://i.ibb.co/R4cChVDM/file-0000000042788246b9b8cd45fae9eaa2.png"
+FOOTER_TEXT = "Emerald City RP | Ps4/Ps5 No Wl"
+
+
+# Funzione di controllo per verificare se l'utente possiede il ruolo
+def is_whitelister():
+    async def predicate(interaction: discord.Interaction) -> bool:
+        if isinstance(interaction.user, discord.Member):
+            return any(role.id == WHITELISTER_ROLE_ID for role in interaction.user.roles)
+        return False
+    return app_commands.check(predicate)
+
+
+# ---------------- COMANDO: WHITELIST ONLINE ----------------
+@bot.tree.command(name="wl-online", description="Notifica l'apertura delle sessioni Whitelist")
+@is_whitelister()
+async def wl_online(interaction: discord.Interaction):
+    embed = discord.Embed(
+        title="🔘 Whitelist Online 🔘",
+        description=(
+            "**Prima di affrontare la whitelist**\n"
+            "si raccomanda di leggere bene\n"
+            "il **regolamento** ↗️."
+        ),
+        color=discord.Color.from_rgb(46, 204, 113)  # Verde
+    )
+    
+    # Prende l'icona del server in cui viene eseguito il comando
+    if interaction.guild and interaction.guild.icon:
+        embed.set_thumbnail(url=interaction.guild.icon.url)
+        
+    embed.set_image(url=BANNER_ONLINE_URL)
+    embed.set_footer(text=FOOTER_TEXT)
+
+    await interaction.response.send_message(embed=embed)
+
+
+# ---------------- COMANDO: WHITELIST OFFLINE ----------------
+@bot.tree.command(name="wl-offline", description="Notifica la chiusura delle sessioni Whitelist")
+@is_whitelister()
+async def wl_offline(interaction: discord.Interaction):
+    embed = discord.Embed(
+        title="🔘 Whitelist Offline 🔘",
+        description=(
+            "**Saranno riaperte** ⚙️ quando un **whitelister**\n"
+            "sarà disponibile ⏳.\n\n"
+            "*_Non contattate in privato i whitelister, grazie._*"
+        ),
+        color=discord.Color.from_rgb(231, 76, 60)  # Rosso
+    )
+    
+    # Prende l'icona del server in cui viene eseguito il comando
+    if interaction.guild and interaction.guild.icon:
+        embed.set_thumbnail(url=interaction.guild.icon.url)
+        
+    embed.set_image(url=BANNER_OFFLINE_URL)
+    embed.set_footer(text=FOOTER_TEXT)
+
+    await interaction.response.send_message(embed=embed)
+
+
+# Gestione errore se l'utente non possiede il ruolo richiesto
+@wl_online.error
+@wl_offline.error
+async def wl_error_handler(interaction: discord.Interaction, error: app_commands.AppCommandError):
+    if isinstance(error, app_commands.CheckFailure):
+        await interaction.response.send_message(
+            "❌ Non hai i permessi necessari (ruolo Whitelister mancante) per usare questo comando.",
+            ephemeral=True
+        )
 
 # ==========================================
 # 🪪 ANAGRAFE E DOCUMENTI (STEPPING MODALS)
@@ -703,6 +779,85 @@ def build_vehicle_title_embed(proprietario: str, targa: str, modello: str, seque
     embed.add_field(name="🔧 Modifiche Omologate", value=mods_list, inline=False)
     embed.set_footer(text="Emerald DMV • Registro Pubblico Veicoli Automotori")
     return embed
+
+import discord
+from discord import app_commands
+
+# ID del ruolo abilitato e banner Imgur per i bandi
+BANDO_STAFF_ROLE_ID = 1549740413454254090  # Sostituisci con l'ID ruolo (es. Gestore Bandi o Whitelister)
+BANNER_BANDO_APERTO_URL = "https://i.ibb.co/9HFRTFRD/file-0000000017e481f492dfa8c42eb5fbbd.png"
+BANNER_BANDO_CHIUSO_URL = "https://i.ibb.co/W4pWtSHm/file-0000000060f082108cd827ab88a589be.png"
+FOOTER_TEXT = "Emerald City RP | Ps4/Ps5 No Wl"
+
+
+# Controllo permessi ruolo
+def is_bando_manager():
+    async def predicate(interaction: discord.Interaction) -> bool:
+        if isinstance(interaction.user, discord.Member):
+            return any(role.id == BANDO_STAFF_ROLE_ID for role in interaction.user.roles)
+        return False
+    return app_commands.check(predicate)
+
+
+# ---------------- COMANDO: BANDO APERTO ----------------
+@bot.tree.command(name="bando-aperto", description="Notifica l'apertura di una candidatura / bando")
+@app_commands.describe(nome_bando="Nome della fazione o del bando aperto (es. Polizia, Medico, Staff)")
+@is_bando_manager()
+async def bando_aperto(interaction: discord.Interaction, nome_bando: str = "Generale"):
+    embed = discord.Embed(
+        title="📢 Bando Aperto 📢",
+        description=(
+            f"Le candidature per il bando **{nome_bando}** sono ufficialmente **aperte**! 📋\n\n"
+            "Si raccomanda di:\n"
+            "• Compilare il modulo con la **massima serietà** ✍️\n"
+            "• Rispettare i requisiti minimi previsti\n\n"
+            "Buona fortuna a tutti i candidati! 🍀"
+        ),
+        color=discord.Color.from_rgb(46, 204, 113)  # Verde
+    )
+
+    if interaction.guild and interaction.guild.icon:
+        embed.set_thumbnail(url=interaction.guild.icon.url)
+
+    embed.set_image(url=BANNER_BANDO_APERTO_URL)
+    embed.set_footer(text=FOOTER_TEXT)
+
+    await interaction.response.send_message(embed=embed)
+
+
+# ---------------- COMANDO: BANDO CHIUSO ----------------
+@bot.tree.command(name="bando-chiuso", description="Notifica la chiusura di una candidatura / bando")
+@app_commands.describe(nome_bando="Nome della fazione o del bando chiuso (es. Polizia, Medico, Staff)")
+@is_bando_manager()
+async def bando_chiuso(interaction: discord.Interaction, nome_bando: str = "Generale"):
+    embed = discord.Embed(
+        title="🚫 Bando Chiuso 🚫",
+        description=(
+            f"Le candidature per il bando **{nome_bando}** sono al momento **chiuse**! 🔒\n\n"
+            "Le risposte verranno esaminate dal team responsabile ⏳.\n\n"
+            "*_Non contattate privatamente i responsabili per richiedere esiti o sollecitare risposte._*"
+        ),
+        color=discord.Color.from_rgb(231, 76, 60)  # Rosso
+    )
+
+    if interaction.guild and interaction.guild.icon:
+        embed.set_thumbnail(url=interaction.guild.icon.url)
+
+    embed.set_image(url=BANNER_BANDO_CHIUSO_URL)
+    embed.set_footer(text=FOOTER_TEXT)
+
+    await interaction.response.send_message(embed=embed)
+
+
+# Gestione errori permessi
+@bando_aperto.error
+@bando_chiuso.error
+async def bando_error_handler(interaction: discord.Interaction, error: app_commands.AppCommandError):
+    if isinstance(error, app_commands.CheckFailure):
+        await interaction.response.send_message(
+            "❌ Non hai i permessi necessari per gestire i bandi.",
+            ephemeral=True
+        )
 
 # ==========================================
 # 🧾 FATTURA DIGITALE EMBED
