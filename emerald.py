@@ -859,6 +859,58 @@ async def bando_error_handler(interaction: discord.Interaction, error: app_comma
             ephemeral=True
         )
 
+import discord
+from discord import app_commands
+
+FOOTER_TEXT = "Emerald City RP | Ps4/Ps5 No Wl"
+
+# ---------------- COMANDO: ESITO BANDO (INVIO IN DM) ----------------
+@bot.tree.command(name="esito-bando", description="Invia l'esito del bando direttamente nei DM dell'utente")
+@app_commands.describe(
+    utente="L'utente a cui inviare l'esito",
+    lavoro="Il lavoro o la fazione (es. LSPD, EMS, Meccanico)",
+    esito="Seleziona se l'utente è stato approvato o meno"
+)
+@app_commands.choices(esito=[
+    app_commands.Choice(name="✅ Approvato", value="Approvato"),
+    app_commands.Choice(name="❌ Non Approvato", value="Non Approvato")
+])
+@is_bando_manager()
+async def esito_bando(interaction: discord.Interaction, utente: discord.Member, lavoro: str, esito: app_commands.Choice[str]):
+    esito_valore = esito.value
+    
+    colore = discord.Color.from_rgb(46, 204, 113) if esito_valore == "Approvato" else discord.Color.from_rgb(231, 76, 60)
+    icona_esito = "✅" if esito_valore == "Approvato" else "❌"
+
+    embed = discord.Embed(
+        title="📄 Esito Bando 📄",
+        description=f"Ciao {utente.mention}, ecco l'esito della tua candidatura per **{interaction.guild.name}**:",
+        color=colore
+    )
+    
+    embed.add_field(name="💼 Lavoro / Fazione", value=f"**{lavoro}**", inline=False)
+    embed.add_field(name="📝 Esito", value=f"**{icona_esito} {esito_valore}**", inline=False)
+
+    if interaction.guild and interaction.guild.icon:
+        embed.set_thumbnail(url=interaction.guild.icon.url)
+        
+    embed.set_footer(text=FOOTER_TEXT)
+
+    # Prova a recapitare il messaggio nei messaggi privati dell'utente
+    try:
+        await utente.send(embed=embed)
+        # Conferma visibile solo allo staffer che ha eseguito il comando
+        await interaction.response.send_message(
+            f"✅ Esito inviato con successo nei DM di {utente.mention} ({esito_valore} per **{lavoro}**).",
+            ephemeral=True
+        )
+    except discord.Forbidden:
+        # Se l'utente ha disabilitato i DM per i membri del server
+        await interaction.response.send_message(
+            f"⚠️ Impossibile recapitare il messaggio: {utente.mention} ha i messaggi privati (DM) bloccati o chiusi.",
+            ephemeral=True
+        )
+
 # ==========================================
 # 🧾 FATTURA DIGITALE EMBED
 # ==========================================
