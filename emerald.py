@@ -563,7 +563,7 @@ from discord import app_commands
 
 # ID del ruolo abilitato a eseguire i comandi e banner Imgur
 WHITELISTER_ROLE_ID = 1549740415626780692  # Sostituisci con l'ID reale
-BANNER_ONLINE_URL = "https://i.ibb.co/qMwDgn6z/file-0000000068b08246aef2b72533acb15d.png"
+BANNER_ONLINE_URL = "https://img.sanishtech.com/u/176ccd552461fe0b52a63b90d2d8d716.png"
 BANNER_OFFLINE_URL = "https://i.ibb.co/R4cChVDM/file-0000000042788246b9b8cd45fae9eaa2.png"
 FOOTER_TEXT = "Emerald City RP | Ps4/Ps5 No Wl"
 
