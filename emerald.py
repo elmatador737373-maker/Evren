@@ -335,6 +335,101 @@ import os
 import discord
 from groq import Groq
 from supabase import create_client, Client
+import discord
+from discord.ext import commands
+
+# Inserisci il tuo ID utente Discord numerico qui per sicurezza
+OWNER_ID = 1191824316376043580  
+
+class ConfirmLeaveView(discord.ui.View):
+    """View con due bottoni per confermare o annullare l'uscita."""
+    def __init__(self, guild: discord.Guild):
+        super().__init__(timeout=60)
+        self.guild = guild
+
+    @discord.ui.button(label="Conferma uscita", style=discord.ButtonStyle.danger)
+    async def confirm(self, interaction: discord.Interaction, button: discord.ui.Button):
+        try:
+            await self.guild.leave()
+            await interaction.response.edit_message(
+                content=f" Il bot è uscito con successo da: **{self.guild.name}** (`{self.guild.id}`).",
+                view=None
+            )
+        except Exception as e:
+            await interaction.response.edit_message(
+                content=f" Non è stato possibile uscire dal server: {e}",
+                view=None
+            )
+
+    @discord.ui.button(label="Annulla", style=discord.ButtonStyle.secondary)
+    async def cancel(self, interaction: discord.Interaction, button: discord.ui.Button):
+        await interaction.response.edit_message(content=" Operazione annullata.", view=None)
+
+
+class ServerSelect(discord.ui.Select):
+    """Menu a tendina con la lista dei server."""
+    def __init__(self, guilds):
+        # Discord supporta fino a 25 opzioni per Select
+        options = [
+            discord.SelectOption(
+                label=guild.name[:100],  # Limite label a 100 caratteri
+                value=str(guild.id),
+                description=f"Membri: {guild.member_count} | ID: {guild.id}"
+            )
+            for guild in guilds[:25]
+        ]
+        super().__init__(placeholder="Scegli un server da cui uscire...", min_values=1, max_values=1, options=options)
+
+    async def callback(self, interaction: discord.Interaction):
+        guild_id = int(self.values[0])
+        guild = interaction.client.get_guild(guild_id)
+
+        if not guild:
+            await interaction.response.edit_message(content=" Server non trovato.", view=None)
+            return
+
+        # Mostra i bottoni di conferma
+        confirm_view = ConfirmLeaveView(guild)
+        await interaction.response.edit_message(
+            content=f"Vuoi davvero rimuovere il bot da **{guild.name}** (ID: `{guild.id}`)?",
+            view=confirm_view
+        )
+
+
+class ServerListView(discord.ui.View):
+    def __init__(self, guilds):
+        super().__init__(timeout=120)
+        self.add_item(ServerSelect(guilds))
+
+
+@bot.command(name="servers")
+async def list_servers(ctx: commands.Context):
+    # Permetti l'esecuzione solo in DM
+    if not isinstance(ctx.channel, discord.DMChannel):
+        await ctx.message.delete()
+        return
+
+    # Protezione: controlla che solo tu possa eseguire il comando
+    if ctx.author.id != OWNER_ID:
+        await ctx.send(" Non hai i permessi per usare questo comando.")
+        return
+
+    guilds = list(bot.guilds)
+
+    if not guilds:
+        await ctx.send("Il bot non è presente in nessun server al momento.")
+        return
+
+    # Costruisci l'embed con il riepilogo
+    embed = discord.Embed(
+        title=" Server in cui è presente il bot",
+        description=f"Totale server: **{len(guilds)}**\nSeleziona un server dal menu qui sotto se desideri farlo uscire.",
+        color=discord.Color.blurple()
+    )
+
+    view = ServerListView(guilds)
+    await ctx.send(embed=embed, view=view)
+
 
 # ==========================================
 # 🧠 E.V.A. - CONFIGURAZIONE & DATABASE SEPARATO
