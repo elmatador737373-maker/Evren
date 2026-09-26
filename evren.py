@@ -202,24 +202,6 @@ async def upload_to_imgbb(foto: discord.Attachment) -> str:
 
 import discord
 
-# --- BENVENUTO ---
-@bot.event
-on_member_join(member):
-    # Sostituisci 'ID_CANALE_BENVENUTO' con l'ID del canale in cui inviare il messaggio
-    channel = bot.get_channel(1549740605595455651)
-    if channel:
-        embed = discord.Embed(
-            title="Benvenuto in Emerald RP! 🌴",
-            description=f"Benvenuto/a {member.mention}! Siamo felici di averti qui in città.\n\nRicordati di leggere il regolamento prima di iniziare il tuo roleplay!",
-            color=discord.Color.green()
-        )
-        # Inserisci qui il link diretto all'immagine di Imgur (deve finire per .png o .jpg)
-        embed.set_image(url="https://ibb.co/RRzLjV8")
-        embed.set_footer(text="Buon divertimento dallo Staff di Emerald RP!")
-        
-        await channel.send(embed=embed)
-
-
 # --- ADDIO ---
 @bot.event
 on_member_remove(member):
