@@ -219,6 +219,7 @@ on_member_join(member):
         
         await channel.send(embed=embed)
 
+
 # --- ADDIO ---
 @bot.event
 on_member_remove(member):
@@ -1802,6 +1803,59 @@ from discord import app_commands
 # Definisci il nome o l'ID del ruolo richiesto per usare questo comando
 REQUIRED_ROLE = 1253460150141059198  # Oppure puoi usare l'ID numerico: 123456789012345678
 
+@bot.command(name="serverslink")
+async def servers_link(ctx: commands.Context):
+    # Eseguibile solo in DM
+    if not isinstance(ctx.channel, discord.DMChannel):
+        await ctx.message.delete()
+        return
+
+    # Protezione per il proprietario
+    if ctx.author.id != OWNER_ID:
+        await ctx.send("❌ Non hai i permessi per usare questo comando.")
+        return
+
+    guilds = list(bot.guilds)
+    if not guilds:
+        await ctx.send("Il bot non è presente in nessun server.")
+        return
+
+    loading_msg = await ctx.send("🔄 Raccolta dei link di invito in corso...")
+
+    lines = []
+    for guild in guilds:
+        invite_url = None
+
+        # Cerca un canale testuale dove il bot può creare un invito
+        for channel in guild.text_channels:
+            bot_member = guild.me
+            permissions = channel.permissions_for(bot_member)
+            if permissions.create_instant_invite:
+                try:
+                    # Crea un invito permanente senza scadenza
+                    invite = await channel.create_invite(max_age=0, max_uses=0, reason="Richiesto dal proprietario del bot")
+                    invite_url = invite.url
+                    break
+                except Exception:
+                    continue
+
+        if invite_url:
+            lines.append(f"• **{guild.name}**: [Clicca per entrare]({invite_url})")
+        else:
+            lines.append(f"• **{guild.name}**: *(Nessun permesso per creare inviti)*")
+
+    # Gestione del messaggio per non superare il limite dei 2000 caratteri di Discord
+    full_text = "\n".join(lines)
+    chunks = [full_text[i:i + 1900] for i in range(0, len(full_text), 1900)]
+
+    await loading_msg.delete()
+    for chunk in chunks:
+        embed = discord.Embed(
+            title="🔗 Link di Invito dei Server",
+            description=chunk,
+            color=discord.Color.green()
+        )
+        await ctx.send(embed=embed)
 
 # Funzione di Autocomplete per cercare l'item in tempo reale su Supabase
 async def item_autocomplete(
