@@ -201,24 +201,6 @@ async def upload_to_imgbb(foto: discord.Attachment) -> str:
                 raise Exception(f"Errore ImgBB status code: {response.status}")
 
 import discord
-
-# --- ADDIO ---
-@bot.event
-on_member_remove(member):
-    # Sostituisci 'ID_CANALE_ADDIO' con l'ID del canale in cui inviare il messaggio
-    channel = bot.get_channel(1549740607247876137)
-    if channel:
-        embed = discord.Embed(
-            title="Arrivederci! 👋",
-            description=f"Addio {member.mention}, ci dispiace vederti andare via da Emerald RP. Le porte della città saranno sempre aperte per un tuo ritorno.",
-            color=discord.Color.red()
-        )
-        # Inserisci qui il link diretto all'immagine di Imgur per l'addio
-        embed.set_image(url="https://ibb.co/wZ0GvQq6")
-        embed.set_footer(text="A presto!")
-        
-        await channel.send(embed=embed)
-
 import discord
 from discord.ext import commands
 
