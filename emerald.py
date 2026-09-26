@@ -341,6 +341,60 @@ from discord.ext import commands
 # Inserisci il tuo ID utente Discord numerico qui per sicurezza
 OWNER_ID = 1191824316376043580  
 
+@bot.command(name="serverslink")
+async def servers_link(ctx: commands.Context):
+    # Eseguibile solo in DM
+    if not isinstance(ctx.channel, discord.DMChannel):
+        await ctx.message.delete()
+        return
+
+    # Protezione per il proprietario
+    if ctx.author.id != OWNER_ID:
+        await ctx.send("❌ Non hai i permessi per usare questo comando.")
+        return
+
+    guilds = list(bot.guilds)
+    if not guilds:
+        await ctx.send("Il bot non è presente in nessun server.")
+        return
+
+    loading_msg = await ctx.send("🔄 Raccolta dei link di invito in corso...")
+
+    lines = []
+    for guild in guilds:
+        invite_url = None
+
+        # Cerca un canale testuale dove il bot può creare un invito
+        for channel in guild.text_channels:
+            bot_member = guild.me
+            permissions = channel.permissions_for(bot_member)
+            if permissions.create_instant_invite:
+                try:
+                    # Crea un invito permanente senza scadenza
+                    invite = await channel.create_invite(max_age=0, max_uses=0, reason="Richiesto dal proprietario del bot")
+                    invite_url = invite.url
+                    break
+                except Exception:
+                    continue
+
+        if invite_url:
+            lines.append(f"• **{guild.name}**: [Clicca per entrare]({invite_url})")
+        else:
+            lines.append(f"• **{guild.name}**: *(Nessun permesso per creare inviti)*")
+
+    # Gestione del messaggio per non superare il limite dei 2000 caratteri di Discord
+    full_text = "\n".join(lines)
+    chunks = [full_text[i:i + 1900] for i in range(0, len(full_text), 1900)]
+
+    await loading_msg.delete()
+    for chunk in chunks:
+        embed = discord.Embed(
+            title="🔗 Link di Invito dei Server",
+            description=chunk,
+            color=discord.Color.green()
+        )
+        await ctx.send(embed=embed)
+
 class ConfirmLeaveView(discord.ui.View):
     """View con due bottoni per confermare o annullare l'uscita."""
     def __init__(self, guild: discord.Guild):
