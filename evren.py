@@ -4392,7 +4392,7 @@ async def me(interaction: discord.Interaction, azione: str):
 
   # Costruisce l'embed identico allo stile dell'immagine
   embed = discord.Embed(
-      description=f"🎬 **Azione** <a:attesa:1349897098258284594>\n\n{interaction.user.mention} = {azione}",
+      description=f"🎬 **Azione** <a:attesa:1554943171354558576>\n\n{interaction.user.mention} = {azione}",
       color=discord.Color.from_rgb(
           40, 40, 45
       ),  # Sfumatura scura pulita in stile Discord
@@ -7314,7 +7314,7 @@ async def renderizza_fattura_immagine(fattura) -> discord.File:
 
     user_id = "Evren"
     api_key = "Evren"
-    render_url = "https://htmlevren-npk9.onrender.com"
+    render_url = "https://evren-html.onrender.com"
     headers = {"Authorization": aiohttp.encode_basic_auth(str(user_id), str(api_key))}
 
     async with aiohttp.ClientSession() as session:
@@ -7909,7 +7909,7 @@ async def renderizza_html_in_immagine(html_content: str) -> discord.File:
     api_key = "Evren"
     
     # Endpoint puntato al tuo servizio Render
-    render_url = "https://htmlevren-npk9.onrender.com"
+    render_url = "https://evren-html.onrender.com"
     
     payload = {
         "html": html_content,
