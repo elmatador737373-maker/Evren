@@ -7145,16 +7145,19 @@ async def paga_multa(interaction: discord.Interaction):
 import discord
 from discord import ui
 
-# =======================================================
-#  CONFIGURAZIONE RUOLI (Sostituisci con i veri ID)
-# =======================================================
-
 import io
-from playwright.async_api import async_playwright
+import aiohttp
+import discord
+import datetime
+from discord import app_commands
 
+# =======================================================
+# 1. GENERAZIONE HTML FATTURA
+# =======================================================
 async def genera_fattura_html(
     invoice_id,
     azienda,
+    partita_iva,
     emittente,
     destinatario,
     importo,
@@ -7172,170 +7175,60 @@ async def genera_fattura_html(
     <head>
         <meta charset="UTF-8">
         <style>
-            * {{
-                box-sizing: border-box;
-                margin: 0;
-                padding: 0;
-            }}
+            * {{ box-sizing: border-box; margin: 0; padding: 0; }}
             body {{
-                width: 794px;
-                height: 1123px;
-                background: #ffffff;
+                width: 794px; height: 1123px; background: #ffffff;
                 font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif;
-                color: #202124;
-                padding: 50px 60px;
-                display: flex;
-                flex-direction: column;
-                justify-content: space-between;
+                color: #202124; padding: 50px 60px; display: flex;
+                flex-direction: column; justify-content: space-between;
                 position: relative;
             }}
             .invoice-header {{
-                display: flex;
-                justify-content: space-between;
-                align-items: flex-start;
-                border-bottom: 3px solid #1a73e8;
-                padding-bottom: 20px;
-                margin-bottom: 30px;
+                display: flex; justify-content: space-between; align-items: flex-start;
+                border-bottom: 3px solid #1a73e8; padding-bottom: 20px; margin-bottom: 30px;
             }}
             .company-info h1 {{
-                margin: 0;
-                font-size: 26px;
-                font-weight: 800;
-                color: #1a73e8;
-                letter-spacing: 0.5px;
-                text-transform: uppercase;
+                margin: 0; font-size: 26px; font-weight: 800; color: #1a73e8;
+                letter-spacing: 0.5px; text-transform: uppercase;
             }}
             .company-info span {{
-                font-size: 12px;
-                color: #5f6368;
-                text-transform: uppercase;
-                letter-spacing: 1.5px;
-                font-weight: 600;
-                display: block;
-                margin-top: 4px;
+                font-size: 12px; color: #5f6368; text-transform: uppercase;
+                letter-spacing: 1.5px; font-weight: 600; display: block; margin-top: 4px;
             }}
-            .invoice-meta {{
-                text-align: right;
+            .company-info .piva {{
+                font-size: 11px; color: #80868b; letter-spacing: 1px;
             }}
-            .invoice-meta h2 {{
-                margin: 0 0 6px 0;
-                font-size: 22px;
-                color: #202124;
-                font-weight: 700;
-            }}
-            .invoice-meta p {{
-                margin: 3px 0;
-                font-size: 13px;
-                color: #5f6368;
-            }}
+            .invoice-meta {{ text-align: right; }}
+            .invoice-meta h2 {{ margin: 0 0 6px 0; font-size: 22px; color: #202124; font-weight: 700; }}
+            .invoice-meta p {{ margin: 3px 0; font-size: 13px; color: #5f6368; }}
             .status-badge {{
-                display: inline-block;
-                padding: 6px 12px;
-                background-color: {colore_badge_bg};
-                color: {colore_badge_text};
-                border: 1px solid {colore_border};
-                border-radius: 4px;
-                font-size: 12px;
-                font-weight: 700;
-                text-transform: uppercase;
-                letter-spacing: 0.5px;
-                margin-top: 8px;
+                display: inline-block; padding: 6px 12px; background-color: {colore_badge_bg};
+                color: {colore_badge_text}; border: 1px solid {colore_border}; border-radius: 4px;
+                font-size: 12px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.5px; margin-top: 8px;
             }}
-            .parties-section {{
-                display: flex;
-                justify-content: space-between;
-                margin-bottom: 40px;
-                gap: 30px;
-            }}
-            .party-box {{
-                flex: 1;
-                background: #f8f9fa;
-                padding: 18px 20px;
-                border-radius: 8px;
-                border: 1px solid #e8eaed;
-            }}
+            .parties-section {{ display: flex; justify-content: space-between; margin-bottom: 40px; gap: 30px; }}
+            .party-box {{ flex: 1; background: #f8f9fa; padding: 18px 20px; border-radius: 8px; border: 1px solid #e8eaed; }}
             .party-box h4 {{
-                margin: 0 0 8px 0;
-                font-size: 11px;
-                text-transform: uppercase;
-                color: #5f6368;
-                letter-spacing: 1px;
-                border-bottom: 1px solid #dadce0;
-                padding-bottom: 6px;
+                margin: 0 0 8px 0; font-size: 11px; text-transform: uppercase; color: #5f6368;
+                letter-spacing: 1px; border-bottom: 1px solid #dadce0; padding-bottom: 6px;
             }}
-            .party-box p {{
-                margin: 0;
-                font-weight: 600;
-                color: #202124;
-                font-size: 15px;
-                line-height: 1.4;
-            }}
-            .invoice-table {{
-                width: 100%;
-                border-collapse: collapse;
-                margin-bottom: 30px;
-            }}
+            .party-box p {{ margin: 0; font-weight: 600; color: #202124; font-size: 15px; line-height: 1.4; }}
+            .invoice-table {{ width: 100%; border-collapse: collapse; margin-bottom: 30px; }}
             .invoice-table th {{
-                background-color: #f1f3f4;
-                color: #3c4043;
-                font-size: 12px;
-                text-transform: uppercase;
-                text-align: left;
-                padding: 12px 16px;
-                border-bottom: 2px solid #bdc1c6;
-                letter-spacing: 0.5px;
+                background-color: #f1f3f4; color: #3c4043; font-size: 12px; text-transform: uppercase;
+                text-align: left; padding: 12px 16px; border-bottom: 2px solid #bdc1c6; letter-spacing: 0.5px;
             }}
-            .invoice-table td {{
-                padding: 16px;
-                font-size: 14px;
-                border-bottom: 1px solid #e8eaed;
-                color: #202124;
-            }}
-            .invoice-table td.amount {{
-                text-align: right;
-                font-weight: 700;
-            }}
-            .totals-container {{
-                display: flex;
-                justify-content: flex-end;
-                margin-bottom: 50px;
-            }}
-            .totals-box {{
-                width: 320px;
-                background: #f8f9fa;
-                border: 1px solid #e8eaed;
-                border-radius: 8px;
-                padding: 15px 20px;
-            }}
-            .total-row {{
-                display: flex;
-                justify-content: space-between;
-                align-items: center;
-                margin-bottom: 8px;
-                font-size: 13px;
-                color: #5f6368;
-            }}
+            .invoice-table td {{ padding: 16px; font-size: 14px; border-bottom: 1px solid #e8eaed; color: #202124; }}
+            .invoice-table td.amount {{ text-align: right; font-weight: 700; }}
+            .totals-container {{ display: flex; justify-content: flex-end; margin-bottom: 50px; }}
+            .totals-box {{ width: 320px; background: #f8f9fa; border: 1px solid #e8eaed; border-radius: 8px; padding: 15px 20px; }}
+            .total-row {{ display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px; font-size: 13px; color: #5f6368; }}
             .total-row.final {{
-                margin-top: 10px;
-                padding-top: 10px;
-                border-top: 2px solid #dadce0;
-                font-size: 16px;
-                color: #202124;
-                font-weight: 700;
+                margin-top: 10px; padding-top: 10px; border-top: 2px solid #dadce0;
+                font-size: 16px; color: #202124; font-weight: 700;
             }}
-            .total-row.final span.value {{
-                color: #1a73e8;
-                font-size: 20px;
-            }}
-            .invoice-footer {{
-                border-top: 1px solid #dadce0;
-                padding-top: 15px;
-                display: flex;
-                justify-content: space-between;
-                align-items: center;
-                font-size: 11px;
-                color: #5f6368;
-            }}
+            .total-row.final span.value {{ color: #1a73e8; font-size: 20px; }}
+            .invoice-footer {{ border-top: 1px solid #dadce0; padding-top: 15px; display: flex; justify-content: space-between; align-items: center; font-size: 11px; color: #5f6368; }}
         </style>
     </head>
     <body>
@@ -7344,13 +7237,12 @@ async def genera_fattura_html(
                 <div class="company-info">
                     <h1>{azienda.upper()}</h1>
                     <span>Fattura Elettronica / Documento Fiscale</span>
+                    <span class="piva">P.IVA: {partita_iva}</span>
                 </div>
                 <div class="invoice-meta">
                     <h2>FATTURA #{invoice_id}</h2>
                     <p>Data di emissione: <b>{data_emissione}</b></p>
-                    <div>
-                        <span class="status-badge">{stato.upper()}</span>
-                    </div>
+                    <div><span class="status-badge">{stato.upper()}</span></div>
                 </div>
             </div>
             
@@ -7382,22 +7274,12 @@ async def genera_fattura_html(
 
             <div class="totals-container">
                 <div class="totals-box">
-                    <div class="total-row">
-                        <span>Imponibile:</span>
-                        <span>€ {importo:,.2f}</span>
-                    </div>
-                    <div class="total-row">
-                        <span>IVA (0%):</span>
-                        <span>€ 0,00</span>
-                    </div>
-                    <div class="total-row final">
-                        <span>Totale Documento:</span>
-                        <span class="value">€ {importo:,.2f}</span>
-                    </div>
+                    <div class="total-row"><span>Imponibile:</span><span>€ {importo:,.2f}</span></div>
+                    <div class="total-row"><span>IVA (0%):</span><span>€ 0,00</span></div>
+                    <div class="total-row final"><span>Totale Documento:</span><span class="value">€ {importo:,.2f}</span></div>
                 </div>
             </div>
         </div>
-
         <div class="invoice-footer">
             <span>Documento emesso e archiviato digitalmente tramite Imperial City OS</span>
             <span>Pagina 1 di 1</span>
@@ -7407,16 +7289,14 @@ async def genera_fattura_html(
     """
   return html_content
 
-
-
-import io
-import aiohttp
-import discord
-
+# =======================================================
+# 2. RENDERIZZAZIONE FATTURA IN IMMAGINE
+# =======================================================
 async def renderizza_fattura_immagine(fattura) -> discord.File:
     html = await genera_fattura_html(
         invoice_id=fattura["id"],
         azienda=fattura["azienda"],
+        partita_iva=fattura.get("partita_iva", "N/D"),
         emittente=fattura["emittente"],
         destinatario=fattura["destinatario"],
         importo=fattura["importo"],
@@ -7432,47 +7312,103 @@ async def renderizza_fattura_immagine(fattura) -> discord.File:
         "device_scale": 2
     }
 
-    # Credenziali Basic Auth impostate sul tuo server
     user_id = "Evren"
     api_key = "Evren"
-    
-    # Endpoint del tuo nuovo servizio su Render
     render_url = "https://htmlevren-npk9.onrender.com"
-    
-    headers = {
-        "Authorization": aiohttp.encode_basic_auth(str(user_id), str(api_key))
-    }
+    headers = {"Authorization": aiohttp.encode_basic_auth(str(user_id), str(api_key))}
 
     async with aiohttp.ClientSession() as session:
         async with session.post(render_url, json=payload, headers=headers) as response:
             if response.status == 200:
-                # Il tuo server su Render restituisce direttamente i byte della fattura in PNG
                 screenshot_bytes = await response.read()
             else:
                 error_text = await response.text()
-                raise Exception(f"Errore nel rendering HTML della fattura (Status {response.status}): {error_text}")
+                raise Exception(f"Errore nel rendering (Status {response.status}): {error_text}")
 
     buffer = io.BytesIO(screenshot_bytes)
     buffer.seek(0)
-    return discord.File(buffer, filename="fattura.png")
+    # Rinominiamo il file in base all'ID per allinearlo con l'Embed
+    return discord.File(buffer, filename=f"fattura_{fattura['id']}.png")
 
 
+# =======================================================
+# 3. AUTOCOMPLETE AZIENDE
+# =======================================================
+async def aziende_autocomplete(
+    interaction: discord.Interaction,
+    current: str,
+) -> list[app_commands.Choice[str]]:
+    # Recupera i ruoli dell'utente che sta digitando il comando
+    user_roles = [str(role.id) for role in interaction.user.roles]
+
+    # Prendi tutte le aziende
+    res = supabase.table("aziende").select("*").execute()
+    
+    choices = []
+    if res.data:
+        for az in res.data:
+            role_id = str(az.get("role_id"))
+            # Mostra l'azienda solo se l'utente ha il ruolo ad essa associato
+            if role_id in user_roles:
+                nome_azienda = az.get("name")
+                if current.lower() in nome_azienda.lower():
+                    choices.append(app_commands.Choice(name=nome_azienda, value=nome_azienda))
+                    
+    return choices[:25]
+
+
+# =======================================================
+# 4. COMANDO EMETTI FATTURA
+# =======================================================
 @bot.tree.command(name="emetti_fattura", description="Emetti una nuova fattura aziendale.")
 @app_commands.describe(azienda="Nome dell'azienda emittente", utente="Il cittadino destinatario della fattura", importo="Importo in denaro", causale="Motivo della fattura")
+@app_commands.autocomplete(azienda=aziende_autocomplete)
 async def emetti_fattura(interaction: discord.Interaction, azienda: str, utente: discord.Member, importo: float, causale: str):
     await interaction.response.defer(ephemeral=False)
+    
+    # 1. Verifica di sicurezza post-autocomplete ed estrazione P.IVA
+    az_res = supabase.table("aziende").select("*").eq("name", azienda).execute()
+    if not az_res.data:
+        return await interaction.followup.send("❌ Azienda non trovata nel registro ufficiale.", ephemeral=True)
+        
+    dati_azienda = az_res.data[0]
+    ruolo_richiesto = str(dati_azienda.get("role_id"))
+    partita_iva = dati_azienda.get("piva", "00000000000")
+    
+    user_roles = [str(role.id) for role in interaction.user.roles]
+    if ruolo_richiesto not in user_roles:
+        return await interaction.followup.send("❌ Non hai le autorizzazioni per emettere fatture per questa azienda.", ephemeral=True)
+
+    # 2. Creazione Fattura
     data_oggi = datetime.datetime.now().strftime("%d/%m/%Y")
     emittente_nome = interaction.user.display_name
-    res = supabase.table("invoices").insert({"discord_id": str(utente.id), "destinatario": utente.display_name, "emittente": emittente_nome, "azienda": azienda, "importo": importo, "causale": causale, "data": data_oggi, "status": "Da Pagare"}).execute()
+    
+    res = supabase.table("invoices").insert({
+        "discord_id": str(utente.id), 
+        "destinatario": utente.display_name, 
+        "emittente": emittente_nome, 
+        "azienda": azienda, 
+        "partita_iva": partita_iva, # Salva la P.IVA nel record della fattura
+        "importo": importo, 
+        "causale": causale, 
+        "data": data_oggi, 
+        "status": "Da Pagare"
+    }).execute()
+    
     if not res.data:
-        await interaction.followup.send("❌ Errore durante la creazione della fattura nel database.", ephemeral=True)
-        return
+        return await interaction.followup.send("❌ Errore durante la creazione della fattura nel database.", ephemeral=True)
+        
     nuova_fattura = res.data[0]
-    file = await renderizza_fattura_immagine(ultima)
-    embed = discord.Embed(title="📑 Nuova Fattura Emessa", description=f"Fattura emessa con successo per {utente.mention} a nome dell'azienda **{azienda}**!", color=discord.Color.from_rgb(15, 23, 42))
+    
+    # 3. Generazione immagine (Corretto il riferimento variabile da 'ultima' a 'nuova_fattura')
+    file = await renderizza_fattura_immagine(nuova_fattura)
+    
+    embed = discord.Embed(title="📑 Nuova Fattura Emessa", description=f"Fattura emessa con successo per {utente.mention} a nome dell'azienda **{azienda}** (P.IVA: {partita_iva})!", color=discord.Color.from_rgb(15, 23, 42))
     embed.set_image(url=f"attachment://fattura_{nuova_fattura['id']}.png")
     embed.set_footer(text="Imperial City OS • Sistema Fiscale")
     await interaction.followup.send(embed=embed, file=file)
+    
+    # 4. Inoltro al destinatario
     try:
         dm_embed = discord.Embed(title="💳 Nuova Fattura Ricevuta", description=f"Ti è stata emessa una nuova fattura a nome dell'azienda **{azienda}** per un importo di **€ {importo:,.2f}**.\n\n💬 **Causale:** {causale}\n\nUsa il comando </mie_fatture:0> in città per visualizzare l'anteprima dettagliata ed effettuare il pagamento.", color=discord.Color.from_rgb(220, 38, 38))
         dm_embed.set_footer(text="Imperial City OS • Sistema Fiscale")
@@ -7480,9 +7416,11 @@ async def emetti_fattura(interaction: discord.Interaction, azienda: str, utente:
     except discord.Forbidden:
         pass
 
-# --- INTERFACCIA PER IL PAGAMENTO DELLE FATTURE ---
-class PagaFatturaSelect(discord.ui.Select):
 
+# =======================================================
+# 5. SISTEMA DI PAGAMENTO & MIE FATTURE
+# =======================================================
+class PagaFatturaSelect(discord.ui.Select):
   def __init__(self, fatture):
     options = []
     for f in fatture:
@@ -7495,103 +7433,54 @@ class PagaFatturaSelect(discord.ui.Select):
                 emoji="💳",
             )
         )
-
     if not options:
       options.append(
-          discord.SelectOption(
-              label="Nessuna fattura da pagare",
-              value="none",
-              description="Sei in regola con i pagamenti!",
-          )
+          discord.SelectOption(label="Nessuna fattura da pagare", value="none", description="Sei in regola con i pagamenti!")
       )
-
-    super().__init__(
-        placeholder="Seleziona una fattura da pagare...",
-        min_values=1,
-        max_values=1,
-        options=options,
-    )
+    super().__init__(placeholder="Seleziona una fattura da pagare...", min_values=1, max_values=1, options=options)
 
   async def callback(self, interaction: discord.Interaction):
     if self.values[0] == "none":
-      await interaction.response.send_message(
-          "Non hai fatture in sospeso da pagare.", ephemeral=True
-      )
-      return
+      return await interaction.response.send_message("Non hai fatture in sospeso da pagare.", ephemeral=True)
 
     invoice_id = int(self.values[0])
     user_id_str = str(interaction.user.id)
 
-    inv_res = (
-        supabase.table("invoices")
-        .select("*")
-        .eq("id", invoice_id)
-        .execute()
-    )
+    inv_res = supabase.table("invoices").select("*").eq("id", invoice_id).execute()
     if not inv_res.data:
-      await interaction.response.send_message(
-          "❌ Fattura non trovata.", ephemeral=True
-      )
-      return
+      return await interaction.response.send_message("❌ Fattura non trovata.", ephemeral=True)
 
     fattura = inv_res.data[0]
     importo_dovuto = fattura["importo"]
 
-    user_res = (
-        supabase.table("users").select("bank, wallet").eq("discord_id", user_id_str).execute()
-    )
+    user_res = supabase.table("users").select("bank, wallet").eq("discord_id", user_id_str).execute()
     if not user_res.data:
-      await interaction.response.send_message(
-          "❌ Non risulti registrato anagraficamente in città.", ephemeral=True
-      )
-      return
+      return await interaction.response.send_message("❌ Non risulti registrato anagraficamente in città.", ephemeral=True)
 
     banca = user_res.data[0].get("bank", 0.0) or 0.0
     portafoglio = user_res.data[0].get("wallet", 0.0) or 0.0
 
     if banca >= importo_dovuto:
-      nuovo_saldo = banca - importo_dovuto
-      supabase.table("users").update({"bank": nuovo_saldo}).eq(
-          "discord_id", user_id_str
-      ).execute()
+      supabase.table("users").update({"bank": banca - importo_dovuto}).eq("discord_id", user_id_str).execute()
       metodo_pagamento = "Conto Bancario"
     elif portafoglio >= importo_dovuto:
-      nuovo_saldo = portafoglio - importo_dovuto
-      supabase.table("users").update({"wallet": nuovo_saldo}).eq(
-          "discord_id", user_id_str
-      ).execute()
+      supabase.table("users").update({"wallet": portafoglio - importo_dovuto}).eq("discord_id", user_id_str).execute()
       metodo_pagamento = "Contanti (Wallet)"
     else:
-      await interaction.response.send_message(
-          f"❌ Fondi insufficienti! Ti servono **€ {importo_dovuto:,.2f}** (Banca:"
-          f" € {banca:,.2f} | Contanti: € {portafoglio:,.2f}).",
-          ephemeral=True,
-      )
-      return
+      return await interaction.response.send_message(
+          f"❌ Fondi insufficienti! Ti servono **€ {importo_dovuto:,.2f}** (Banca: € {banca:,.2f} | Contanti: € {portafoglio:,.2f}).", ephemeral=True)
 
-    supabase.table("invoices").update({"status": "Pagata"}).eq(
-        "id", invoice_id
-    ).execute()
-
+    supabase.table("invoices").update({"status": "Pagata"}).eq("id", invoice_id).execute()
     supabase.table("transactions_log").insert({
-        "discord_id": user_id_str,
-        "type": "Pagamento Fattura",
-        "amount": -importo_dovuto,
-        "description": (
-            f"Pagamento fattura #{invoice_id} - Azienda: {fattura['azienda']}"
-        ),
+        "discord_id": user_id_str, "type": "Pagamento Fattura", "amount": -importo_dovuto,
+        "description": f"Pagamento fattura #{invoice_id} - Azienda: {fattura['azienda']}"
     }).execute()
 
     await interaction.response.send_message(
-        f"✅ Fattura **#{invoice_id}** pagata con successo tramite"
-        f" **{metodo_pagamento}** per un importo di **€"
-        f" {importo_dovuto:,.2f}**!",
-        ephemeral=True,
-    )
+        f"✅ Fattura **#{invoice_id}** pagata con successo tramite **{metodo_pagamento}** per un importo di **€ {importo_dovuto:,.2f}**!", ephemeral=True)
 
 
 class FabbricaFattureView(discord.ui.View):
-
   def __init__(self, fatture):
     super().__init__(timeout=180)
     self.add_item(PagaFatturaSelect(fatture))
@@ -7600,14 +7489,17 @@ class FabbricaFattureView(discord.ui.View):
 async def mie_fatture(interaction: discord.Interaction):
     await interaction.response.defer(ephemeral=False)
     res = supabase.table("invoices").select("*").eq("discord_id", str(interaction.user.id)).order("id", desc=True).execute()
+    
     if not res.data:
-        await interaction.followup.send("❌ Non hai alcuna fattura registrata a tuo carico.", ephemeral=True)
-        return
+        return await interaction.followup.send("❌ Non hai alcuna fattura registrata a tuo carico.", ephemeral=True)
+        
     fatture = res.data
     ultima = fatture[0]
     file = await renderizza_fattura_immagine(ultima)
+    
     embed = discord.Embed(title="📑 Gestione Fatture Personali", description="Ecco l'anteprima della tua fattura più recente. Usa il menu sotto per pagare quelle in sospeso.", color=discord.Color.from_rgb(15, 23, 42))
     embed.set_image(url=f"attachment://fattura_{ultima['id']}.png")
+    
     if len(fatture) > 1:
         storico_testo = ""
         for f in fatture[1:]:
@@ -7615,11 +7507,10 @@ async def mie_fatture(interaction: discord.Interaction):
         if len(storico_testo) > 1024:
             storico_testo = storico_testo[:1021] + "..."
         embed.add_field(name="📜 Storico Fatture Precedenti", value=storico_testo, inline=False)
+        
     embed.set_footer(text="Imperial City OS • Sistema Fiscale")
     view = FabbricaFattureView(fatture)
     await interaction.followup.send(embed=embed, file=file, view=view)
-
-import aiohttp
 
 import io
 import aiohttp
@@ -7638,10 +7529,86 @@ import aiohttp
 import base64
 import aiohttp
 
+import random
+import string
+import discord
+from discord import app_commands
+
+# ==========================================
+# INSERISCI QUI L'ID DEL RUOLO STAFF
+# ==========================================
+
+@bot.tree.command(
+    name="crea_azienda", 
+    description="[STAFF] Registra una nuova azienda nel sistema fiscale."
+)
+@app_commands.describe(
+    nome="Il nome ufficiale dell'azienda",
+    ruolo="Il ruolo Discord associato ai dipendenti di questa azienda",
+    percentuale_tasse="La percentuale di tasse da pagare (es. 22 per 22%)"
+)
+async def crea_azienda(interaction: discord.Interaction, nome: str, ruolo: discord.Role, percentuale_tasse: float):
+    # 1. Controllo del Ruolo Staff
+    user_role_ids = [r.id for r in interaction.user.roles]
+    if RUOLO_STAFF_ID not in user_role_ids:
+        return await interaction.response.send_message(
+            "❌ Non hai i permessi necessari! Devi avere il ruolo Staff per creare un'azienda.", 
+            ephemeral=True
+        )
+
+    await interaction.response.defer(ephemeral=False)
+    
+    # 2. Verifica che l'azienda non esista già
+    esistente = supabase.table("aziende").select("id").eq("name", nome).execute()
+    if esistente.data:
+        return await interaction.followup.send(
+            f"❌ Esiste già un'azienda registrata con il nome **{nome}**.", 
+            ephemeral=True
+        )
+    
+    # 3. Generazione P.IVA univoca a 11 cifre
+    while True:
+        nuova_piva = "".join(random.choices(string.digits, k=11))
+        check_piva = supabase.table("aziende").select("id").eq("piva", nuova_piva).execute()
+        if not check_piva.data:
+            break
+            
+    # 4. Inserimento nel database (salviamo l'ID del ruolo scelto per l'azienda)
+    dati_azienda = {
+        "name": nome,
+        "piva": nuova_piva,
+        "role_id": str(ruolo.id),
+        "tax_rate": percentuale_tasse
+    }
+    
+    res = supabase.table("aziende").insert(dati_azienda).execute()
+    
+    if not res.data:
+        return await interaction.followup.send(
+            "❌ Errore critico durante la registrazione dell'azienda nel database.", 
+            ephemeral=True
+        )
+        
+    # 5. Messaggio di successo Embed
+    embed = discord.Embed(
+        title="🏢 Nuova Azienda Registrata",
+        description=f"L'azienda **{nome}** è stata inserita ufficialmente nel registro fiscale della città.",
+        color=discord.Color.from_rgb(16, 185, 129)
+    )
+    embed.add_field(name="📌 Ragione Sociale", value=nome, inline=True)
+    embed.add_field(name="📑 Partita IVA", value=f"`{nuova_piva}`", inline=True)
+    embed.add_field(name="⚖️ Tassazione", value=f"{percentuale_tasse}%", inline=True)
+    embed.add_field(name="🎭 Ruolo Autorizzato", value=ruolo.mention, inline=False)
+    embed.set_footer(text="Imperial City OS • Registro Imprese")
+    
+    await interaction.followup.send(embed=embed)
+
+import aiohttp
+import base64
+# Assicurati di importare o avere definito 'supabase' nel tuo file globale
 
 async def genera_carta_identita(
     discord_id,
-    residenza,
     nome,
     cognome,
     birth_date,
@@ -7707,28 +7674,21 @@ async def genera_carta_identita(
         except Exception as e:
             print(f"Errore download foto per Base64: {e}")
 
-    # 3. Configurazione dati geografici
-    if residenza == "Messico":
-        ente_titolo = "ESTADOS UNIDOS MEXICANOS"
-        sotto_titolo = "CREDENCIAL PARA VOTAR / CÉDULA DE IDENTIDAD"
-        colore_primario = "#006847"
-        colore_secondario = "#ce1126"
-        paese_cod = "MEX"
-        stato_emittente = "DCMX"
-    else:
-        ente_titolo = "STATE OF CALIFORNIA"
-        sotto_titolo = "CITY OF LOS ANGELES — OFFICIAL IDENTIFICATION CARD"
-        colore_primario = "#1e3a8a"
-        colore_secondario = "#f59e0b"
-        paese_cod = "USA"
-        stato_emittente = "USCAL"
+    # 3. Configurazione dati geografici (Completamente Italiano)
+    ente_titolo = "REPUBBLICA ITALIANA"
+    sotto_titolo = "MINISTERO DELL'INTERNO — CARTA DI IDENTITÀ"
+    colore_primario = "#0033A0"   # Blu istituzionale Italia
+    colore_secondario = "#009246" # Verde bandiera
+    colore_terziario = "#CE2B37"  # Rosso bandiera
+    paese_cod = "ITA"
+    stato_emittente = "ITA"
 
     mrz_line1 = (
         f"I<{paese_cod}{cognome.upper()}<<{nome.upper()}<<<<<<<<<<<<<<"
     )
     mrz_line2 = f"{doc_number}9{paese_cod}{birth_date.replace('/', '')}M281231{stato_emittente}<<<<<<<$"
 
-    # 4. HTML / CSS Ottimizzato e Bellissimo
+    # 4. HTML / CSS Ottimizzato
     html_content = f"""
     <!DOCTYPE html>
     <html lang="it">
@@ -7787,8 +7747,8 @@ async def genera_carta_identita(
                 font-weight: 700;
             }}
             .badge-state {{
-                background: {colore_secondario};
-                color: #0f172a;
+                background: {colore_terziario};
+                color: #ffffff;
                 font-size: 11px;
                 font-weight: 800;
                 padding: 4px 10px;
@@ -7851,7 +7811,7 @@ async def genera_carta_identita(
                 margin-top: 1px;
             }}
             .value-highlight {{
-                color: #1e3a8a;
+                color: {colore_primario};
             }}
             .mrz-container {{
                 background: #cbd5e1;
@@ -7896,36 +7856,40 @@ async def genera_carta_identita(
             
             <div class="info-grid">
                 <div class="field">
-                    <span class="label">Cognome / Surname</span>
+                    <span class="label">Cognome</span>
                     <span class="value">{cognome.upper()}</span>
                 </div>
                 <div class="field">
-                    <span class="label">Nome / Given Name</span>
+                    <span class="label">Nome</span>
                     <span class="value">{nome.capitalize()}</span>
                 </div>
                 <div class="field full">
-                    <span class="label">Data e Luogo di Nascita / Date & Place of Birth</span>
+                    <span class="label">Data e Luogo di Nascita</span>
                     <span class="value">{birth_date} — {birth_place}</span>
                 </div>
                 <div class="field">
-                    <span class="label">N. Documento / Doc No.</span>
+                    <span class="label">Codice Fiscale</span>
+                    <span class="value">{cf.upper()}</span>
+                </div>
+                <div class="field">
+                    <span class="label">Numero Documento</span>
                     <span class="value">{doc_number}</span>
                 </div>
                 <div class="field">
-                    <span class="label">Occhi / Capelli / Eyes / Hair</span>
+                    <span class="label">Occhi / Capelli</span>
                     <span class="value">{colore_occhi} / {colore_capelli}</span>
                 </div>
                 <div class="field">
-                    <span class="label">🪪 Patenti di Guida / Driver Licenses</span>
+                    <span class="label">Segni Particolari</span>
+                    <span class="value">{segni_particolari}</span>
+                </div>
+                <div class="field">
+                    <span class="label">🪪 Patenti di Guida</span>
                     <span class="value value-highlight">{driver_str}</span>
                 </div>
                 <div class="field">
-                    <span class="label">📜 Porto d'Armi / Gun Permits</span>
+                    <span class="label">📜 Porto d'Armi</span>
                     <span class="value value-highlight">{gun_str}</span>
-                </div>
-                <div class="field full">
-                    <span class="label">Segni Particolari / Distinctive Marks</span>
-                    <span class="value">{segni_particolari}</span>
                 </div>
             </div>
         </div>
@@ -7938,7 +7902,7 @@ async def genera_carta_identita(
     </html>
     """
     return html_content
-    
+
 
 async def renderizza_html_in_immagine(html_content: str) -> discord.File:
     user_id = "Evren"
@@ -7979,7 +7943,6 @@ import string
 import random
 import string
 
-
 @bot.tree.command(
     name="mostra_documento",
     description="Mostra la tua carta d'identità ufficiale in chat.",
@@ -7997,7 +7960,7 @@ async def mostra_documento(interaction: discord.Interaction):
 
     if not response.data:
         await interaction.followup.send(
-            "❌ Non possiedi ancora un documento registrato! Vai su https://discord.com/channels/1233353915559313478/1519652687036157982 per crearlo.",
+            "❌ Non possiedi ancora un documento registrato! Vai su <#1519652687036157982> per crearlo.",
             ephemeral=True,
         )
         return
@@ -8006,6 +7969,7 @@ async def mostra_documento(interaction: discord.Interaction):
 
     doc_number = doc.get("doc_number")
 
+    # Se non c'è un numero documento, lo genera
     if not doc_number:
         lettere = "".join(random.choices(string.ascii_uppercase, k=2))
         numeri = "".join(random.choices(string.digits, k=6))
@@ -8014,21 +7978,9 @@ async def mostra_documento(interaction: discord.Interaction):
             "discord_id", user_id
         ).execute()
 
-    RUOLO_LOS_ANGELES = 1536072707878420541
-    RUOLO_MESSICO = 1536072848224034856
-
-    user_role_ids = [role.id for role in interaction.user.roles]
-
-    if RUOLO_MESSICO in user_role_ids:
-        residenza_utente = "Messico"
-    elif RUOLO_LOS_ANGELES in user_role_ids:
-        residenza_utente = "Los Angeles"
-    else:
-        residenza_utente = "Los Angeles"
-
+    # Chiamata alla funzione aggiornata senza la residenza
     html_content = await genera_carta_identita(
-        discord_id=interaction.user.id,  # <-- Aggiunto discord_id
-        residenza=residenza_utente,
+        discord_id=interaction.user.id,
         nome=doc["name"],
         cognome=doc["surname"],
         birth_date=doc["birth_date"],
@@ -8040,11 +7992,14 @@ async def mostra_documento(interaction: discord.Interaction):
         colore_capelli=doc["hair_color"],
         segni_particolari=doc["distinct_marks"],
     )
+    
     file_documento = await renderizza_html_in_immagine(html_content)
 
     await interaction.followup.send(
         "🪪 Ecco la tua carta d'identità ufficiale:", file=file_documento
     )
+
+
 
 import asyncio
 import random
@@ -8060,6 +8015,13 @@ from discord import app_commands
 
 
 # --- 1. GENERATORE HTML STILE LIBRETTO AMERICANO ---
+import random
+import string
+import discord
+from discord import app_commands
+# Assicurati di avere a disposizione 'supabase' e 'renderizza_html_in_immagine' nel tuo ambiente
+
+# --- 1. GENERAZIONE HTML LIBRETTO (Completamente Italiano) ---
 def genera_html_libretto(
     proprietario: str,
     targa: str,
@@ -8067,11 +8029,12 @@ def genera_html_libretto(
     stato_sequestro: str = "REGOLARE",
     modifiche: list[dict] = None,
 ) -> str:
-    # Genera un VIN fittizio coerente con la targa
-    vin_fittizio = f"1FA6P8CF{targa.upper()[:3]}92837"
+    # Genera un Telaio fittizio coerente con la targa
+    vin_fittizio = f"ZFA6P8CF{targa.upper()[:3]}92837"
 
     # Colore dello stato (Rosso se sequestrato, Verde se regolare)
     colore_stato = "#dc2626" if "SEQUESTRATO" in stato_sequestro else "#16a34a"
+    colore_istituzionale = "#0033A0" # Blu istituzionale Italia
 
     # Formattazione lista modifiche
     if modifiche:
@@ -8083,7 +8046,7 @@ def genera_html_libretto(
         )
         modifiche_block = f"""
         <div class="field full">
-            <span class="label">Approved Vehicle Modifications (Modifiche Approvate)</span>
+            <span class="label">Annotazioni / Modifiche Approvate</span>
             <ul class="mod-list">
                 {mod_html_list}
             </ul>
@@ -8092,14 +8055,14 @@ def genera_html_libretto(
     else:
         modifiche_block = """
         <div class="field full">
-            <span class="label">Approved Vehicle Modifications (Modifiche Approvate)</span>
-            <span class="value" style="font-size: 13px; color: #64748b;">NESSUNA MODIFICA REGISTRATA (STOCK)</span>
+            <span class="label">Annotazioni / Modifiche Approvate</span>
+            <span class="value" style="font-size: 13px; color: #64748b;">NESSUNA MODIFICA REGISTRATA</span>
         </div>
         """
 
     return f"""
     <!DOCTYPE html>
-    <html lang="en">
+    <html lang="it">
     <head>
         <meta charset="UTF-8">
         <style>
@@ -8107,13 +8070,13 @@ def genera_html_libretto(
             body {{
                 width: 800px;
                 height: 580px;
-                background-color: #f7f4ea;
+                background-color: #f7f4ea; /* Giallino carta tipico dei libretti italiani */
                 font-family: 'Courier New', Courier, monospace;
                 padding: 25px;
                 color: #1a1a1a;
             }}
             .card {{
-                border: 6px double #1e3a8a;
+                border: 6px double {colore_istituzionale};
                 height: 100%;
                 padding: 20px 25px;
                 background-color: #faf8f2;
@@ -8125,31 +8088,33 @@ def genera_html_libretto(
             }}
             .header {{
                 text-align: center;
-                border-bottom: 2px solid #1e3a8a;
+                border-bottom: 2px solid {colore_istituzionale};
                 padding-bottom: 10px;
             }}
             .header h1 {{
-                font-size: 24px;
+                font-size: 20px;
                 letter-spacing: 2px;
-                color: #1e3a8a;
+                color: {colore_istituzionale};
                 font-weight: bold;
                 text-transform: uppercase;
             }}
             .header h2 {{
-                font-size: 13px;
+                font-size: 15px;
                 color: #4b5563;
                 letter-spacing: 1px;
+                margin-top: 4px;
             }}
             .watermark {{
                 position: absolute;
                 top: 50%;
                 left: 50%;
                 transform: translate(-50%, -50%) rotate(-25deg);
-                font-size: 75px;
-                color: rgba(30, 58, 138, 0.04);
+                font-size: 65px;
+                color: rgba(0, 51, 160, 0.05);
                 font-weight: bold;
                 pointer-events: none;
                 white-space: nowrap;
+                text-align: center;
             }}
             .grid {{
                 display: grid;
@@ -8187,7 +8152,7 @@ def genera_html_libretto(
                 overflow: hidden;
             }}
             .footer {{
-                border-top: 2px solid #1e3a8a;
+                border-top: 2px solid {colore_istituzionale};
                 padding-top: 10px;
                 display: flex;
                 justify-content: space-between;
@@ -8207,31 +8172,31 @@ def genera_html_libretto(
     </head>
     <body>
         <div class="card">
-            <div class="watermark">OFFICIAL TITLE</div>
+            <div class="watermark">REPUBBLICA ITALIANA<br>M.I.T.</div>
             
             <div class="header">
-                <h1>Department of Motor Vehicles</h1>
-                <h2>CERTIFICATE OF VEHICLE REGISTRATION & TITLE</h2>
+                <h1>Ministero delle Infrastrutture e dei Trasporti</h1>
+                <h2>CARTA DI CIRCOLAZIONE</h2>
             </div>
 
             <div class="grid">
                 <div class="field full">
-                    <span class="label">Registered Owner (Intestatario)</span>
+                    <span class="label">Intestatario (C.1.1 / C.1.2)</span>
                     <span class="value">{proprietario}</span>
                 </div>
 
                 <div class="field">
-                    <span class="label">Plate Number (Targa)</span>
-                    <span class="value" style="color: #1e3a8a; font-size: 20px;">{targa}</span>
+                    <span class="label">Targa (A)</span>
+                    <span class="value" style="color: {colore_istituzionale}; font-size: 20px;">{targa}</span>
                 </div>
 
                 <div class="field">
-                    <span class="label">Vehicle Identification No. (VIN)</span>
+                    <span class="label">Numero di Telaio (E)</span>
                     <span class="value">{vin_fittizio}</span>
                 </div>
 
                 <div class="field full">
-                    <span class="label">Make & Model (Modello Veicolo)</span>
+                    <span class="label">Marca e Modello (D.1 / D.3)</span>
                     <span class="value">{modello}</span>
                 </div>
 
@@ -8239,7 +8204,7 @@ def genera_html_libretto(
             </div>
 
             <div class="footer">
-                <span style="font-size: 9px; color: #64748b;">STATE OF CALIFORNIA / NEVADA • OFFICIAL REGISTRATION DOCUMENT</span>
+                <span style="font-size: 9px; color: #64748b;">REPUBBLICA ITALIANA • DOCUMENTO DI CIRCOLAZIONE UFFICIALE</span>
                 <div class="stamp">{stato_sequestro}</div>
             </div>
         </div>
@@ -8357,7 +8322,7 @@ async def libretto_veicolo(
     try:
         file_img = await renderizza_html_in_immagine(html_code)
         await interaction.followup.send(
-            f"🚗 **Libretto di Circolazione:** {modello} (`{targa}`)",
+            f"🚗 **Carta di Circolazione:** {modello} (`{targa}`)",
             file=file_img,
         )
     except Exception as e:
@@ -8365,6 +8330,7 @@ async def libretto_veicolo(
             f"❌ Errore durante il rendering del libretto: `{e}`",
             ephemeral=True,
         )
+
 
 # --- FUNZIONE HELPER: Recupera e renderizza il documento di uno specifico utente ---
 async def ottieni_file_documento(member: discord.Member) -> discord.File | str:
@@ -8393,23 +8359,9 @@ async def ottieni_file_documento(member: discord.Member) -> discord.File | str:
             "discord_id", user_id
         ).execute()
 
-    # 3. Controllo ruoli per la residenza sull'utente perquisito
-    RUOLO_LOS_ANGELES = 1536072707878420541
-    RUOLO_MESSICO = 1536072848224034856
-
-    user_role_ids = [role.id for role in member.roles]
-
-    if RUOLO_MESSICO in user_role_ids:
-        residenza_utente = "Messico"
-    elif RUOLO_LOS_ANGELES in user_role_ids:
-        residenza_utente = "Los Angeles"
-    else:
-        residenza_utente = "Los Angeles"
-
-    # 4. Generazione HTML e rendering immagine
+    # 3. Generazione HTML e rendering immagine (Rimossa logica Residenza e Ruoli)
     html_content = await genera_carta_identita(
         discord_id=member.id,
-        residenza=residenza_utente,
         nome=doc["name"],
         cognome=doc["surname"],
         birth_date=doc["birth_date"],
@@ -8423,7 +8375,6 @@ async def ottieni_file_documento(member: discord.Member) -> discord.File | str:
     )
 
     return await renderizza_html_in_immagine(html_content)
-
 
 # --- VIEW DISCORD CON IL PULSANTE PER MOSTRARE IL DOCUMENTO ---
 class DocumentoPerquisizioneView(discord.ui.View):
@@ -8537,6 +8488,120 @@ async def perquisii(interaction: discord.Interaction, utente: discord.Member):
     await interaction.edit_original_response(embed=embed_finale, view=view)
 
 # --- COMANDI REGISTRAZIONE ISTITUZIONALE ---
+
+# --- INTERFACCIA PULSANTE PER PAGARE LE TASSE ---
+class PagaTasseView(discord.ui.View):
+    def __init__(self, user_id: str, azienda: str, ids_fatture: list, importo_tasse: float):
+        super().__init__(timeout=180)
+        self.user_id = user_id
+        self.azienda = azienda
+        self.ids_fatture = ids_fatture
+        self.importo_tasse = importo_tasse
+
+    @discord.ui.button(label="Versa Tasse allo Stato", style=discord.ButtonStyle.green, emoji="🏛️")
+    async def paga_tasse_btn(self, interaction: discord.Interaction, button: discord.ui.Button):
+        # Sicurezza: solo chi ha fatto il comando può cliccare. 
+        # Questo rimane ephemeral per non spammare la chat se altri cliccano.
+        if str(interaction.user.id) != self.user_id:
+            return await interaction.response.send_message("❌ Non puoi pagare queste tasse, non è la tua dichiarazione.", ephemeral=True)
+
+        await interaction.response.defer(ephemeral=False)
+
+        # Controlla il bilancio
+        user_res = supabase.table("users").select("bank, wallet").eq("discord_id", self.user_id).execute()
+        if not user_res.data:
+            return await interaction.followup.send("❌ Non risulti registrato anagraficamente in città.")
+
+        banca = user_res.data[0].get("bank", 0.0) or 0.0
+        portafoglio = user_res.data[0].get("wallet", 0.0) or 0.0
+
+        if banca >= self.importo_tasse:
+            supabase.table("users").update({"bank": banca - self.importo_tasse}).eq("discord_id", self.user_id).execute()
+            metodo = "Conto Bancario"
+        elif portafoglio >= self.importo_tasse:
+            supabase.table("users").update({"wallet": portafoglio - self.importo_tasse}).eq("discord_id", self.user_id).execute()
+            metodo = "Contanti"
+        else:
+            return await interaction.followup.send(f"❌ Fondi insufficienti. Ti servono **€ {self.importo_tasse:,.2f}**.")
+
+        # Segna tutte le fatture pagate come "Tassate"
+        supabase.table("invoices").update({"tax_paid": True}).in_("id", self.ids_fatture).execute()
+
+        # Log della transazione statale
+        supabase.table("transactions_log").insert({
+            "discord_id": self.user_id,
+            "type": "Tasse Aziendali",
+            "amount": -self.importo_tasse,
+            "description": f"Versamento tasse ({len(self.ids_fatture)} fatture) per l'azienda {self.azienda}"
+        }).execute()
+
+        # Disabilita il pulsante
+        self.clear_items()
+        await interaction.edit_original_response(
+            content=f"✅ **Tasse versate con successo!**\n{interaction.user.mention} ha pagato **€ {self.importo_tasse:,.2f}** allo stato tramite {metodo}.", 
+            view=self
+        )
+
+
+# --- COMANDO PRINCIPALE ---
+@bot.tree.command(name="tasse", description="Paga le tasse statali delle fatture che hai emesso.")
+@app_commands.describe(azienda="Il nome dell'azienda per cui stai pagando le tasse")
+@app_commands.autocomplete(azienda=aziende_autocomplete)
+async def tasse(interaction: discord.Interaction, azienda: str):
+    # defer(ephemeral=False) rende il caricamento e tutte le risposte pubbliche
+    await interaction.response.defer(ephemeral=False)
+
+    # 1. Recupera l'azienda e la sua percentuale di tasse
+    az_res = supabase.table("aziende").select("*").eq("name", azienda).execute()
+    if not az_res.data:
+        return await interaction.followup.send("❌ Azienda non trovata.")
+
+    dati_azienda = az_res.data[0]
+    ruolo_richiesto = str(dati_azienda.get("role_id"))
+    tax_rate = float(dati_azienda.get("tax_rate", 0.0))
+
+    # Controllo che l'utente faccia parte dell'azienda
+    user_roles = [str(role.id) for role in interaction.user.roles]
+    if ruolo_richiesto not in user_roles:
+        return await interaction.followup.send("❌ Non sei autorizzato a gestire le finanze di questa azienda. Ti manca il ruolo richiesto.")
+
+    # 2. Recupera le fatture emesse da QUESTO utente per QUESTA azienda su cui non sono state pagate le tasse
+    inv_res = (
+        supabase.table("invoices")
+        .select("id, importo")
+        .eq("azienda", azienda)
+        .eq("emittente", interaction.user.display_name)
+        .eq("tax_paid", False)
+        .execute()
+    )
+
+    fatture = inv_res.data
+    if not fatture:
+        return await interaction.followup.send(f"✅ {interaction.user.mention} è in regola! Non ci sono tasse arretrate da versare per le fatture emesse per **{azienda}**.")
+
+    # 3. Calcolo Finanziario
+    totale_fatturato = sum(f["importo"] for f in fatture)
+    tasse_da_pagare = totale_fatturato * (tax_rate / 100)
+    ids_fatture = [f["id"] for f in fatture]
+
+    if tasse_da_pagare <= 0:
+        # Se la percentuale è 0%, aggiorna direttamente e chiudi (già pubblico)
+        supabase.table("invoices").update({"tax_paid": True}).in_("id", ids_fatture).execute()
+        return await interaction.followup.send(f"✅ L'azienda **{azienda}** è in regime di esenzione tasse (0%). Le fatture di {interaction.user.mention} sono state regolarizzate gratuitamente.")
+
+    # 4. Generazione Embed e View per pagare
+    embed = discord.Embed(
+        title="🏛️ Dichiarazione dei Redditi Aziendale",
+        description=f"Riepilogo delle tasse dovute per le fatture emesse da {interaction.user.mention} per **{azienda}**.",
+        color=discord.Color.from_rgb(220, 38, 38)
+    )
+    embed.add_field(name="📄 Fatture in Sospeso", value=str(len(fatture)), inline=True)
+    embed.add_field(name="💰 Totale Fatturato", value=f"€ {totale_fatturato:,.2f}", inline=True)
+    embed.add_field(name="⚖️ Aliquota Tasse", value=f"{tax_rate}%", inline=True)
+    embed.add_field(name="📉 Da Versare allo Stato", value=f"**€ {tasse_da_pagare:,.2f}**", inline=False)
+    
+    view = PagaTasseView(str(interaction.user.id), azienda, ids_fatture, tasse_da_pagare)
+    await interaction.followup.send(embed=embed, view=view)
 
 @bot.tree.command(name="registra_veicolo", description="[MOTORIZZAZIONE] Registra un veicolo con targa.")
 async def registra_veicolo(interaction: discord.Interaction, proprietario: discord.Member, modello: str, targa: str):
