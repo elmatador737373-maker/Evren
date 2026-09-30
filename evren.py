@@ -7784,10 +7784,10 @@ async def genera_carta_identita(
         except Exception as e:
             print(f"Errore download foto per Base64: {e}")
 
-    # 3. Configurazione dati geografici (Completamente Italiano)
+    # 3. Configurazione dati geografici (Completamente Italiano - Stile CIE)
     ente_titolo = "REPUBBLICA ITALIANA"
-    sotto_titolo = "MINISTERO DELL'INTERNO — CARTA DI IDENTITÀ"
-    colore_primario = "#E0006E"
+    sotto_titolo = "CARTA DI IDENTITÀ / IDENTITY CARD"
+    colore_primario = "#003366"  # Blu istituzionale italiano
     colore_secondario = "#009246" # Verde bandiera
     colore_terziario = "#CE2B37"  # Rosso bandiera
     paese_cod = "ITA"
@@ -7798,7 +7798,7 @@ async def genera_carta_identita(
     )
     mrz_line2 = f"{doc_number}9{paese_cod}{birth_date.replace('/', '')}M281231{stato_emittente}<<<<<<<$"
 
-    # 4. HTML / CSS Ottimizzato
+    # 4. HTML / CSS Ottimizzato (Layout CIE Ufficiale)
     html_content = f"""
     <!DOCTYPE html>
     <html lang="it">
@@ -7813,58 +7813,68 @@ async def genera_carta_identita(
             body {{
                 width: 820px;
                 height: 520px;
-                background: linear-gradient(135deg, #f8fafc 0%, #e2e8f0 100%);
+                background: linear-gradient(135deg, #f0f4f8 0%, #d9e2ec 100%);
                 font-family: 'Helvetica Neue', Arial, sans-serif;
                 overflow: hidden;
                 display: flex;
                 flex-direction: column;
                 justify-content: space-between;
-                border: 3px solid {colore_primario};
-                border-radius: 12px;
+                border: 2px solid {colore_primario};
+                border-radius: 10px;
                 position: relative;
             }}
+            /* Sfondo di sicurezza geometrico/olografico simulato */
             .security-bg {{
                 position: absolute;
                 top: 0; left: 0; width: 100%; height: 100%;
-                background-image: radial-gradient({colore_primario} 0.8px, transparent 0.8px);
-                background-size: 14px 14px;
-                opacity: 0.04;
+                background-image: 
+                    radial-gradient({colore_primario} 0.6px, transparent 0.6px),
+                    linear-gradient(to right, rgba(0,51,102,0.03) 1px, transparent 1px);
+                background-size: 12px 12px, 20px 20px;
+                opacity: 0.15;
                 z-index: 0;
             }}
             .header {{
-                background: linear-gradient(135deg, {colore_primario} 0%, #0f172a 100%);
+                background: {colore_primario};
                 color: white;
-                padding: 10px 20px;
+                padding: 8px 20px;
                 display: flex;
                 justify-content: space-between;
                 align-items: center;
-                border-bottom: 4px solid {colore_secondario};
+                border-bottom: 3px solid #b32432;
                 z-index: 1;
-                height: 65px;
+                height: 60px;
                 flex-shrink: 0;
             }}
             .header-left h1 {{
-                font-size: 16px;
-                letter-spacing: 1.5px;
-                font-weight: 900;
+                font-size: 15px;
+                letter-spacing: 2px;
+                font-weight: 800;
                 text-transform: uppercase;
             }}
             .header-left span {{
-                font-size: 9px;
+                font-size: 8.5px;
                 letter-spacing: 1.5px;
                 color: #93c5fd;
                 text-transform: uppercase;
-                font-weight: 700;
+                font-weight: 600;
             }}
-            .badge-state {{
-                background: {colore_terziario};
-                color: #ffffff;
-                font-size: 11px;
-                font-weight: 800;
-                padding: 4px 10px;
-                border-radius: 4px;
-                letter-spacing: 1px;
+            /* Bandierina italiana stilizzata nell'intestazione */
+            .flag-strip {{
+                display: flex;
+                width: 36px;
+                height: 18px;
+                border-radius: 3px;
+                overflow: hidden;
+                box-shadow: 0 1px 3px rgba(0,0,0,0.3);
             }}
+            .flag-strip div {{
+                flex: 1;
+            }}
+            .flag-green {{ background: {colore_secondario}; }}
+            .flag-white {{ background: #FFFFFF; }}
+            .flag-red {{ background: {colore_terziario}; }}
+
             .body-content {{
                 padding: 12px 20px;
                 display: flex;
@@ -7874,12 +7884,12 @@ async def genera_carta_identita(
                 align-items: flex-start;
             }}
             .foto-container {{
-                width: 145px;
-                height: 190px;
-                border: 3px solid {colore_primario};
+                width: 140px;
+                height: 185px;
+                border: 2.5px solid {colore_primario};
                 background: #fff;
                 box-shadow: 0 4px 10px rgba(0,0,0,0.15);
-                border-radius: 6px;
+                border-radius: 4px;
                 flex-shrink: 0;
                 overflow: hidden;
                 display: flex;
@@ -7889,49 +7899,48 @@ async def genera_carta_identita(
                 height: 100%;
                 object-fit: cover;
                 object-position: center;
-                border-radius: 2px;
                 display: block;
             }}
             .info-grid {{
                 flex-grow: 1;
                 display: grid;
                 grid-template-columns: 1fr 1fr;
-                gap: 6px 15px;
+                gap: 5px 15px;
             }}
             .field {{
                 display: flex;
                 flex-direction: column;
-                border-bottom: 1.5px solid #cbd5e1;
+                border-bottom: 1.5px solid #bcccdc;
                 padding-bottom: 2px;
             }}
             .field.full {{
                 grid-column: span 2;
             }}
             .label {{
-                font-size: 8px;
+                font-size: 7.5px;
                 text-transform: uppercase;
-                color: #475569;
+                color: #334e68;
                 font-weight: 800;
                 letter-spacing: 0.5px;
             }}
             .value {{
-                font-size: 13px;
+                font-size: 12.5px;
                 font-weight: 700;
-                color: #0f172a;
+                color: #102a43;
                 margin-top: 1px;
             }}
             .value-highlight {{
-                color: {colore_primario};
+                color: #0b69a3;
             }}
             .mrz-container {{
-                background: #cbd5e1;
+                background: #102a43;
                 padding: 6px 15px;
-                border-top: 2px solid #94a3b8;
+                border-top: 2px solid {colore_primario};
                 font-family: 'Courier New', Courier, monospace;
-                font-size: 12px;
+                font-size: 11.5px;
                 font-weight: bold;
-                letter-spacing: 2px;
-                color: #1e293b;
+                letter-spacing: 2.2px;
+                color: #f0f4f8;
                 z-index: 1;
                 height: 48px;
                 flex-shrink: 0;
@@ -7954,8 +7963,10 @@ async def genera_carta_identita(
                 <h1>{ente_titolo}</h1>
                 <span>{sotto_titolo}</span>
             </div>
-            <div class="badge-state">
-                <span>{paese_cod}</span>
+            <div class="flag-strip" title="Repubblica Italiana">
+                <div class="flag-green"></div>
+                <div class="flag-white"></div>
+                <div class="flag-red"></div>
             </div>
         </div>
         
@@ -7966,31 +7977,31 @@ async def genera_carta_identita(
             
             <div class="info-grid">
                 <div class="field">
-                    <span class="label">Cognome</span>
+                    <span class="label">1. Cognome / Surname</span>
                     <span class="value">{cognome.upper()}</span>
                 </div>
                 <div class="field">
-                    <span class="label">Nome</span>
+                    <span class="label">2. Nome / Given names</span>
                     <span class="value">{nome.capitalize()}</span>
                 </div>
                 <div class="field full">
-                    <span class="label">Data e Luogo di Nascita</span>
+                    <span class="label">3. Data e Luogo di Nascita / Date and place of birth</span>
                     <span class="value">{birth_date} — {birth_place}</span>
                 </div>
                 <div class="field">
-                    <span class="label">Codice Fiscale</span>
+                    <span class="label">4. Codice Fiscale / Tax Code</span>
                     <span class="value">{cf.upper()}</span>
                 </div>
                 <div class="field">
-                    <span class="label">Numero Documento</span>
+                    <span class="label">Document Number</span>
                     <span class="value">{doc_number}</span>
                 </div>
                 <div class="field">
-                    <span class="label">Occhi / Capelli</span>
+                    <span class="label">Occhi / Eyes — Capelli / Hair</span>
                     <span class="value">{colore_occhi} / {colore_capelli}</span>
                 </div>
                 <div class="field">
-                    <span class="label">Segni Particolari</span>
+                    <span class="label">Segni Particolari / Features</span>
                     <span class="value">{segni_particolari}</span>
                 </div>
                 <div class="field">
@@ -8012,7 +8023,6 @@ async def genera_carta_identita(
     </html>
     """
     return html_content
-
 
 async def renderizza_html_in_immagine(html_content: str) -> discord.File:
     user_id = "Evren"
