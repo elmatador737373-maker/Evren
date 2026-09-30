@@ -27,14 +27,14 @@ SUPABASE_KEY = os.getenv("SUPABASE_KEY")
 IMGBB_API_KEY = os.getenv("IMGBB_API_KEY")
 
 # --- CONFIGURAZIONE RUOLI SPECIFICI ---
-RUOLO_STAFF_ID = 1253460150141059198           # Permesso per /crea_item
-RUOLO_BANCOMAT_ID = 1374264699331543140        # Permesso per accedere al Bancomat (opzionale)
-RUOLO_ARMERIA_ID = 1253460200300478474        # Permesso per registrare ed emettere armi
-RUOLO_MOTORIZZAZIONE_ID = 1253460178305679433  # Permesso per registrare veicoli e patenti
-RUOLO_POLIZIA_ID = 1359569600198611104         # Permesso per CAD Polizia e Porto d'Armi
-RUOLO_IMMOBILIARE_ID = 1260308281302454533     # Permesso per registrare le case/immobili
-RUOLO_RICHIESTO_ID = 1390735819769380904
-RUOLO_FBI_ID = None
+RUOLO_STAFF_ID = 1554498655711666287           # Permesso per /crea_item
+RUOLO_BANCOMAT_ID = 1554499250841456662        # Permesso per accedere al Bancomat (opzionale)
+RUOLO_ARMERIA_ID = 1554499143916060693        # Permesso per registrare ed emettere armi
+RUOLO_MOTORIZZAZIONE_ID = 1554499153478947003  # Permesso per registrare veicoli e patenti
+RUOLO_POLIZIA_ID = 1554499085627822223         # Permesso per CAD Polizia e Porto d'Armi
+RUOLO_IMMOBILIARE_ID = 1554499124831977614     # Permesso per registrare le case/immobili
+RUOLO_RICHIESTO_ID = 1554499383330873394
+RUOLO_FBI_ID = 1554498655711666287
 # Mettilo in cima al file, prima delle funzioni audio
 FFMPEG_PATH = None  # Lasciandolo a None, discord.py cercherà ffmpeg automaticamente nel PATH del container
 
@@ -1635,7 +1635,7 @@ async def staff_info_error(interaction: discord.Interaction, error: app_commands
 import discord
 from discord import app_commands
 
-CANALE_LOG_ID = 1252225064242253955  # Inserisci qui l'ID del canale log
+CANALE_LOG_ID = 1554500749629718648  # Inserisci qui l'ID del canale log
 
 
 @bot.tree.command(
@@ -1666,7 +1666,7 @@ async def gestisci_soldi(
     importo: float,
 ):
     # Controllo Staff direttamente nel comando
-    if not any(role.id == 1253460147003723867 for role in interaction.user.roles):
+    if not any(role.id == 1554498498609811507 for role in interaction.user.roles):
         await interaction.response.send_message(
             "Non hai i permessi necessari per usare questo comando.",
             ephemeral=True,
@@ -3102,9 +3102,9 @@ async def ruoli(
     utente: discord.Member, 
     ruolo: discord.Role
 ):
-    ID_RUOLO_AUTORIZZATO = 1253460150141059198  
-    ID_CANALE_LOG_AGGIUNTI = 1478146946198667505  
-    ID_CANALE_LOG_RIMOSSI = 1478146969464471762   
+    ID_RUOLO_AUTORIZZATO = 1554498655711666287  
+    ID_CANALE_LOG_AGGIUNTI = 1554500759092203681  
+    ID_CANALE_LOG_RIMOSSI = 1554500759092203681   
     
     if not any(r.id == ID_RUOLO_AUTORIZZATO for r in interaction.user.roles) and interaction.user != interaction.guild.owner:
         await interaction.response.send_message(
@@ -3192,8 +3192,8 @@ async def massrole(
     ruolo_target: discord.Role,
     conferma: str
 ):
-    ID_CANALE_LOG_AGGIUNTI = 1478146946198667505  
-    ID_CANALE_LOG_RIMOSSI = 1478146969464471762   
+    ID_CANALE_LOG_AGGIUNTI = 1554500759092203681  
+    ID_CANALE_LOG_RIMOSSI = 1554500759092203681   
 
     if conferma.upper() != "SI":
         await interaction.response.send_message(
