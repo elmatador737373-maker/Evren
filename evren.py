@@ -367,8 +367,8 @@ async def wipe_user(interaction: discord.Interaction, utente: discord.User):
             title="🧹 Wipe Completato con Successo",
             description=(
                 f"L'utente <@{target_id}> è stato completamente resettato.\n\n"
-                "• **Portafoglio (Wallet):** Impostato a `500.0$`\n"
-                "• **Banca (Bank):** Impostato a `1500.0$`\n"
+                "• **Portafoglio (Wallet):** Impostato a `500.0€`\n"
+                "• **Banca (Bank):** Impostato a `1500.0€`\n"
                 "• **Documenti:** Eliminati (`documents`)\n"
                 "• **Inventario:** Svuotato (`inventory`)\n"
                 "• **Licenze Guida & Armi:** Eliminate (`driver_licenses`, `gun_licenses`)\n"
@@ -1557,7 +1557,7 @@ async def staff_info(interaction: discord.Interaction, target: discord.User):
         arrests_res = supabase.table("police_arrests").select("reason, months, bail, created_at").eq("discord_id", target_id).execute()
 
         if fines_res.data:
-            fines_str = "\n".join([f"• `{str(f.get('created_at', ''))[:10] or 'Nessuna'}` - **{f.get('reason', 'Nessuna')}** (${f.get('amount', 0)})" for f in fines_res.data[:5]])
+            fines_str = "\n".join([f"• `{str(f.get('created_at', ''))[:10] or 'Nessuna'}` - **{f.get('reason', 'Nessuna')}** (€{f.get('amount', 0)})" for f in fines_res.data[:5]])
         else:
             fines_str = "*Nessuna multa a carico*"
 
@@ -1583,9 +1583,9 @@ async def staff_info(interaction: discord.Interaction, target: discord.User):
 
         embed.add_field(
             name="💳 Saldo & Economia",
-            value=f"• **Contanti:** `${cash:,.2f}`\n"
-                  f"• **Banca:** `${bank:,.2f}`\n"
-                  f"• **Totale:** `${total:,.2f}`",
+            value=f"• **Contanti:** `€{cash:,.2f}`\n"
+                  f"• **Banca:** `€{bank:,.2f}`\n"
+                  f"• **Totale:** `€{total:,.2f}`",
             inline=False
         )
 
@@ -2412,10 +2412,10 @@ async def invia_richiesta_stipendio(bot: commands.Bot, utente: discord.Member, t
         timestamp=datetime.datetime.now()
     )
     embed_staff.add_field(name="👤 Dipendente", value=f"{utente.mention}\n`{utente.name}`", inline=True)
-    embed_staff.add_field(name="💰 Stipendio Calcolato", value=f"```fix\n{importo_calcolato:,.2f}$```", inline=True)
+    embed_staff.add_field(name="💰 Stipendio Calcolato", value=f"```fix\n{importo_calcolato:,.2f}€```", inline=True)
     embed_staff.add_field(name="💼 Mansione", value=f"```{turno.get('role_name', 'N/D')}```", inline=False)
     embed_staff.add_field(name="⏱️ Tempo Lavorato", value=f"**{tempo_str}**", inline=True)
-    embed_staff.add_field(name="💵 Tariffa Oraria", value=f"**{tariffa:,.2f}$/h**", inline=True)
+    embed_staff.add_field(name="💵 Tariffa Oraria", value=f"**{tariffa:,.2f}€/h**", inline=True)
     embed_staff.add_field(name="📌 Motivo Chiusura", value=f"*{motivo}*", inline=False)
     embed_staff.set_thumbnail(url=utente.display_avatar.url)
     embed_staff.set_footer(text=f"ID: {utente.id} | Supabase Integrated")
@@ -2432,7 +2432,7 @@ async def invia_richiesta_stipendio(bot: commands.Bot, utente: discord.Member, t
         timestamp=datetime.datetime.now()
     )
     embed_dm.add_field(name="⏱️ Tempo Lavorato", value=f"**{tempo_str}**", inline=True)
-    embed_dm.add_field(name="💰 Importo Stimato", value=f"**{importo_calcolato:,.2f}$**", inline=True)
+    embed_dm.add_field(name="💰 Importo Stimato", value=f"**{importo_calcolato:,.2f}€**", inline=True)
     
     await notifica_utente_dm(bot, utente.id, embed_dm)
 
@@ -2478,7 +2478,7 @@ async def notifica_utente_dm(bot: commands.Bot, user_id: int, embed: discord.Emb
 # --- MODALE TARIFFA MANUALE ---
 class TariffaManualeModal(ui.Modal, title="💵 Inserisci Tariffa Oraria"):
     tariffa_input = ui.TextInput(
-        label="Tariffa Oraria in $",
+        label="Tariffa Oraria in €",
         placeholder="Es: 250.00",
         required=True,
         max_length=10
@@ -2505,7 +2505,7 @@ class SelezioneRuoloSelect(ui.Select):
         options = []
         for ruolo in ruoli[:25]:
             tariffa = estrai_tariffa_da_nome_ruolo(ruolo.name)
-            desc = f"Tariffa: {tariffa:,.2f}$/h" if tariffa is not None else "Tariffa non trovata (inserimento manuale)"
+            desc = f"Tariffa: {tariffa:,.2f}€/h" if tariffa is not None else "Tariffa non trovata (inserimento manuale)"
             options.append(discord.SelectOption(
                 label=ruolo.name[:100],
                 value=str(ruolo.id),
@@ -2550,7 +2550,7 @@ async def avvia_turno_database(interaction: discord.Interaction, ruolo: discord.
         timestamp = datetime.datetime.now()
     )
     embed.add_field(name="💼 Mansione Selezionata", value=f"```{ruolo.name}```", inline=False)
-    embed.add_field(name="💵 Tariffa Oraria", value=f"**{tariffa:,.2f}$/h**", inline=True)
+    embed.add_field(name="💵 Tariffa Oraria", value=f"**{tariffa:,.2f}€/h**", inline=True)
     embed.set_thumbnail(url=interaction.user.display_avatar.url)
 
     if interaction.response.is_done():
@@ -2562,7 +2562,7 @@ async def avvia_turno_database(interaction: discord.Interaction, ruolo: discord.
 # --- MODAL PER MODIFICARE L'IMPORTO ---
 class ModificaImportoModal(ui.Modal, title="Modifica Importo Stipendio"):
     nuovo_importo = ui.TextInput(
-        label="Nuovo Importo ($)",
+        label="Nuovo Importo (€)",
         placeholder="Inserisci il nuovo valore (es. 1500.00)",
         required=True,
         max_length=15
@@ -2584,9 +2584,9 @@ class ModificaImportoModal(ui.Modal, title="Modifica Importo Stipendio"):
         embed = interaction.message.embeds[0]
         
         # Aggiorna il campo "Stipendio Calcolato" nell'embed
-        embed.set_field_at(1, name="💰 Stipendio Calcolato", value=f"```fix\n{valore:,.2f}$```", inline=True)
+        embed.set_field_at(1, name="💰 Stipendio Calcolato", value=f"```fix\n{valore:,.2f}€```", inline=True)
         await interaction.message.edit(embed=embed)
-        await interaction.response.send_message(f"✅ Importo modificato a **{valore:,.2f}$**.", ephemeral=True)
+        await interaction.response.send_message(f"✅ Importo modificato a **{valore:,.2f}€**.", ephemeral=True)
 
 
 # --- VIEW APPROVAZIONE STIPENDIO ---
@@ -2606,7 +2606,7 @@ class ApprovazioneStipendioView(ui.View):
                 embed.fields[1]
                 .value.replace("```fix", "")
                 .replace("```", "")
-                .replace("$", "")
+                .replace("€", "")
                 .replace(",", "")
                 .strip()
             )
@@ -2652,10 +2652,10 @@ class ApprovazioneStipendioView(ui.View):
 
         embed.color = discord.Color.green()
         embed.title = "✅ Richiesta Stipendio Approvata"
-        embed.add_field(name="📌 Stato", value=f"Approvato da {interaction.user.mention} per **{importo:,.2f}$**", inline=False)
+        embed.add_field(name="📌 Stato", value=f"Approvato da {interaction.user.mention} per **{importo:,.2f}€**", inline=False)
 
         await interaction.message.edit(embed=embed, view=self)
-        await interaction.followup.send(f"✅ Stipendio di **{importo:,.2f}$** erogato con successo a <@{dipendente_id}>.", ephemeral=True)
+        await interaction.followup.send(f"✅ Stipendio di **{importo:,.2f}€** erogato con successo a <@{dipendente_id}>.", ephemeral=True)
 
     @discord.ui.button(
         label="Modifica",
@@ -4118,7 +4118,7 @@ from discord import app_commands
 
 
 @bot.tree.command(
-    name="911", description="Invia una richiesta di emergenza alle autorità"
+    name="112", description="Invia una richiesta di emergenza alle autorità"
 )
 @app_commands.describe(
     motivo="Specifica il motivo dell'emergenza (es. Incendio, Rapina, Incidente...)",
@@ -4129,8 +4129,8 @@ from discord import app_commands
         app_commands.Choice(
             name="🚨 Forze dell'Ordine", value="Forze dell'Ordine"
         ),
-        app_commands.Choice(name="🚑 E.M.S. (Medici)", value="E.M.S."),
-        app_commands.Choice(name="🚒 Firefighter (Pompieri)", value="Firefighter"),
+        app_commands.Choice(name="🚑 Croce Rossa Italiana", value="E.M.S."),
+        app_commands.Choice(name="🚒 Vigili Del Fuoco", value="Firefighter"),
     ]
 )
 async def emergenza_911(
@@ -5865,7 +5865,7 @@ async def inventario(interaction: discord.Interaction):
 # --- BANCOMAT ---
 
 class DepositModal(ui.Modal, title="💵 Deposito Contanti"):
-    amount_input = ui.TextInput(label="Importo ($)", placeholder="Es. 500", required=True)
+    amount_input = ui.TextInput(label="Importo (€)", placeholder="Es. 500", required=True)
 
     def __init__(self, user_id: int):
         super().__init__()
@@ -5883,7 +5883,7 @@ class DepositModal(ui.Modal, title="💵 Deposito Contanti"):
         cash = float(user_data.get("wallet", 0.0))
 
         if cash < val:
-            await interaction.response.send_message(f"❌ Contanti insufficienti! Possiedi `${cash:,.2f}`.", ephemeral=True)
+            await interaction.response.send_message(f"❌ Contanti insufficienti! Possiedi `€{cash:,.2f}`.", ephemeral=True)
             return
 
         new_cash = cash - val
@@ -5891,12 +5891,12 @@ class DepositModal(ui.Modal, title="💵 Deposito Contanti"):
         supabase.table("users").update({"wallet": new_cash, "bank": new_bank}).eq("discord_id", str(self.user_id)).execute()
         log_transaction(str(self.user_id), "DEPOSITO", val, "Deposito contanti allo sportello")
 
-        embed = discord.Embed(title="💵 Deposito Effettuato", description=f"Hai depositato **${val:,.2f}**.\nNuovo Saldo Banca: **${new_bank:,.2f}**", color=discord.Color.green())
+        embed = discord.Embed(title="💵 Deposito Effettuato", description=f"Hai depositato **€{val:,.2f}**.\nNuovo Saldo Banca: **€{new_bank:,.2f}**", color=discord.Color.green())
         await interaction.response.send_message(embed=embed, ephemeral=True)
 
 
 class WithdrawModal(ui.Modal, title="💸 Prelievo Contanti"):
-    amount_input = ui.TextInput(label="Importo ($)", placeholder="Es. 200", required=True)
+    amount_input = ui.TextInput(label="Importo (€)", placeholder="Es. 200", required=True)
 
     def __init__(self, user_id: int):
         super().__init__()
@@ -5914,7 +5914,7 @@ class WithdrawModal(ui.Modal, title="💸 Prelievo Contanti"):
         bank = float(user_data.get("bank", 0.0))
 
         if bank < val:
-            await interaction.response.send_message(f"❌ Saldo insufficiente! Saldo in banca: `${bank:,.2f}`.", ephemeral=True)
+            await interaction.response.send_message(f"❌ Saldo insufficiente! Saldo in banca: `€{bank:,.2f}`.", ephemeral=True)
             return
 
         new_bank = bank - val
@@ -5922,12 +5922,12 @@ class WithdrawModal(ui.Modal, title="💸 Prelievo Contanti"):
         supabase.table("users").update({"wallet": new_cash, "bank": new_bank}).eq("discord_id", str(self.user_id)).execute()
         log_transaction(str(self.user_id), "PRELIEVO", val, "Prelievo contanti da bancomat")
 
-        embed = discord.Embed(title="💸 Prelievo Effettuato", description=f"Hai prelevato **${val:,.2f}**.\nNuovo Saldo Banca: **${new_bank:,.2f}**", color=discord.Color.orange())
+        embed = discord.Embed(title="💸 Prelievo Effettuato", description=f"Hai prelevato **€{val:,.2f}**.\nNuovo Saldo Banca: **€{new_bank:,.2f}**", color=discord.Color.orange())
         await interaction.response.send_message(embed=embed, ephemeral=True)
 
 
 class TransferModal(ui.Modal, title="📲 Bonifico Bancario"):
-    amount_input = ui.TextInput(label="Importo ($)", placeholder="Es. 1000", required=True)
+    amount_input = ui.TextInput(label="Importo (€)", placeholder="Es. 1000", required=True)
     causale_input = ui.TextInput(label="Causale", placeholder="Es. Acquisto auto", required=False, max_length=100)
 
     def __init__(self, sender_id: int, target_member: discord.Member):
@@ -5947,7 +5947,7 @@ class TransferModal(ui.Modal, title="📲 Bonifico Bancario"):
         sender_bank = float(sender_data.get("bank", 0.0))
 
         if sender_bank < val:
-            await interaction.response.send_message(f"❌ Saldo insufficiente per bonifico di `${val:,.2f}`.", ephemeral=True)
+            await interaction.response.send_message(f"❌ Saldo insufficiente per bonifico di `€{val:,.2f}`.", ephemeral=True)
             return
 
         target_data = get_or_create_user(self.target_member.id, self.target_member.name)
@@ -5964,7 +5964,7 @@ class TransferModal(ui.Modal, title="📲 Bonifico Bancario"):
 
         embed = discord.Embed(
             title="📲 Bonifico Effettuato",
-            description=f"Inviati **${val:,.2f}** a {self.target_member.mention}.\nCausale: `{causale}`",
+            description=f"Inviati **€{val:,.2f}** a {self.target_member.mention}.\nCausale: `{causale}`",
             color=discord.Color.green()
         )
         await interaction.response.send_message(embed=embed, ephemeral=True)
@@ -6011,7 +6011,7 @@ class AtmMenuView(ui.View):
         if res.data:
             for tx in res.data:
                 icon = "🟢" if "RICEVUTO" in tx['type'] or "DEPOSITO" in tx['type'] else "🔴"
-                embed.add_field(name=f"{icon} {tx['type']} - ${tx['amount']:,.2f}", value=f"└ `{tx['description']}`", inline=False)
+                embed.add_field(name=f"{icon} {tx['type']} - €{tx['amount']:,.2f}", value=f"└ `{tx['description']}`", inline=False)
         else:
             embed.description = "Nessuna transazione."
         await interaction.response.send_message(embed=embed, ephemeral=True)
@@ -6061,7 +6061,7 @@ class PinKeypadView(ui.View):
         u = get_or_create_user(self.user_id, "User")
         return discord.Embed(
             title="🏦 𝗦𝗽𝗼𝗿𝘁𝗲𝗹𝗹𝗼 𝗕𝗮𝗻𝗰𝗼𝗺𝗮𝘁",
-            description=f"• **Conto N°:** `ACC-{self.user_id}`\n• **Banca:** `${float(u.get('bank', 0)):,.2f}`\n• **Contanti:** `${float(u.get('wallet', 0)):,.2f}`",
+            description=f"• **Conto N°:** `ACC-{self.user_id}`\n• **Banca:** `€{float(u.get('bank', 0)):,.2f}`\n• **Contanti:** `€{float(u.get('wallet', 0)):,.2f}`",
             color=discord.Color.green()
         )
 
@@ -6263,8 +6263,8 @@ class FineModal(ui.Modal, title="🚨 Registra Multa"):
         required=True
     )
     penalty_pec = ui.TextInput(
-        label="Sanzione Pecuniaria ($)",
-        placeholder="Es. $500",
+        label="Sanzione Pecuniaria (€)",
+        placeholder="Es. €500",
         required=True
     )
     notes = ui.TextInput(
@@ -6315,7 +6315,7 @@ class ArrestModal(ui.Modal, title="🔒 Registra Arresto"):
     )
     penalty_pec = ui.TextInput(
         label="Cauzione / Sanzione Pecuniaria",
-        placeholder="Es. $5000 / Non Concedibile",
+        placeholder="Es. €5000 / Non Concedibile",
         required=True
     )
     notes = ui.TextInput(
@@ -6366,7 +6366,7 @@ class ReportModal(ui.Modal, title="📝 Registra Verbale"):
     )
     penalty_pec = ui.TextInput(
         label="Sanzione Pecuniaria",
-        placeholder="Es. $1000 / Nessuna",
+        placeholder="Es. €1000 / Nessuna",
         required=True
     )
     notes = ui.TextInput(
@@ -6417,7 +6417,7 @@ class SeizeVehicleModal(ui.Modal, title="🚗 Sequestro Veicolo"):
     )
     penalty_pec = ui.TextInput(
         label="Costo Riscatto / Sanzione Pecuniaria",
-        placeholder="Es. $2500",
+        placeholder="Es. €2500",
         required=True
     )
     notes = ui.TextInput(
@@ -7069,7 +7069,7 @@ class FinePaySelectView(ui.View):
         options = []
         for fine in fines_list[:25]:
             options.append(discord.SelectOption(
-                label=f"Multa #{fine['id']} - ${fine['amount']:,.2f}",
+                label=f"Multa #{fine['id']} - €{fine['amount']:,.2f}",
                 value=str(fine['id']),
                 description=f"Causale: {fine['reason'][:50]}"
             ))
@@ -7100,7 +7100,7 @@ class FinePaySelectView(ui.View):
         bank_balance = float(u_data.get("bank", 0.0))
 
         if bank_balance < amount:
-            await interaction.response.send_message(f"❌ Saldo in banca insufficiente! Ti servono **${amount:,.2f}**.", ephemeral=True)
+            await interaction.response.send_message(f"❌ Saldo in banca insufficiente! Ti servono **€{amount:,.2f}**.", ephemeral=True)
             return
 
         new_bank = bank_balance - amount
@@ -7111,7 +7111,7 @@ class FinePaySelectView(ui.View):
 
         embed = discord.Embed(
             title="✅ Multa Pagata con Successo",
-            description=f"• **ID Multa:** `#{fine_id}`\n• **Importo Detratto:** `${amount:,.2f}`\n• **Nuovo Saldo Banca:** `${new_bank:,.2f}`\n• **Stato Sanzione:** `Pagata`",
+            description=f"• **ID Multa:** `#{fine_id}`\n• **Importo Detratto:** `€{amount:,.2f}`\n• **Nuovo Saldo Banca:** `€{new_bank:,.2f}`\n• **Stato Sanzione:** `Pagata`",
             color=discord.Color.green()
         )
         await interaction.response.send_message(embed=embed, ephemeral=True)
@@ -7134,7 +7134,7 @@ async def paga_multa(interaction: discord.Interaction):
     total_due = sum([float(f['amount']) for f in res.data])
     embed = discord.Embed(
         title="💳 Gestione Multe Pendenti",
-        description=f"Hai **{len(res.data)}** multa/e da saldare per un totale di **${total_due:,.2f}**.\nSeleziona una multa dal menu sottostante per pagarla:",
+        description=f"Hai **{len(res.data)}** multa/e da saldare per un totale di **€{total_due:,.2f}**.\nSeleziona una multa dal menu sottostante per pagarla:",
         color=discord.Color.orange()
     )
 
