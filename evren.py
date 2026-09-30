@@ -1666,7 +1666,7 @@ async def gestisci_soldi(
     importo: float,
 ):
     # Controllo Staff direttamente nel comando
-    if not any(role.id == 1554498498609811507 for role in interaction.user.roles):
+    if not any(role.id == 1554498527143399675 for role in interaction.user.roles):
         await interaction.response.send_message(
             "Non hai i permessi necessari per usare questo comando.",
             ephemeral=True,
@@ -2004,48 +2004,91 @@ async def paga(
     destinatario: discord.Member,
     importo: float,
 ):
-    if destinatario.id == interaction.user.id:
-        await interaction.response.send_message(
-            "Non puoi inviare soldi a te stesso.", ephemeral=True
-        )
-        return
-
-    if importo <= 0:
-        await interaction.response.send_message(
-            "L'importo deve essere maggiore di zero.", ephemeral=True
-        )
-        return
-
-    sender_id = str(interaction.user.id)
-    recipient_id = str(destinatario.id)
-
-    # Mittente
-    sender_res = supabase.table("users").select("wallet").eq("discord_id", sender_id).execute()
-    if not sender_res.data or sender_res.data[0]["wallet"] < importo:
-        await interaction.response.send_message(
-            "Non hai abbastanza contanti nel portafoglio.", ephemeral=True
-        )
-        return
-
-    # Destinatario
-    recipient_res = supabase.table("users").select("wallet").eq("discord_id", recipient_id).execute()
-    if not recipient_res.data:
-        await interaction.response.send_message(
-            "Il destinatario non è registrato nel sistema.", ephemeral=True
-        )
-        return
-
-    new_sender_wallet = sender_res.data[0]["wallet"] - importo
-    new_recipient_wallet = recipient_res.data[0]["wallet"] + importo
-
-    # Aggiorna i saldi
-    supabase.table("users").update({"wallet": new_sender_wallet}).eq("discord_id", sender_id).execute()
-    supabase.table("users").update({"wallet": new_recipient_wallet}).eq("discord_id", recipient_id).execute()
-
+  if destinatario.id == interaction.user.id:
     await interaction.response.send_message(
-        f"Hai inviato **{importo}€** in contanti a {destinatario.mention}.",
-        ephemeral=False,
+        "Non puoi inviare soldi a te stesso.", ephemeral=True
     )
+    return
+
+  if importo <= 0:
+    await interaction.response.send_message(
+        "L'importo deve essere maggiore di zero.", ephemeral=True
+    )
+    return
+
+  sender_id = str(interaction.user.id)
+  recipient_id = str(destinatario.id)
+
+  # Mittente
+  sender_res = (
+      supabase.table("users").select("wallet").eq("discord_id", sender_id).execute()
+  )
+  if not sender_res.data or sender_res.data[0]["wallet"] < importo:
+    await interaction.response.send_message(
+        "Non hai abbastanza contanti nel portafoglio.", ephemeral=True
+    )
+    return
+
+  # Destinatario
+  recipient_res = (
+      supabase.table("users")
+      .select("wallet")
+      .eq("discord_id", recipient_id)
+      .execute()
+  )
+  if not recipient_res.data:
+    await interaction.response.send_message(
+        "Il destinatario non è registrato nel sistema.", ephemeral=True
+    )
+    return
+
+  new_sender_wallet = sender_res.data[0]["wallet"] - importo
+  new_recipient_wallet = recipient_res.data[0]["wallet"] + importo
+
+  # Aggiorna i saldi
+  supabase.table("users").update({"wallet": new_sender_wallet}).eq(
+      "discord_id", sender_id
+  ).execute()
+  supabase.table("users").update({"wallet": new_recipient_wallet}).eq(
+      "discord_id", recipient_id
+  ).execute()
+
+  # -------------------------------------------------------------
+  # 📝 INVIO LOG EMBED NEL CANALE DEDICATO
+  # -------------------------------------------------------------
+  log_channel_id = (
+      1554500749629718648  # Sostituisci con l'ID del canale dei log
+  )
+  log_channel = interaction.client.get_channel(log_channel_id)
+
+  if log_channel:
+    log_embed = discord.Embed(
+        title="💵 Registro Transazione - Contanti (Paga)",
+        color=discord.Color.orange(),  # Colore diverso per distinguere i contanti dai bonifici
+        timestamp=discord.utils.utcnow(),
+    )
+    log_embed.add_field(
+        name="Mittente",
+        value=f"{interaction.user.mention} (`{interaction.user.id}`)",
+        inline=True,
+    )
+    log_embed.add_field(
+        name="Destinatario",
+        value=f"{destinatario.mention} (`{destinatario.id}`)",
+        inline=True,
+    )
+    log_embed.add_field(
+        name="Importo Contanti", value=f"**€{importo:,.2f}**", inline=False
+    )
+    log_embed.set_footer(text="Transazione Portafoglio")
+
+    await log_channel.send(embed=log_embed)
+
+  # Risposta pubblica o privata all'utente (nel tuo codice originale era ephemeral=False)
+  await interaction.response.send_message(
+      f"Hai inviato **{importo:,.2f}€** in contanti a {destinatario.mention}.",
+      ephemeral=False,
+  )
 
 # 5. Passa Oggetti ad un altro utente
 @bot.tree.command(
@@ -5925,49 +5968,116 @@ class WithdrawModal(ui.Modal, title="💸 Prelievo Contanti"):
         embed = discord.Embed(title="💸 Prelievo Effettuato", description=f"Hai prelevato **€{val:,.2f}**.\nNuovo Saldo Banca: **€{new_bank:,.2f}**", color=discord.Color.orange())
         await interaction.response.send_message(embed=embed, ephemeral=True)
 
-
 class TransferModal(ui.Modal, title="📲 Bonifico Bancario"):
-    amount_input = ui.TextInput(label="Importo (€)", placeholder="Es. 1000", required=True)
-    causale_input = ui.TextInput(label="Causale", placeholder="Es. Acquisto auto", required=False, max_length=100)
+  amount_input = ui.TextInput(
+      label="Importo (€)", placeholder="Es. 1000", required=True
+  )
+  causale_input = ui.TextInput(
+      label="Causale",
+      placeholder="Es. Acquisto auto",
+      required=False,
+      max_length=100,
+  )
 
-    def __init__(self, sender_id: int, target_member: discord.Member):
-        super().__init__()
-        self.sender_id = sender_id
-        self.target_member = target_member
+  def __init__(self, sender_id: int, target_member: discord.Member):
+    super().__init__()
+    self.sender_id = sender_id
+    self.target_member = target_member
 
-    async def on_submit(self, interaction: discord.Interaction):
-        try:
-            val = float(self.amount_input.value.strip())
-            if val <= 0: raise ValueError()
-        except ValueError:
-            await interaction.response.send_message("❌ Importo non valido!", ephemeral=True)
-            return
+  async def on_submit(self, interaction: discord.Interaction):
+    try:
+      val = float(self.amount_input.value.strip())
+      if val <= 0:
+        raise ValueError()
+    except ValueError:
+      await interaction.response.send_message(
+          "❌ Importo non valido!", ephemeral=True
+      )
+      return
 
-        sender_data = get_or_create_user(self.sender_id, interaction.user.name)
-        sender_bank = float(sender_data.get("bank", 0.0))
+    sender_data = get_or_create_user(self.sender_id, interaction.user.name)
+    sender_bank = float(sender_data.get("bank", 0.0))
 
-        if sender_bank < val:
-            await interaction.response.send_message(f"❌ Saldo insufficiente per bonifico di `€{val:,.2f}`.", ephemeral=True)
-            return
+    if sender_bank < val:
+      await interaction.response.send_message(
+          f"❌ Saldo insufficiente per bonifico di `€{val:,.2f}`.",
+          ephemeral=True,
+      )
+      return
 
-        target_data = get_or_create_user(self.target_member.id, self.target_member.name)
-        causale = self.causale_input.value.strip() or "Nessuna causale"
+    target_data = get_or_create_user(
+        self.target_member.id, self.target_member.name
+    )
+    causale = self.causale_input.value.strip() or "Nessuna causale"
 
-        new_sender_bank = sender_bank - val
-        new_target_bank = float(target_data.get("bank", 0.0)) + val
+    new_sender_bank = sender_bank - val
+    new_target_bank = float(target_data.get("bank", 0.0)) + val
 
-        supabase.table("users").update({"bank": new_sender_bank}).eq("discord_id", str(self.sender_id)).execute()
-        supabase.table("users").update({"bank": new_target_bank}).eq("discord_id", str(self.target_member.id)).execute()
+    # Aggiornamento database Supabase
+    supabase.table("users").update({"bank": new_sender_bank}).eq(
+        "discord_id", str(self.sender_id)
+    ).execute()
+    supabase.table("users").update({"bank": new_target_bank}).eq(
+        "discord_id", str(self.target_member.id)
+    ).execute()
 
-        log_transaction(str(self.sender_id), "BONIFICO_INVIATO", val, f"A {self.target_member.display_name} | {causale}")
-        log_transaction(str(self.target_member.id), "BONIFICO_RICEVUTO", val, f"Da {interaction.user.display_name} | {causale}")
+    # Log interni (es. funzioni custom)
+    log_transaction(
+        str(self.sender_id),
+        "BONIFICO_INVIATO",
+        val,
+        f"A {self.target_member.display_name} | {causale}",
+    )
+    log_transaction(
+        str(self.target_member.id),
+        "BONIFICO_RICEVUTO",
+        val,
+        f"Da {interaction.user.display_name} | {causale}",
+    )
 
-        embed = discord.Embed(
-            title="📲 Bonifico Effettuato",
-            description=f"Inviati **€{val:,.2f}** a {self.target_member.mention}.\nCausale: `{causale}`",
-            color=discord.Color.green()
-        )
-        await interaction.response.send_message(embed=embed, ephemeral=True)
+    # -------------------------------------------------------------
+    # 📝 INVIO LOG EMBED NEL CANALE DEDICATO
+    # -------------------------------------------------------------
+    log_channel_id = (
+        1554500749629718648  # Sostituisci con l'ID del canale dei log
+    )
+    log_channel = interaction.client.get_channel(log_channel_id)
+
+    if log_channel:
+      log_embed = discord.Embed(
+          title="📊 Registro Transazione - Bonifico",
+          color=discord.Color.blue(),
+          timestamp=discord.utils.utcnow(),
+      )
+      log_embed.add_field(
+          name="Mittente",
+          value=f"{interaction.user.mention} (`{interaction.user.id}`)",
+          inline=True,
+      )
+      log_embed.add_field(
+          name="Destinatario",
+          value=f"{self.target_member.mention} (`{self.target_member.id}`)",
+          inline=True,
+      )
+      log_embed.add_field(
+          name="Importo", value=f"**€{val:,.2f}**", inline=False
+      )
+      log_embed.add_field(name="Causale", value=f"`{causale}`", inline=False)
+      log_embed.set_footer(text=f"ID Transazione / Utente")
+
+      await log_channel.send(embed=log_embed)
+
+    # Risposta effimera di conferma all'utente che ha eseguito il bonifico
+    embed = discord.Embed(
+        title="📲 Bonifico Effettuato",
+        description=(
+            f"Inviati **€{val:,.2f}** a"
+            f" {self.target_member.mention}.\nCausale: `{causale}`"
+        ),
+        color=discord.Color.green(),
+    )
+    await interaction.response.send_message(embed=embed, ephemeral=True)
+
 
 
 class TransferUserSelectView(ui.View):
