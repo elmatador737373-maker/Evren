@@ -7787,7 +7787,7 @@ async def genera_carta_identita(
     # 3. Configurazione dati geografici (Completamente Italiano)
     ente_titolo = "REPUBBLICA ITALIANA"
     sotto_titolo = "MINISTERO DELL'INTERNO — CARTA DI IDENTITÀ"
-    colore_primario = "#0033A0"   # Blu istituzionale Italia
+    colore_primario = "#E0006E"
     colore_secondario = "#009246" # Verde bandiera
     colore_terziario = "#CE2B37"  # Rosso bandiera
     paese_cod = "ITA"
