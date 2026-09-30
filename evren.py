@@ -3011,7 +3011,7 @@ class CreaDocumentiStep2Modal(ui.Modal, title="🪪 ┃ ʀᴇɢɪsᴛʀᴏ (2/2:
         user_id = str(interaction.user.id)
 
         try:
-            cf_temporaneo = f"EVREN-{user_id[-6:]}"
+            cf_temporaneo = f"IMPERIAL-{user_id[-6:]}"
             doc_numero = f"DOC-{user_id[-5:]}"
 
             # Dizionario pulito senza campi inesistenti nel database
@@ -4179,7 +4179,7 @@ async def emergenza_911(
       ),
       color=discord.Color.from_rgb(220, 20, 60),
   )
-  embed.set_footer(text="EvrenCity® Roleplay シ • OG Edition")
+  embed.set_footer(text="Imperial Rome Full Rp")
 
   # 5. Invio del messaggio pubblico nel canale specifico
   await canale_emergenza.send(content=content_ping, embed=embed)
@@ -4399,7 +4399,7 @@ async def me(interaction: discord.Interaction, azione: str):
   )
 
   # Footer con il nome del server o del progetto roleplay
-  embed.set_footer(text="EvrenCity® Roleplay シ • OG Edition")
+  embed.set_footer(text="Imperial Rome Full Rp ")
 
   # Invia il messaggio direttamente nel canale in cui è stato eseguito il comando
   await interaction.channel.send(embed=embed)
@@ -4497,7 +4497,7 @@ async def compra(interaction: discord.Interaction, item: str, quantita: int = 1)
 # 📱 TELEFONO E RUBRICA
 # ==========================================
 
-class AggiungiContattoModal(ui.Modal, title="Nuovo Contatto - Evren City OS"):
+class AggiungiContattoModal(ui.Modal, title="Nuovo Contatto - Imperial OS"):
     nome_contatto = ui.TextInput(
         label="Nome del Contatto",
         placeholder="Es. Mario Rossi",
@@ -4662,19 +4662,19 @@ class CreaPostSocialModal(ui.Modal, title="Crea un Post sui Social"):
 
 
 class SocialMediaView(ui.View):
-    def __init__(self, user_id: str, platform_name: str = "EvrenGram"):
+    def __init__(self, user_id: str, platform_name: str = "ImperialGram"):
         super().__init__(timeout=300)
         self.user_id = user_id
         self.platform_name = platform_name
 
-    @ui.button(label="EvrenGram 📸", style=discord.ButtonStyle.secondary)
+    @ui.button(label="ImperialGram 📸", style=discord.ButtonStyle.secondary)
     async def switch_gram(self, interaction: discord.Interaction, button: ui.Button):
-        self.platform_name = "EvrenGram"
+        self.platform_name = "ImperialGram"
         await self.aggiorna_feed(interaction)
 
-    @ui.button(label="EvrenBird 🐦", style=discord.ButtonStyle.secondary)
+    @ui.button(label="ImperialBird 🐦", style=discord.ButtonStyle.secondary)
     async def switch_bird(self, interaction: discord.Interaction, button: ui.Button):
-        self.platform_name = "EvrenBird"
+        self.platform_name = "ImperialBird"
         await self.aggiorna_feed(interaction)
 
     @ui.button(label="Nuovo Post ✍️", style=discord.ButtonStyle.success, row=1)
@@ -4694,7 +4694,7 @@ class SocialMediaView(ui.View):
         embed = discord.Embed(
             title=f"🌐 Social Network — {self.platform_name}",
             description=f"*Esplora gli ultimi post condivisi dai cittadini su {self.platform_name}.*",
-            color=discord.Color.blue() if self.platform_name == "EvrenGram" else discord.Color.from_rgb(29, 161, 242)
+            color=discord.Color.blue() if self.platform_name == "ImperialGram" else discord.Color.from_rgb(29, 161, 242)
         )
 
         if not posts:
@@ -4825,11 +4825,11 @@ class EvrenPhoneView(ui.View):
 
     async def apri_social_callback(self, interaction: discord.Interaction):
         social_view = SocialMediaView(self.user_id)
-        res = supabase.table("social_posts").select("*").eq("platform", "EvrenGram").order("created_at", desc=True).limit(5).execute()
+        res = supabase.table("social_posts").select("*").eq("platform", "ImperialGram").order("created_at", desc=True).limit(5).execute()
         posts = res.data if res.data else []
         
         embed = discord.Embed(
-            title="🌐 Social Network — EvrenGram",
+            title="🌐 Social Network — ImperialGram",
             description="*Esplora gli ultimi post condivisi dai cittadini.*",
             color=discord.Color.blue()
         )
@@ -4868,7 +4868,7 @@ class EvrenPhoneView(ui.View):
 
 
 
-@bot.tree.command(name="telefono", description="Apre lo schermo del tuo smartphone di Evren City OS.")
+@bot.tree.command(name="telefono", description="Apre lo schermo del tuo smartphone di Imperial OS.")
 async def telefono(interaction: discord.Interaction):
     if RUOLO_RICHIESTO_ID is not None:
         ruolo = interaction.guild.get_role(RUOLO_RICHIESTO_ID)
@@ -4907,7 +4907,7 @@ async def telefono(interaction: discord.Interaction):
     view = EvrenPhoneView(user_id, phone_number)
     
     embed = discord.Embed(
-        title="📱 Evren City OS — Smartphone",
+        title="📱 Imperial OS — Smartphone",
         description="*Benvenuto nel tuo terminale personale. Gestisci contatti, chatta su WhatsApp e naviga sui Social Network.*",
         color=discord.Color.from_rgb(40, 167, 69)
     )
@@ -4995,42 +4995,19 @@ async def cerca_foto(interaction: discord.Interaction, foto: discord.Attachment)
 
         embed = discord.Embed(
             title="🔍 Esito Scansione Biometrica",
-            description="**Match trovato nel database centrale di Evren City!**",
+            description="**Match trovato nel database centrale di Imperial City!**",
             color=discord.Color.green()
         )
         embed.add_field(name="👤 Cittadino Identificato", value=f"`{nome_cittadino}`", inline=False)
         embed.add_field(name="📄 Riferimento / ID", value=f"`{codice_fiscale}`", inline=True)
         embed.add_field(name="📊 Affidabilità Match", value=f"`{round((1 - distanza) * 100, 1)}%`", inline=True)
-        embed.set_footer(text="Evren City OS — Sicurezza e Giustizia")
+        embed.set_footer(text="Imperial OS — Sicurezza e Giustizia")
 
         await interaction.followup.send(embed=embed, ephemeral=True)
         return
 
     await interaction.followup.send("❌ Risposta imprevista dal server biometrico.", ephemeral=True)
 
-
-@bot.event
-async def on_member_join(member: discord.Member):
-    welcome_text = (
-        "✦ **BENVENUTO SU EVREN!** ✦\n"
-        "Ecco i passaggi fondamentali per iniziare la tua avventura:\n\n"
-        "> 🔓 **1. Sblocco Canali**\n"
-        "> Se non vedi tutti i canali, segui la guida iniziale premendo **Bottone N1** per sbloccarli.\n> \n"
-        "> 📜 **2. Regolamenti**\n"
-        "> Leggi le linee guida nei canali associati a **Bottone N2**, **Bottone N3** e **Bottone N4** per conoscere le regole del server.\n> \n"
-        "> 📝 **3. Background**\n"
-        "> Scrivi la storia del tuo personaggio seguendo i modelli nella sezione **Bottone N5**.\n> \n"
-        "> 🛡️ **4. Whitelist (WL)**\n"
-        "> Invia la tua richiesta di WL nel canale **Bottone N6** per completare l'accesso e iniziare a giocare.\n> \n"
-        "Hai dubbi o domande? Lo staff è sempre a tua disposizione. Buon divertimento! ✨"
-    )
-
-    try:
-        await member.send(content=welcome_text, view=WelcomeButtonsView())
-    except discord.Forbidden:
-        print(f"⚠️ Impossibile inviare il DM di benvenuto a {member.display_name} (DM chiusi).")
-    except Exception as e:
-        print(f"❌ Errore durante l'invio del messaggio di benvenuto: {e}")
 
 
 @bot.tree.command(name="registra_fazione", description="[STAFF] Registra una nuova fazione e il suo ruolo autorizzato.")
@@ -5098,7 +5075,7 @@ async def fazione_autocomplete(
 
 # --- PORTAFOGLIO ED OGGETTI ---
 
-@bot.tree.command(name="portafoglio", description="Visualizza i contanti e lo stato del tuo portafoglio su Evren City OS.")
+@bot.tree.command(name="portafoglio", description="Visualizza i contanti e lo stato del tuo portafoglio su Imperial City OS.")
 async def portafoglio(interaction: discord.Interaction):
     user_id = str(interaction.user.id)
     
@@ -5112,12 +5089,12 @@ async def portafoglio(interaction: discord.Interaction):
         contanti = res.data[0].get("wallet", 0)
 
     embed = discord.Embed(
-        title="💼 Portafoglio - Evren City OS",
+        title="💼 Portafoglio - Imperial OS",
         description="Ecco il riepilogo del tuo denaro contante.",
         color=discord.Color.green()
     )
     embed.add_field(name="💵 Contanti", value=f"**€ {contanti:,.2f}**", inline=False)
-    embed.set_footer(text="Evren City OS • Sistema Finanziario")
+    embed.set_footer(text="Imperial City OS • Sistema Finanziario")
 
     await interaction.response.send_message(embed=embed, ephemeral=True)
 
@@ -5579,7 +5556,7 @@ async def deposito_fazione(interaction: discord.Interaction, fazione: str):
   embed.add_field(
       name="📦 Inventario Item", value=f"```{lista_item}```", inline=False
   )
-  embed.set_footer(text="Evren City OS • Gestione Risorse Fazione")
+  embed.set_footer(text="Imperial City OS • Gestione Risorse Fazione")
 
   view = FactionVaultView(fazione)
   await interaction.response.send_message(embed=embed, view=view, ephemeral=True)
@@ -5605,7 +5582,7 @@ class ShopCategorySelect(ui.Select):
         items = res.data if res.data else []
 
         embed = discord.Embed(
-            title=f"🛒 Evren Shop - Categoria: {categoria.capitalize()}",
+            title=f"🛒 Imperial Shop - Categoria: {categoria.capitalize()}",
             description="Ecco gli articoli disponibili in questa categoria. Usa il comando `/compra [nome_item]` per acquistarli.",
             color=discord.Color.blue()
         )
@@ -5623,7 +5600,7 @@ class ShopCategorySelect(ui.Select):
                     inline=False
                 )
 
-        embed.set_footer(text="Evren City OS • Economia")
+        embed.set_footer(text="Imperial City OS • Economia")
         await interaction.response.edit_message(embed=embed, view=self.view)
 
 
@@ -5633,14 +5610,14 @@ class ShopView(ui.View):
         self.add_item(ShopCategorySelect())
 
 
-@bot.tree.command(name="shop", description="Visualizza lo store di Evren City OS e naviga tra le categorie.")
+@bot.tree.command(name="shop", description="Visualizza lo store di Imperial City OS e naviga tra le categorie.")
 async def shop(interaction: discord.Interaction):
     embed = discord.Embed(
-        title="🛒 Evren City OS - Negozio Generale",
+        title="🛒 Imperial City OS - Negozio Generale",
         description="Benvenuto nello shop ufficiale. Seleziona una categoria dal menu sottostante per visualizzare gli articoli in vendita.",
         color=discord.Color.blue()
     )
-    embed.set_footer(text="Evren City OS • Economia")
+    embed.set_footer(text="Imperial City OS • Economia")
     
     view = ShopView()
     await interaction.response.send_message(embed=embed, view=view, ephemeral=True)
@@ -7422,7 +7399,7 @@ async def genera_fattura_html(
         </div>
 
         <div class="invoice-footer">
-            <span>Documento emesso e archiviato digitalmente tramite Evren City OS</span>
+            <span>Documento emesso e archiviato digitalmente tramite Imperial City OS</span>
             <span>Pagina 1 di 1</span>
         </div>
     </body>
@@ -7494,11 +7471,11 @@ async def emetti_fattura(interaction: discord.Interaction, azienda: str, utente:
     file = await renderizza_fattura_immagine(ultima)
     embed = discord.Embed(title="📑 Nuova Fattura Emessa", description=f"Fattura emessa con successo per {utente.mention} a nome dell'azienda **{azienda}**!", color=discord.Color.from_rgb(15, 23, 42))
     embed.set_image(url=f"attachment://fattura_{nuova_fattura['id']}.png")
-    embed.set_footer(text="Evren City OS • Sistema Fiscale")
+    embed.set_footer(text="Imperial City OS • Sistema Fiscale")
     await interaction.followup.send(embed=embed, file=file)
     try:
         dm_embed = discord.Embed(title="💳 Nuova Fattura Ricevuta", description=f"Ti è stata emessa una nuova fattura a nome dell'azienda **{azienda}** per un importo di **€ {importo:,.2f}**.\n\n💬 **Causale:** {causale}\n\nUsa il comando </mie_fatture:0> in città per visualizzare l'anteprima dettagliata ed effettuare il pagamento.", color=discord.Color.from_rgb(220, 38, 38))
-        dm_embed.set_footer(text="Evren City OS • Sistema Fiscale")
+        dm_embed.set_footer(text="Imperial City OS • Sistema Fiscale")
         await utente.send(embed=dm_embed)
     except discord.Forbidden:
         pass
@@ -7638,7 +7615,7 @@ async def mie_fatture(interaction: discord.Interaction):
         if len(storico_testo) > 1024:
             storico_testo = storico_testo[:1021] + "..."
         embed.add_field(name="📜 Storico Fatture Precedenti", value=storico_testo, inline=False)
-    embed.set_footer(text="Evren City OS • Sistema Fiscale")
+    embed.set_footer(text="Imperial City OS • Sistema Fiscale")
     view = FabbricaFattureView(fatture)
     await interaction.followup.send(embed=embed, file=file, view=view)
 
