@@ -140,7 +140,7 @@ def get_or_create_user(user_id: int, username: str):
         new_user = {
             "discord_id": str(user_id),
             "username": username,
-            "wallet": 500.0,
+            "wallet": 1500.0,
             "bank": 1500.0,
             "pin": None,
             "max_weight": 10.0  # Limite peso base
@@ -335,7 +335,7 @@ async def wipe_user(interaction: discord.Interaction, utente: discord.User):
     try:
         # 1. Reset Saldo, Wallet e Stato nella tabella public.users
         supabase.table("users").update({
-            "wallet": 500.0,
+            "wallet": 1500.0,
             "bank": 1500.0,
             "braccialetto_ritirato": False
         }).eq("discord_id", target_id).execute()
@@ -367,7 +367,7 @@ async def wipe_user(interaction: discord.Interaction, utente: discord.User):
             title="🧹 Wipe Completato con Successo",
             description=(
                 f"L'utente <@{target_id}> è stato completamente resettato.\n\n"
-                "• **Portafoglio (Wallet):** Impostato a `500.0€`\n"
+                "• **Portafoglio (Wallet):** Impostato a `1500.0€`\n"
                 "• **Banca (Bank):** Impostato a `1500.0€`\n"
                 "• **Documenti:** Eliminati (`documents`)\n"
                 "• **Inventario:** Svuotato (`inventory`)\n"
