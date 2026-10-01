@@ -600,40 +600,52 @@ import discord
 from discord import ui
 from discord.ext import commands
 
-# --- CONFIGURAZIONE ID INSERITI ---
-ROLE_ATTESA_WL_ID = 1554499278712610896       # ID Ruolo Attesa WL
-CANALE_BACKGROUND_ID = 1554500560466616340    # ID Canale Background
+import datetime
+import discord
+from discord import ui
+from discord.ext import commands
 
-# Emoji Reazioni Staff
+# --- CONFIGURAZIONE ID ---
+ROLE_ATTESA_WL_ID = 1554499278712610896       # Ruolo Attesa WL
+CANALE_BACKGROUND_ID = 1554500560466616340    # Canale invio schede
+
+# Reazioni Staff animate
 EMOJI_ACCETTA_ID = 1555190974626660352
 EMOJI_RIFIUTA_ID = 1555190971451441216
 
 
-# --- MODAL COMPILAZIONE BACKGROUND ---
-class BackgroundModal(ui.Modal, title="Compilazione Background"):
-    info_ooc = ui.TextInput(
-        label="Dati OOC (PSN, Età, Esperienza)",
-        style=discord.TextStyle.paragraph,
-        placeholder="Id PSN:\nEtà OOC:\nEsperienza In Rp:",
+# --- SECONDO MODAL: DATI IC & STORIA ---
+class ModalDatiIC(ui.Modal, title="Passo 2: Dati In-Character (IC)"):
+    nome_cognome = ui.TextInput(
+        label="Nome e cognome pg",
+        placeholder="Es: Mario Rossi",
         required=True,
-        max_length=600,
+        max_length=60
     )
-
-    info_ic = ui.TextInput(
-        label="Dati Personaggio (Nome/Cognome, Nascita, Paure)",
-        style=discord.TextStyle.paragraph,
-        placeholder="Nome e cognome pg:\nData di nascita:\nPaure:",
+    data_nascita = ui.TextInput(
+        label="Data di nascita",
+        placeholder="Es: 15/04/1998",
         required=True,
-        max_length=600,
+        max_length=30
     )
-
+    paure = ui.TextInput(
+        label="Paure",
+        style=discord.TextStyle.paragraph,
+        placeholder="Paure e fobie del tuo personaggio...",
+        required=True,
+        max_length=400
+    )
     storia_pg = ui.TextInput(
         label="Storia del Personaggio",
         style=discord.TextStyle.paragraph,
-        placeholder="Scrivi qui la storia del tuo pg...",
+        placeholder="Racconta dettagliatamente la storia del tuo PG...",
         required=True,
-        max_length=2000,
+        max_length=2000
     )
+
+    def __init__(self, dati_ooc: dict):
+        super().__init__()
+        self.dati_ooc = dati_ooc
 
     async def on_submit(self, interaction: discord.Interaction):
         await interaction.response.defer(ephemeral=True)
@@ -641,52 +653,115 @@ class BackgroundModal(ui.Modal, title="Compilazione Background"):
         target_channel = interaction.guild.get_channel(CANALE_BACKGROUND_ID)
         if not target_channel:
             await interaction.followup.send(
-                "Canale ricezione background non trovato. Contatta lo staff.",
-                ephemeral=True,
+                "Canale staff per i background non trovato. Contatta un amministratore.",
+                ephemeral=True
             )
             return
 
         embed = discord.Embed(
             title="Nuova Candidatura Background",
             color=discord.Color.gold(),
-            timestamp=datetime.datetime.now(datetime.timezone.utc),
+            timestamp=datetime.datetime.now(datetime.timezone.utc)
         )
         embed.set_author(
             name=f"{interaction.user.display_name} ({interaction.user.name})",
-            icon_url=interaction.user.display_avatar.url,
+            icon_url=interaction.user.display_avatar.url
         )
+
         embed.add_field(
             name="Informazioni OOC",
-            value=f"```{self.info_ooc.value}```",
-            inline=False,
+            value=(
+                f"**ID PSN:** {self.dati_ooc['psn']}\n"
+                f"**Età OOC:** {self.dati_ooc['eta']}\n"
+                f"**Esperienza in RP:**\n{self.dati_ooc['esperienza']}"
+            ),
+            inline=False
         )
+
         embed.add_field(
-            name="Dati IC",
-            value=f"```{self.info_ic.value}```",
-            inline=False,
+            name="Dati Personaggio (IC)",
+            value=(
+                f"**Nome e Cognome:** {self.nome_cognome.value}\n"
+                f"**Data di Nascita:** {self.data_nascita.value}\n"
+                f"**Paure:** {self.paure.value}"
+            ),
+            inline=False
         )
+
         embed.add_field(
             name="Storia PG",
             value=self.storia_pg.value,
-            inline=False,
+            inline=False
         )
-        embed.set_footer(
-            text=f"Autore ID: {interaction.user.id} • In attesa di revisione"
-        )
+
+        embed.set_footer(text=f"Autore ID: {interaction.user.id} • In attesa di revisione")
 
         sent_msg = await target_channel.send(embed=embed)
 
-        # Aggiunta reazioni per la revisione dello staff
-        await sent_msg.add_reaction("<a:SI_2:1555190974626660352>")
-        await sent_msg.add_reaction("<a:xxx:1555190971451441216>")
+        emoji_accetta = discord.PartialEmoji(name="SI_2", id=EMOJI_ACCETTA_ID, animated=True)
+        emoji_rifiuta = discord.PartialEmoji(name="xxx", id=EMOJI_RIFIUTA_ID, animated=True)
+
+        try:
+            await sent_msg.add_reaction(emoji_accetta)
+            await sent_msg.add_reaction(emoji_rifiuta)
+        except discord.HTTPException:
+            await sent_msg.add_reaction("✅")
+            await sent_msg.add_reaction("❌")
 
         await interaction.followup.send(
-            "Background inviato con successo! Riceverai una notifica in DM appena lo staff lo valuterà.",
-            ephemeral=True,
+            "Candidatura completata e inviata allo staff! Riceverai l'esito nei messaggi privati (DM).",
+            ephemeral=True
         )
 
 
-# --- VIEW PERSISTENTE PANNELLO APERTURA ---
+# --- VIEW INTERMEDIA TRA I DUE MODAL ---
+class PassaggioModalICView(ui.View):
+    def __init__(self, dati_ooc: dict):
+        super().__init__(timeout=300)
+        self.dati_ooc = dati_ooc
+
+    @ui.button(label="Compila Dati Personaggio (IC)", style=discord.ButtonStyle.success, emoji="➡️")
+    async def apri_ic(self, interaction: discord.Interaction, button: ui.Button):
+        await interaction.response.send_modal(ModalDatiIC(self.dati_ooc))
+
+
+# --- PRIMO MODAL: DATI OOC ---
+class ModalDatiOOC(ui.Modal, title="Passo 1: Dati Out-Of-Character (OOC)"):
+    id_psn = ui.TextInput(
+        label="Id PSN",
+        placeholder="Inserisci il tuo ID PSN...",
+        required=True,
+        max_length=60
+    )
+    eta_ooc = ui.TextInput(
+        label="Età OOC",
+        placeholder="Quanti anni hai...",
+        required=True,
+        max_length=5
+    )
+    esperienza_rp = ui.TextInput(
+        label="Esperienza In Rp",
+        style=discord.TextStyle.paragraph,
+        placeholder="Descrivi brevemente le tue passate esperienze RP...",
+        required=True,
+        max_length=500
+    )
+
+    async def on_submit(self, interaction: discord.Interaction):
+        dati_ooc = {
+            "psn": self.id_psn.value,
+            "eta": self.eta_ooc.value,
+            "esperienza": self.esperienza_rp.value
+        }
+        view = PassaggioModalICView(dati_ooc)
+        await interaction.response.send_message(
+            "Dati OOC registrati! Clicca qui sotto per inserire i dati del personaggio (IC) e la storia.",
+            view=view,
+            ephemeral=True
+        )
+
+
+# --- VIEW PERSISTENTE CON IL BOTTONE SUL PANNELLO ---
 class PannelloBackgroundView(ui.View):
     def __init__(self):
         super().__init__(timeout=None)
@@ -695,136 +770,119 @@ class PannelloBackgroundView(ui.View):
         label="Compila Background",
         style=discord.ButtonStyle.primary,
         custom_id="btn_send_background_wl",
-        emoji="📝",
+        emoji="📝"
     )
-    async def apri_background(
-        self, interaction: discord.Interaction, button: ui.Button
-    ):
-        # Verifica del ruolo 'Attesa WL'
+    async def apri_background(self, interaction: discord.Interaction, button: ui.Button):
         ha_ruolo = any(r.id == ROLE_ATTESA_WL_ID for r in interaction.user.roles)
         if not ha_ruolo:
             await interaction.response.send_message(
                 "Non possiedi il ruolo necessario per compilare il background.",
-                ephemeral=True,
+                ephemeral=True
             )
             return
 
-        await interaction.response.send_modal(BackgroundModal())
+        await interaction.response.send_modal(ModalDatiOOC())
 
+# --- LISTENER REAZIONI DELLO STAFF (Senza Cog) ---
+@bot.event
+async def on_raw_reaction_add(payload: discord.RawReactionActionEvent):
+    if payload.user_id == bot.user.id:
+        return
 
-# --- GESTIONE REAZIONI STAFF & ESITI ---
-class BackgroundHandler(commands.Cog):
-    def __init__(self, bot: commands.Bot):
-        self.bot = bot
+    if payload.channel_id != CANALE_BACKGROUND_ID:
+        return
 
-    @commands.Cog.listener()
-    async def on_raw_reaction_add(self, payload: discord.RawReactionActionEvent):
-        # Ignora le reazioni del bot stesso
-        if payload.user_id == self.bot.user.id:
-            return
+    emoji_id = payload.emoji.id
+    if emoji_id not in (EMOJI_ACCETTA_ID, EMOJI_RIFIUTA_ID):
+        return
 
-        # Ascolta solo il canale di ricezione specificato
-        if payload.channel_id != CANALE_BACKGROUND_ID:
-            return
+    channel = bot.get_channel(payload.channel_id)
+    if not channel:
+        return
 
-        # Riconosce esclusivamente le due emoji specificate
-        emoji_id = payload.emoji.id
-        if emoji_id not in (EMOJI_ACCETTA_ID, EMOJI_RIFIUTA_ID):
-            return
+    try:
+        message = await channel.fetch_message(payload.message_id)
+    except (discord.NotFound, discord.Forbidden):
+        return
 
-        channel = self.bot.get_channel(payload.channel_id)
-        if not channel:
-            return
+    if message.author.id != bot.user.id or not message.embeds:
+        return
 
-        try:
-            message = await channel.fetch_message(payload.message_id)
-        except (discord.NotFound, discord.Forbidden):
-            return
+    embed = message.embeds[0]
 
-        # Verifica che il messaggio sia del bot e contenga l'embed valido
-        if message.author.id != self.bot.user.id or not message.embeds:
-            return
+    # Controlla se la scheda è già stata revisionata
+    if "Valutato da:" in (embed.description or ""):
+        return
 
-        embed = message.embeds[0]
+    footer_text = embed.footer.text or ""
+    if "Autore ID: " not in footer_text:
+        return
 
-        # Evita valutazioni multiple se già processato
-        if "Valutato da:" in (embed.description or ""):
-            return
+    try:
+        utente_id = int(footer_text.split("Autore ID: ")[1].split(" •")[0])
+    except (ValueError, IndexError):
+        return
 
-        # Recupera l'ID dell'utente dal footer
-        footer_text = embed.footer.text or ""
-        if "Autore ID: " not in footer_text:
-            return
+    guild = bot.get_guild(payload.guild_id)
+    staff_member = guild.get_member(payload.user_id) if guild else None
+    staff_name = staff_member.display_name if staff_member else f"Staff ({payload.user_id})"
 
-        try:
-            utente_id = int(footer_text.split("Autore ID: ")[1].split(" •")[0])
-        except (ValueError, IndexError):
-            return
+    ora_attuale = datetime.datetime.now()
+    data_ora_str = ora_attuale.strftime("%d/%m/%Y alle %H:%M")
 
-        guild = self.bot.get_guild(payload.guild_id)
-        staff_member = guild.get_member(payload.user_id) if guild else None
-        staff_name = (
-            staff_member.display_name if staff_member else f"Staff ({payload.user_id})"
+    is_accettato = emoji_id == EMOJI_ACCETTA_ID
+
+    # Modifica colore e descrizione scheda
+    embed.color = discord.Color.green() if is_accettato else discord.Color.red()
+    stato_txt = "ACCETTATO" if is_accettato else "RIFIUTATO"
+    embed.description = (
+        f"**Valutato da:** {staff_name}\n"
+        f"**Data e Ora OOC:** {data_ora_str}\n"
+        f"**Esito:** `{stato_txt}`"
+    )
+    embed.set_footer(text=f"Autore ID: {utente_id} • Pratica Chiusa")
+
+    try:
+        await message.clear_reactions()
+    except discord.Forbidden:
+        pass
+
+    await message.edit(embed=embed)
+
+    # Invio del verdetto in DM
+    target_user = guild.get_member(utente_id) or await bot.fetch_user(utente_id)
+    if not target_user:
+        return
+
+    if is_accettato:
+        dm_embed = discord.Embed(
+            title="Esito Candidatura Background: APPROVATO",
+            description=(
+                f"Congratulazioni {target_user.mention}! Il tuo background è stato valutato positivamente dallo staff.\n\n"
+                f"**Staffer:** {staff_name}\n"
+                f"**Data e Ora:** {data_ora_str}\n\n"
+                "Puoi procedere con le fasi successive della Whitelist."
+            ),
+            color=discord.Color.green()
         )
-
-        ora_attuale = datetime.datetime.now()
-        data_ora_str = ora_attuale.strftime("%d/%m/%Y alle %H:%M")
-
-        is_accettato = emoji_id == EMOJI_ACCETTA_ID
-
-        # Aggiornamento embed sul canale Staff
-        embed.color = discord.Color.green() if is_accettato else discord.Color.red()
-        stato_txt = "ACCETTATO" if is_accettato else "RIFIUTATO"
-        embed.description = (
-            f"**Valutato da:** {staff_name}\n"
-            f"**Data e Ora OOC:** {data_ora_str}\n"
-            f"**Esito:** `{stato_txt}`"
+        dm_embed.set_thumbnail(url=guild.icon.url if guild and guild.icon else None)
+    else:
+        dm_embed = discord.Embed(
+            title="Esito Candidatura Background: RESPINTO",
+            description=(
+                f"Ciao {target_user.mention}, purtroppo il tuo background non è stato approvato dallo staff.\n\n"
+                f"**Staffer:** {staff_name}\n"
+                f"**Data e Ora:** {data_ora_str}\n\n"
+                "Rileggi le linee guida sul server prima di riprovare o apri un ticket supporto."
+            ),
+            color=discord.Color.red()
         )
-        embed.set_footer(text=f"Autore ID: {utente_id} • Pratica Chiusa")
+        dm_embed.set_thumbnail(url=guild.icon.url if guild and guild.icon else None)
 
-        # Rimuove le reazioni per bloccare ulteriori azioni
-        try:
-            await message.clear_reactions()
-        except discord.Forbidden:
-            pass
-
-        await message.edit(embed=embed)
-
-        # Invio esito in DM formattato all'utente
-        target_user = guild.get_member(utente_id) or await self.bot.fetch_user(utente_id)
-        if not target_user:
-            return
-
-        if is_accettato:
-            dm_embed = discord.Embed(
-                title="Esito Candidatura Background: APPROVATO",
-                description=(
-                    f"Congratulazioni {target_user.mention}! Il tuo background è stato valutato positivamente dallo staff.\n\n"
-                    f"**Staffer:** {staff_name}\n"
-                    f"**Data e Ora:** {data_ora_str}\n\n"
-                    "Puoi procedere con le fasi successive del server."
-                ),
-                color=discord.Color.green(),
-            )
-            dm_embed.set_thumbnail(url=guild.icon.url if guild and guild.icon else None)
-        else:
-            dm_embed = discord.Embed(
-                title="Esito Candidatura Background: RESPINTO",
-                description=(
-                    f"Ciao {target_user.mention}, purtroppo il tuo background non ha soddisfatto i criteri richiesti.\n\n"
-                    f"**Staffer:** {staff_name}\n"
-                    f"**Data e Ora:** {data_ora_str}\n\n"
-                    "Rileggi il regolamento e le linee guida prima di riprovare."
-                ),
-                color=discord.Color.red(),
-            )
-            dm_embed.set_thumbnail(url=guild.icon.url if guild and guild.icon else None)
-
-        try:
-            await target_user.send(embed=dm_embed)
-        except discord.Forbidden:
-            # DM chiusi dall'utente
-            pass
+    try:
+        await target_user.send(embed=dm_embed)
+    except discord.Forbidden:
+        pass
 
 @bot.tree.command(name="setup_background", description="Invia il pannello per compilare il background")
 @commands.has_permissions(administrator=True)
