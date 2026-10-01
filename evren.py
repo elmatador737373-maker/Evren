@@ -799,6 +799,20 @@ class ModalDatiIC(ui.Modal, title="Passo 2: Dati In-Character (IC)"):
     async def on_submit(self, interaction: discord.Interaction):
         await interaction.response.defer(ephemeral=True)
 
+        # --- IMPOSTAZIONE NICKNAME SUL SERVER CON L'ID PSN ---
+        psn_id = self.dati_ooc['psn'].strip()[:32]  # Discord impone max 32 caratteri per i nickname
+        try:
+            member = interaction.user
+            if interaction.guild and not isinstance(member, discord.Member):
+                member = interaction.guild.get_member(member.id) or await interaction.guild.fetch_member(member.id)
+            
+            if member:
+                await member.edit(nick=psn_id, reason="Impostazione Nickname automatico da ID PSN Whitelist")
+        except discord.Forbidden:
+            print(f"[NICKNAME] Permessi insufficienti per modificare il nickname a {interaction.user.name} (gerarchia ruoli o proprietario).")
+        except Exception as e:
+            print(f"[NICKNAME] Errore cambio nickname: {e}")
+
         target_channel = interaction.guild.get_channel(CANALE_BACKGROUND_ID)
         if not target_channel:
             await interaction.followup.send(
@@ -858,10 +872,9 @@ class ModalDatiIC(ui.Modal, title="Passo 2: Dati In-Character (IC)"):
             await sent_msg.add_reaction("❌")
 
         await interaction.followup.send(
-            "Candidatura completata e inviata allo staff! Riceverai l'esito nei messaggi privati (DM).",
+            "Candidatura inviata con successo! Il tuo nickname sul server è stato impostato con il tuo ID PSN. Riceverai l'esito nei messaggi privati (DM).",
             ephemeral=True
         )
-
 
 # --- VIEW INTERMEDIA TRA I DUE MODAL ---
 class PassaggioModalICView(ui.View):
