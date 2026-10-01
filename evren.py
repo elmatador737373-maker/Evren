@@ -462,6 +462,155 @@ async def oggetto_custom_autocomplete(
     except Exception:
         return []
 
+import datetime
+import discord
+from discord import app_commands
+
+# --- CONFIGURAZIONE ID ---
+# Inserisci qui l'ID del ruolo abilitato a usare il comando (Staff / Whitelister)
+RUOLO_WHITELISTER_ID = 1554498767326027886  
+
+# Ruolo da RIMUOVERE se l'esito è positivo (es. Attesa WL)
+RUOLO_DA_RIMUOVERE_ID = 1554499278712610896
+
+# Ruoli da AGGIUNGERE se l'esito è positivo (ruoli Cittadino / WL passata)
+RUOLI_DA_AGGIUNGERE_IDS = [
+    1554499250841456662,
+    1554499333372772353,
+    1554499260400013322,
+    1554499241198755927,
+]
+
+
+@bot.tree.command(
+    name="esito_wl",
+    description="Comunica l'esito del provino Whitelist ad un utente",
+)
+@app_commands.describe(
+    utente="L'utente a cui comunicare l'esito",
+    esito="Seleziona l'esito del provino",
+    motivo="Motivazione facoltativa (visibile nell'embed)",
+)
+@app_commands.choices(
+    esito=[
+        app_commands.Choice(name="Passata", value="passata"),
+        app_commands.Choice(name="Non Passata", value="non_passata"),
+    ]
+)
+async def esito_wl(
+    interaction: discord.Interaction,
+    utente: discord.Member,
+    esito: app_commands.Choice[str],
+    motivo: str = None,
+):
+    # Controllo permessi per il ruolo Whitelister
+    ha_permesso = any(r.id == RUOLO_WHITELISTER_ID for r in interaction.user.roles)
+    if not ha_permesso:
+        await interaction.response.send_message(
+            "Non possiedi il ruolo autorizzato per eseguire questo comando.",
+            ephemeral=True,
+        )
+        return
+
+    await interaction.response.defer()
+
+    data_ora = datetime.datetime.now().strftime("%d/%m/%Y alle %H:%M")
+    server_icon = interaction.guild.icon.url if interaction.guild.icon else None
+
+    # --- ESITO: PASSATA ---
+    if esito.value == "passata":
+        # 1. Rimozione del primo ruolo
+        ruolo_rimuovi = interaction.guild.get_role(RUOLO_DA_RIMUOVERE_ID)
+        if ruolo_rimuovi and ruolo_rimuovi in utente.roles:
+            try:
+                await utente.remove_roles(
+                    ruolo_rimuovi,
+                    reason=f"WL Passata - Verificatore: {interaction.user.name}",
+                )
+            except discord.Forbidden:
+                pass
+
+        # 2. Aggiunta dei rimanenti 4 ruoli
+        ruoli_da_dare = [
+            interaction.guild.get_role(r_id)
+            for r_id in RUOLI_DA_AGGIUNGERE_IDS
+            if interaction.guild.get_role(r_id) is not None
+        ]
+        if ruoli_da_dare:
+            try:
+                await utente.add_roles(
+                    *ruoli_da_dare,
+                    reason=f"WL Passata - Verificatore: {interaction.user.name}",
+                )
+            except discord.Forbidden:
+                pass
+
+        embed = discord.Embed(
+            title="🎉 Esito Whitelist: PASSATA",
+            description=(
+                f"Complimenti {utente.mention}, hai superato con successo il colloquio Whitelist!\n\n"
+                f"**Verificatore:** {interaction.user.mention}\n"
+                f"**Data e Ora:** `{data_ora}`\n"
+                f"**Esito:** `APPROVATO ✅`"
+            ),
+            color=discord.Color.green(),
+            timestamp=datetime.datetime.now(datetime.timezone.utc),
+        )
+        if motivo:
+            embed.add_field(name="Note Staff", value=f"```{motivo}```", inline=False)
+
+        embed.add_field(
+            name="Ruoli Aggiornati",
+            value=(
+                f"• **Rimosso:** <@&{RUOLO_DA_RIMUOVERE_ID}>\n"
+                f"• **Assegnati:** "
+                + " ".join([f"<@&{r_id}>" for r_id in RUOLI_DA_AGGIUNGERE_IDS])
+            ),
+            inline=False,
+        )
+        embed.set_thumbnail(url=utente.display_avatar.url)
+        if server_icon:
+            embed.set_author(name=interaction.guild.name, icon_url=server_icon)
+        embed.set_footer(text="Whitelist Ufficiale")
+
+    # --- ESITO: NON PASSATA ---
+    else:
+        embed = discord.Embed(
+            title="❌ Esito Whitelist: NON PASSATA",
+            description=(
+                f"Ci dispiace {utente.mention}, al momento il tuo colloquio Whitelist non ha avuto esito positivo.\n\n"
+                f"**Verificatore:** {interaction.user.mention}\n"
+                f"**Data e Ora:** `{data_ora}`\n"
+                f"**Esito:** `RESPINTO ⛔`"
+            ),
+            color=discord.Color.red(),
+            timestamp=datetime.datetime.now(datetime.timezone.utc),
+        )
+        if motivo:
+            embed.add_field(
+                name="Motivazione / Punti da Migliorare",
+                value=f"```{motivo}```",
+                inline=False,
+            )
+
+        embed.add_field(
+            name="Cosa puoi fare?",
+            value="Rileggi con attenzione il regolamento e riprova il colloquio appena trascorso il tempo di attesa previsto.",
+            inline=False,
+        )
+        embed.set_thumbnail(url=utente.display_avatar.url)
+        if server_icon:
+            embed.set_author(name=interaction.guild.name, icon_url=server_icon)
+        embed.set_footer(text="Whitelist Ufficiale")
+
+    # Invio messaggio sul canale
+    await interaction.followup.send(embed=embed)
+
+    # Invio notifica in privato all'utente
+    try:
+        await utente.send(embed=embed)
+    except discord.Forbidden:
+        pass
 
 # ------------------------------------------------------------------
 # COMANDO 1: GESTIONE ITEM DEPOSITO FAZIONE
