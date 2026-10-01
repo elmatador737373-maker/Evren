@@ -753,6 +753,223 @@ import datetime
 import discord
 from discord import ui
 from discord.ext import commands
+import io
+import datetime
+import discord
+from discord import app_commands
+from discord.ext import commands, tasks
+import openpyxl
+from openpyxl.styles import Font, Alignment, PatternFill, Border, Side
+
+# =============================================================================
+# --- CONFIGURAZIONI & ID (INSERISCI I TUOI DATI) ---
+# =============================================================================
+CANALE_INCARICHI_ID = 123456789012345678       # Canale dove lo staff scrive gli incarichi
+RUOLO_STAFF_INCARICO_ID = 123456789012345678   # Ruolo staff autorizzato a registrare incarichi
+RUOLO_AMMINISTRAZIONE_ID = 123456789012345678  # Ruolo autorizzato al comando /report
+SERVER_STAFF_ID = 123456789012345678           # ID server secondario staff
+CANALE_REPORT_EXCEL_ID = 123456789012345678    # Canale dove viene inviato il file Excel
+
+# Nota: Assicurati che l'oggetto `supabase` sia già definito e inizializzato altrove nel tuo script principale.
+
+
+# =============================================================================
+# --- GENERATORE FOGLIO EXCEL ---
+# =============================================================================
+def genera_report_excel(staff_members, dati_incarichi):
+    wb = openpyxl.Workbook()
+    ws = wb.active
+    ws.title = "Report Incarichi Staff"
+    ws.views.sheetView[0].showGridLines = True
+
+    headers = [
+        "ID Utente", "Username Staff", "Oggi (N°)", "Settimana (N°)", 
+        "Totale Storico (N°)", "Elenco Incarichi Oggi", "Elenco Incarichi Settimana", "Tutti gli Incarichi (con ID)"
+    ]
+    ws.append(headers)
+
+    header_font = Font(name="Calibri", size=11, bold=True, color="FFFFFF")
+    header_fill = PatternFill(start_color="1F4E79", end_color="1F4E79", fill_type="solid")
+    thin_border = Border(left=Side(style='thin', color='D9D9D9'), right=Side(style='thin', color='D9D9D9'), top=Side(style='thin', color='D9D9D9'), bottom=Side(style='thin', color='D9D9D9'))
+
+    for col_num in range(1, len(headers) + 1):
+        cell = ws.cell(row=1, column=col_num)
+        cell.font = header_font
+        cell.fill = header_fill
+        cell.alignment = Alignment(horizontal="center", vertical="center", wrap_text=True)
+        cell.border = thin_border
+    ws.row_dimensions[1].height = 30
+
+    now = datetime.datetime.now(datetime.timezone.utc)
+    inizio_oggi = now.replace(hour=0, minute=0, second=0, microsecond=0)
+    inizio_settimana = inizio_oggi - datetime.timedelta(days=inizio_oggi.weekday())
+
+    dati_per_utente = {}
+    for row in dati_incarichi:
+        uid = int(row["user_id"])
+        inc_id = row.get("id", "-")
+        data_creazione = datetime.datetime.fromisoformat(row["created_at"].replace("Z", "+00:00"))
+        data_str = data_creazione.strftime("%d/%m/%Y %H:%M")
+        desc = row["descrizione"].strip()
+        voce = f"[ID #{inc_id} | {data_str}] {desc}"
+
+        if uid not in dati_per_utente:
+            dati_per_utente[uid] = {"oggi": [], "settimana": [], "storico": []}
+
+        dati_per_utente[uid]["storico"].append(voce)
+        if data_creazione >= inizio_oggi:
+            dati_per_utente[uid]["oggi"].append(voce)
+        if data_creazione >= inizio_settimana:
+            dati_per_utente[uid]["settimana"].append(voce)
+
+    for row_idx, member in enumerate(staff_members, start=2):
+        u_data = dati_per_utente.get(member.id, {"oggi": [], "settimana": [], "storico": []})
+
+        ws.append([
+            str(member.id),
+            f"{member.name} ({member.display_name})",
+            len(u_data["oggi"]),
+            len(u_data["settimana"]),
+            len(u_data["storico"]),
+            "\n• " + "\n• ".join(u_data["oggi"]) if u_data["oggi"] else "-",
+            "\n• " + "\n• ".join(u_data["settimana"]) if u_data["settimana"] else "-",
+            "\n• " + "\n• ".join(u_data["storico"]) if u_data["storico"] else "-"
+        ])
+
+        fill_color = "F7F9FC" if row_idx % 2 == 0 else "FFFFFF"
+        row_fill = PatternFill(start_color=fill_color, end_color=fill_color, fill_type="solid")
+
+        for col_idx in range(1, len(headers) + 1):
+            cell = ws.cell(row=row_idx, column=col_idx)
+            cell.fill = row_fill
+            cell.border = thin_border
+            cell.alignment = Alignment(horizontal="center", vertical="top") if col_idx in [1, 3, 4, 5] else Alignment(horizontal="left", vertical="top", wrap_text=True)
+
+    for col_idx, width in {1: 22, 2: 28, 3: 12, 4: 15, 5: 18, 6: 45, 7: 45, 8: 60}.items():
+        ws.column_dimensions[openpyxl.utils.get_column_letter(col_idx)].width = width
+
+    file_stream = io.BytesIO()
+    wb.save(file_stream)
+    file_stream.seek(0)
+    return file_stream
+
+
+async def esegui_invio_report(titolo: str, descrizione: str):
+    server_staff = bot.get_guild(SERVER_STAFF_ID) or await bot.fetch_guild(SERVER_STAFF_ID)
+    canale_report = bot.get_channel(CANALE_REPORT_EXCEL_ID) or await bot.fetch_channel(CANALE_REPORT_EXCEL_ID)
+
+    all_members = [m for m in server_staff.members if not m.bot]
+    if not all_members:
+        all_members = [m async for m in server_staff.fetch_members() if not m.bot]
+
+    staff_members = [m for m in all_members if any(r.id == RUOLO_STAFF_INCARICO_ID for r in m.roles)]
+    staff_members.sort(key=lambda m: m.name.lower())
+
+    res = supabase.table("incarichi").select("*").order("created_at", desc=False).execute()
+    file_buffer = genera_report_excel(staff_members, res.data or [])
+
+    data_str = datetime.datetime.now().strftime("%d-%m-%Y_%H-%M")
+    discord_file = discord.File(fp=file_buffer, filename=f"Report_Staff_{data_str}.xlsx")
+
+    embed = discord.Embed(title=titolo, description=descrizione, color=discord.Color.blue(), timestamp=datetime.datetime.now(datetime.timezone.utc))
+    if server_staff.icon:
+        embed.set_thumbnail(url=server_staff.icon.url)
+    embed.set_footer(text="Archivio Supabase Incarichi")
+
+    await canale_report.send(embed=embed, file=discord_file)
+
+
+# =============================================================================
+# --- LISTENER MESSAGGI & CANCELLAZIONI ---
+# =============================================================================
+@bot.listen("on_message")
+async def listener_incarichi_canale(message: discord.Message):
+    if message.author.bot or message.channel.id != CANALE_INCARICHI_ID or not message.content.strip():
+        return
+
+    author = message.author
+    if message.guild and not isinstance(author, discord.Member):
+        author = message.guild.get_member(author.id) or await message.guild.fetch_member(author.id)
+
+    if not author or not any(r.id == RUOLO_STAFF_INCARICO_ID for r in author.roles):
+        return
+
+    try:
+        supabase.table("incarichi").insert({
+            "message_id": message.id,
+            "user_id": author.id,
+            "username": f"{author.name} ({author.display_name})",
+            "descrizione": message.content.strip(),
+            "created_at": message.created_at.isoformat()
+        }).execute()
+        await message.add_reaction("✅")
+    except Exception as e:
+        print(f"[ERRORE SALVATAGGIO INCARICO] {e}")
+
+
+@bot.listen("on_raw_message_delete")
+async def listener_incarico_cancellato(payload: discord.RawMessageDeleteEvent):
+    if payload.channel_id != CANALE_INCARICHI_ID:
+        return
+    try:
+        supabase.table("incarichi").delete().eq("message_id", payload.message_id).execute()
+    except Exception as e:
+        print(f"[ERRORE CANCELLAZIONE DB] {e}")
+
+
+# =============================================================================
+# --- COMANDI SLASH & TASK AUTOMATICO ---
+# =============================================================================
+@bot.tree.command(name="report", description="Invia il report Excel completo nel canale dedicato")
+async def report(interaction: discord.Interaction):
+    user = interaction.user
+    if interaction.guild and not isinstance(user, discord.Member):
+        user = interaction.guild.get_member(user.id) or await interaction.guild.fetch_member(user.id)
+
+    if not user or not any(r.id == RUOLO_AMMINISTRAZIONE_ID for r in user.roles):
+        await interaction.response.send_message("Non possiedi i permessi del ruolo Amministrazione.", ephemeral=True)
+        return
+
+    await interaction.response.defer(ephemeral=True)
+    await esegui_invio_report("📊 Report Incarichi Staff • Manuale", f"**Richiesto da:** {user.mention}")
+    await interaction.followup.send("Report inviato con successo!", ephemeral=True)
+
+
+@bot.tree.command(name="miei_incarichi", description="Mostra le tue statistiche e gli ultimi incarichi registrati")
+async def miei_incarichi(interaction: discord.Interaction):
+    await interaction.response.defer(ephemeral=True)
+    user = interaction.user
+
+    now = datetime.datetime.now(datetime.timezone.utc)
+    inizio_oggi = now.replace(hour=0, minute=0, second=0, microsecond=0)
+    inizio_settimana = inizio_oggi - datetime.timedelta(days=inizio_oggi.weekday())
+
+    res = supabase.table("incarichi").select("*").eq("user_id", user.id).order("created_at", desc=True).execute()
+    incarichi = res.data or []
+
+    if not incarichi:
+        await interaction.followup.send("Non hai ancora registrato alcun incarico.", ephemeral=True)
+        return
+
+    tot_oggi = sum(1 for x in incarichi if datetime.datetime.fromisoformat(x["created_at"].replace("Z", "+00:00")) >= inizio_oggi)
+    tot_sett = sum(1 for x in incarichi if datetime.datetime.fromisoformat(x["created_at"].replace("Z", "+00:00")) >= inizio_settimana)
+
+    voci = [f"**{i+1}.** `[ID #{x.get('id', '-')}]` `{datetime.datetime.fromisoformat(x['created_at'].replace('Z', '+00:00')).strftime('%d/%m/%Y %H:%M')}`\n> {x['descrizione'][:90]}" for i, x in enumerate(incarichi[:5])]
+
+    embed = discord.Embed(title="📋 Riepilogo Personale Incarichi", color=discord.Color.blurple(), timestamp=now)
+    embed.set_thumbnail(url=user.display_avatar.url)
+    embed.add_field(name="📅 Oggi", value=f"`{tot_oggi}`", inline=True)
+    embed.add_field(name="🗓️ Settimana", value=f"`{tot_sett}`", inline=True)
+    embed.add_field(name="🏆 Totale", value=f"`{len(incarichi)}`", inline=True)
+    embed.add_field(name="🕒 Ultimi Incarichi", value="\n\n".join(voci), inline=False)
+    await interaction.followup.send(embed=embed, ephemeral=True)
+
+
+@tasks.loop(time=datetime.time(hour=0, minute=0, second=0, tzinfo=datetime.timezone.utc))
+async def invio_report_settimanale():
+    if datetime.datetime.now(datetime.timezone.utc).weekday() != 6:
+        return
+    await esegui_invio_report("📊 Report Incarichi Staff • Resoconto Settimanale", "Resoconto settimanale della domenica.")
 
 # --- CONFIGURAZIONE ID ---
 ROLE_ATTESA_WL_ID = 1554499278712610896       # Ruolo Attesa WL
