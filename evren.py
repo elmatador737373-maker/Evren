@@ -935,34 +935,45 @@ class PannelloBackgroundView(ui.View):
 # --- LISTENER REAZIONI DELLO STAFF (Senza Cog) ---
 @bot.event
 async def on_raw_reaction_add(payload: discord.RawReactionActionEvent):
+    # Ignora le reazioni messe dal bot stesso
     if payload.user_id == bot.user.id:
         return
 
+    # Debug: stampa nel terminale cosa viene cliccato
+    print(f"[REACTION] Canale: {payload.channel_id} | Emoji ID: {payload.emoji.id} | Nome: {payload.emoji.name}")
+
+    # Controllo canale
     if payload.channel_id != CANALE_BACKGROUND_ID:
         return
 
-    emoji_id = payload.emoji.id
-    if emoji_id not in (EMOJI_ACCETTA_ID, EMOJI_RIFIUTA_ID):
+    # Controllo ID Emoji
+    if payload.emoji.id not in (EMOJI_ACCETTA_ID, EMOJI_RIFIUTA_ID):
+        print(f"[REACTION] Emoji non riconosciuta (ID ricevuto: {payload.emoji.id})")
         return
 
     channel = bot.get_channel(payload.channel_id)
     if not channel:
-        return
+        try:
+            channel = await bot.fetch_channel(payload.channel_id)
+        except Exception:
+            return
 
     try:
         message = await channel.fetch_message(payload.message_id)
     except (discord.NotFound, discord.Forbidden):
         return
 
+    # Controlla che sia un messaggio dell'embed inviato dal bot
     if message.author.id != bot.user.id or not message.embeds:
         return
 
     embed = message.embeds[0]
 
-    # Controlla se la scheda è già stata revisionata
+    # Evita valutazioni multiple se già processato
     if "Valutato da:" in (embed.description or ""):
         return
 
+    # Recupera l'ID dell'utente dal footer
     footer_text = embed.footer.text or ""
     if "Autore ID: " not in footer_text:
         return
@@ -974,14 +985,20 @@ async def on_raw_reaction_add(payload: discord.RawReactionActionEvent):
 
     guild = bot.get_guild(payload.guild_id)
     staff_member = guild.get_member(payload.user_id) if guild else None
+    if not staff_member and guild:
+        try:
+            staff_member = await guild.fetch_member(payload.user_id)
+        except Exception:
+            staff_member = None
+
     staff_name = staff_member.display_name if staff_member else f"Staff ({payload.user_id})"
 
     ora_attuale = datetime.datetime.now()
     data_ora_str = ora_attuale.strftime("%d/%m/%Y alle %H:%M")
 
-    is_accettato = emoji_id == EMOJI_ACCETTA_ID
+    is_accettato = payload.emoji.id == EMOJI_ACCETTA_ID
 
-    # Modifica colore e descrizione scheda
+    # Modifica colore e descrizione
     embed.color = discord.Color.green() if is_accettato else discord.Color.red()
     stato_txt = "ACCETTATO" if is_accettato else "RIFIUTATO"
     embed.description = (
@@ -998,40 +1015,40 @@ async def on_raw_reaction_add(payload: discord.RawReactionActionEvent):
 
     await message.edit(embed=embed)
 
-    # Invio del verdetto in DM
-    target_user = guild.get_member(utente_id) or await bot.fetch_user(utente_id)
-    if not target_user:
-        return
-
-    if is_accettato:
-        dm_embed = discord.Embed(
-            title="Esito Candidatura Background: APPROVATO",
-            description=(
-                f"Congratulazioni {target_user.mention}! Il tuo background è stato valutato positivamente dallo staff.\n\n"
-                f"**Staffer:** {staff_name}\n"
-                f"**Data e Ora:** {data_ora_str}\n\n"
-                "Puoi procedere con le fasi successive della Whitelist."
-            ),
-            color=discord.Color.green()
-        )
-        dm_embed.set_thumbnail(url=guild.icon.url if guild and guild.icon else None)
-    else:
-        dm_embed = discord.Embed(
-            title="Esito Candidatura Background: RESPINTO",
-            description=(
-                f"Ciao {target_user.mention}, purtroppo il tuo background non è stato approvato dallo staff.\n\n"
-                f"**Staffer:** {staff_name}\n"
-                f"**Data e Ora:** {data_ora_str}\n\n"
-                "Rileggi le linee guida sul server prima di riprovare o apri un ticket supporto."
-            ),
-            color=discord.Color.red()
-        )
-        dm_embed.set_thumbnail(url=guild.icon.url if guild and guild.icon else None)
-
+    # Invio messaggio privato al candidato
     try:
-        await target_user.send(embed=dm_embed)
-    except discord.Forbidden:
-        pass
+        target_user = guild.get_member(utente_id) or await bot.fetch_user(utente_id)
+        if target_user:
+            if is_accettato:
+                dm_embed = discord.Embed(
+                    title="Esito Candidatura Background: APPROVATO",
+                    description=(
+                        f"Congratulazioni {target_user.mention}! Il tuo background è stato valutato positivamente dallo staff.\n\n"
+                        f"**Staffer:** {staff_name}\n"
+                        f"**Data e Ora:** {data_ora_str}\n\n"
+                        "Puoi procedere con le fasi successive della Whitelist."
+                    ),
+                    color=discord.Color.green()
+                )
+                if guild and guild.icon:
+                    dm_embed.set_thumbnail(url=guild.icon.url)
+            else:
+                dm_embed = discord.Embed(
+                    title="Esito Candidatura Background: RESPINTO",
+                    description=(
+                        f"Ciao {target_user.mention}, purtroppo il tuo background non è stato approvato dallo staff.\n\n"
+                        f"**Staffer:** {staff_name}\n"
+                        f"**Data e Ora:** {data_ora_str}\n\n"
+                        "Rileggi le linee guida sul server prima di riprovare o apri un ticket supporto."
+                    ),
+                    color=discord.Color.red()
+                )
+                if guild and guild.icon:
+                    dm_embed.set_thumbnail(url=guild.icon.url)
+
+            await target_user.send(embed=dm_embed)
+    except Exception as e:
+        print(f"[DM ERROR] Impossibile inviare il DM all'utente {utente_id}: {e}")
 
 @bot.tree.command(name="setup_background", description="Invia il pannello per compilare il background")
 @commands.has_permissions(administrator=True)
