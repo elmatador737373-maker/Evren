@@ -595,6 +595,255 @@ async def staff_item_deposito(
             f"🗑️ Rimosse **x{quantita} {oggetto}** dal deposito della fazione **{fazione}**."
         )
 
+import datetime
+import discord
+from discord import ui
+from discord.ext import commands
+
+# --- CONFIGURAZIONE ID INSERITI ---
+ROLE_ATTESA_WL_ID = 1554499278712610896       # ID Ruolo Attesa WL
+CANALE_BACKGROUND_ID = 1554500560466616340    # ID Canale Background
+
+# Emoji Reazioni Staff
+EMOJI_ACCETTA_ID = 1555190974626660352
+EMOJI_RIFIUTA_ID = 1555190971451441216
+
+
+# --- MODAL COMPILAZIONE BACKGROUND ---
+class BackgroundModal(ui.Modal, title="Compilazione Background"):
+    info_ooc = ui.TextInput(
+        label="Dati OOC (PSN, Età, Esperienza)",
+        style=discord.TextStyle.paragraph,
+        placeholder="Id PSN:\nEtà OOC:\nEsperienza In Rp:",
+        required=True,
+        max_length=600,
+    )
+
+    info_ic = ui.TextInput(
+        label="Dati Personaggio (Nome/Cognome, Nascita, Paure)",
+        style=discord.TextStyle.paragraph,
+        placeholder="Nome e cognome pg:\nData di nascita:\nPaure:",
+        required=True,
+        max_length=600,
+    )
+
+    storia_pg = ui.TextInput(
+        label="Storia del Personaggio",
+        style=discord.TextStyle.paragraph,
+        placeholder="Scrivi qui la storia del tuo pg...",
+        required=True,
+        max_length=2000,
+    )
+
+    async def on_submit(self, interaction: discord.Interaction):
+        await interaction.response.defer(ephemeral=True)
+
+        target_channel = interaction.guild.get_channel(CANALE_BACKGROUND_ID)
+        if not target_channel:
+            await interaction.followup.send(
+                "Canale ricezione background non trovato. Contatta lo staff.",
+                ephemeral=True,
+            )
+            return
+
+        embed = discord.Embed(
+            title="Nuova Candidatura Background",
+            color=discord.Color.gold(),
+            timestamp=datetime.datetime.now(datetime.timezone.utc),
+        )
+        embed.set_author(
+            name=f"{interaction.user.display_name} ({interaction.user.name})",
+            icon_url=interaction.user.display_avatar.url,
+        )
+        embed.add_field(
+            name="Informazioni OOC",
+            value=f"```{self.info_ooc.value}```",
+            inline=False,
+        )
+        embed.add_field(
+            name="Dati IC",
+            value=f"```{self.info_ic.value}```",
+            inline=False,
+        )
+        embed.add_field(
+            name="Storia PG",
+            value=self.storia_pg.value,
+            inline=False,
+        )
+        embed.set_footer(
+            text=f"Autore ID: {interaction.user.id} • In attesa di revisione"
+        )
+
+        sent_msg = await target_channel.send(embed=embed)
+
+        # Aggiunta reazioni per la revisione dello staff
+        await sent_msg.add_reaction("<a:SI_2:1555190974626660352>")
+        await sent_msg.add_reaction("<a:xxx:1555190971451441216>")
+
+        await interaction.followup.send(
+            "Background inviato con successo! Riceverai una notifica in DM appena lo staff lo valuterà.",
+            ephemeral=True,
+        )
+
+
+# --- VIEW PERSISTENTE PANNELLO APERTURA ---
+class PannelloBackgroundView(ui.View):
+    def __init__(self):
+        super().__init__(timeout=None)
+
+    @ui.button(
+        label="Compila Background",
+        style=discord.ButtonStyle.primary,
+        custom_id="btn_send_background_wl",
+        emoji="📝",
+    )
+    async def apri_background(
+        self, interaction: discord.Interaction, button: ui.Button
+    ):
+        # Verifica del ruolo 'Attesa WL'
+        ha_ruolo = any(r.id == ROLE_ATTESA_WL_ID for r in interaction.user.roles)
+        if not ha_ruolo:
+            await interaction.response.send_message(
+                "Non possiedi il ruolo necessario per compilare il background.",
+                ephemeral=True,
+            )
+            return
+
+        await interaction.response.send_modal(BackgroundModal())
+
+
+# --- GESTIONE REAZIONI STAFF & ESITI ---
+class BackgroundHandler(commands.Cog):
+    def __init__(self, bot: commands.Bot):
+        self.bot = bot
+
+    @commands.Cog.listener()
+    async def on_raw_reaction_add(self, payload: discord.RawReactionActionEvent):
+        # Ignora le reazioni del bot stesso
+        if payload.user_id == self.bot.user.id:
+            return
+
+        # Ascolta solo il canale di ricezione specificato
+        if payload.channel_id != CANALE_BACKGROUND_ID:
+            return
+
+        # Riconosce esclusivamente le due emoji specificate
+        emoji_id = payload.emoji.id
+        if emoji_id not in (EMOJI_ACCETTA_ID, EMOJI_RIFIUTA_ID):
+            return
+
+        channel = self.bot.get_channel(payload.channel_id)
+        if not channel:
+            return
+
+        try:
+            message = await channel.fetch_message(payload.message_id)
+        except (discord.NotFound, discord.Forbidden):
+            return
+
+        # Verifica che il messaggio sia del bot e contenga l'embed valido
+        if message.author.id != self.bot.user.id or not message.embeds:
+            return
+
+        embed = message.embeds[0]
+
+        # Evita valutazioni multiple se già processato
+        if "Valutato da:" in (embed.description or ""):
+            return
+
+        # Recupera l'ID dell'utente dal footer
+        footer_text = embed.footer.text or ""
+        if "Autore ID: " not in footer_text:
+            return
+
+        try:
+            utente_id = int(footer_text.split("Autore ID: ")[1].split(" •")[0])
+        except (ValueError, IndexError):
+            return
+
+        guild = self.bot.get_guild(payload.guild_id)
+        staff_member = guild.get_member(payload.user_id) if guild else None
+        staff_name = (
+            staff_member.display_name if staff_member else f"Staff ({payload.user_id})"
+        )
+
+        ora_attuale = datetime.datetime.now()
+        data_ora_str = ora_attuale.strftime("%d/%m/%Y alle %H:%M")
+
+        is_accettato = emoji_id == EMOJI_ACCETTA_ID
+
+        # Aggiornamento embed sul canale Staff
+        embed.color = discord.Color.green() if is_accettato else discord.Color.red()
+        stato_txt = "ACCETTATO" if is_accettato else "RIFIUTATO"
+        embed.description = (
+            f"**Valutato da:** {staff_name}\n"
+            f"**Data e Ora OOC:** {data_ora_str}\n"
+            f"**Esito:** `{stato_txt}`"
+        )
+        embed.set_footer(text=f"Autore ID: {utente_id} • Pratica Chiusa")
+
+        # Rimuove le reazioni per bloccare ulteriori azioni
+        try:
+            await message.clear_reactions()
+        except discord.Forbidden:
+            pass
+
+        await message.edit(embed=embed)
+
+        # Invio esito in DM formattato all'utente
+        target_user = guild.get_member(utente_id) or await self.bot.fetch_user(utente_id)
+        if not target_user:
+            return
+
+        if is_accettato:
+            dm_embed = discord.Embed(
+                title="Esito Candidatura Background: APPROVATO",
+                description=(
+                    f"Congratulazioni {target_user.mention}! Il tuo background è stato valutato positivamente dallo staff.\n\n"
+                    f"**Staffer:** {staff_name}\n"
+                    f"**Data e Ora:** {data_ora_str}\n\n"
+                    "Puoi procedere con le fasi successive del server."
+                ),
+                color=discord.Color.green(),
+            )
+            dm_embed.set_thumbnail(url=guild.icon.url if guild and guild.icon else None)
+        else:
+            dm_embed = discord.Embed(
+                title="Esito Candidatura Background: RESPINTO",
+                description=(
+                    f"Ciao {target_user.mention}, purtroppo il tuo background non ha soddisfatto i criteri richiesti.\n\n"
+                    f"**Staffer:** {staff_name}\n"
+                    f"**Data e Ora:** {data_ora_str}\n\n"
+                    "Rileggi il regolamento e le linee guida prima di riprovare."
+                ),
+                color=discord.Color.red(),
+            )
+            dm_embed.set_thumbnail(url=guild.icon.url if guild and guild.icon else None)
+
+        try:
+            await target_user.send(embed=dm_embed)
+        except discord.Forbidden:
+            # DM chiusi dall'utente
+            pass
+
+@bot.tree.command(name="setup_background", description="Invia il pannello per compilare il background")
+@commands.has_permissions(administrator=True)
+async def setup_background(interaction: discord.Interaction):
+    embed = discord.Embed(
+        title="📋 Richiesta Whitelist • Invio Background",
+        description=(
+            "Benvenuto nella sezione di invio del Background.\n\n"
+            "• **Requisito:** Devi possedere il ruolo <@&1554499278712610896>\n"
+            "• Clicca sul pulsante sottostante per aprire il modulo e compilare i tuoi dati OOC e IC.\n"
+            "• Una volta inviato, lo staff revisionerà la scheda e riceverai l'esito direttamente nei tuoi messaggi privati."
+        ),
+        color=discord.Color.blue()
+    )
+    embed.set_footer(text="Assicurati di avere i messaggi privati (DM) aperti.")
+    
+    # Invia l'embed collegando la View persistente con il bottone
+    await interaction.channel.send(embed=embed, view=PannelloBackgroundView())
+    await interaction.response.send_message("Pannello inviato correttamente in questo canale!", ephemeral=True)
 
 # ------------------------------------------------------------------
 # COMANDO 2: GESTIONE SOLDI DEPOSITO FAZIONE
@@ -8876,6 +9125,7 @@ async def on_ready():
   bot.add_view(PannelloAnagrafeView())
   bot.add_view(DistributorePannelloView(supabase_client=supabase))
   bot.add_view(ApprovazioneStipendioView())
+  bot.add_view(PannelloBackgroundView())
 
   if not gestore_cantieri_loop.is_running():
     gestore_cantieri_loop.start()
