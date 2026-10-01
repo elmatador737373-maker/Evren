@@ -764,11 +764,11 @@ from openpyxl.styles import Font, Alignment, PatternFill, Border, Side
 # =============================================================================
 # --- CONFIGURAZIONI & ID (INSERISCI I TUOI DATI) ---
 # =============================================================================
-CANALE_INCARICHI_ID = 123456789012345678       # Canale dove lo staff scrive gli incarichi
-RUOLO_STAFF_INCARICO_ID = 123456789012345678   # Ruolo staff autorizzato a registrare incarichi
-RUOLO_AMMINISTRAZIONE_ID = 123456789012345678  # Ruolo autorizzato al comando /report
-SERVER_STAFF_ID = 123456789012345678           # ID server secondario staff
-CANALE_REPORT_EXCEL_ID = 123456789012345678    # Canale dove viene inviato il file Excel
+CANALE_INCARICHI_ID = 1550814668421865492       # Canale dove lo staff scrive gli incarichi
+RUOLO_STAFF_INCARICO_ID = 1550829235369672774   # Ruolo staff autorizzato a registrare incarichi
+RUOLO_AMMINISTRAZIONE_ID = 1550826263017562183  # Ruolo autorizzato al comando /report
+SERVER_STAFF_ID = 1550809455405305916           # ID server secondario staff
+CANALE_REPORT_EXCEL_ID = 1550842072007835649    # Canale dove viene inviato il file Excel
 
 # Nota: Assicurati che l'oggetto `supabase` sia già definito e inizializzato altrove nel tuo script principale.
 
