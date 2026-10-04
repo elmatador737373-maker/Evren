@@ -8781,7 +8781,11 @@ import string
     description="Mostra la tua carta d'identità ufficiale in chat.",
 )
 async def mostra_documento(interaction: discord.Interaction):
-    await interaction.response.defer(ephemeral=False)
+    # 1. Invia subito il messaggio di caricamento personalizzato invece del defer()
+    await interaction.response.send_message(
+        "⏳ Il tuo documento è in fase di caricamento, attendere prego...", 
+        ephemeral=False
+    )
 
     user_id = str(interaction.user.id)
     response = (
@@ -8792,14 +8796,16 @@ async def mostra_documento(interaction: discord.Interaction):
     )
 
     if not response.data:
+        # 2. Se non ha il documento, cancelliamo il messaggio di caricamento pubblico
+        # e inviamo il messaggio di errore privato (ephemeral)
+        await interaction.delete_original_response()
         await interaction.followup.send(
-            "❌ Non possiedi ancora un documento registrato! Vai su https://discord.com/channels/1340063967346688001/1554500961324761119 per crearlo.",
+            "❌ Non possiedi ancora un documento registrato! Vai su <#1554500961324761119> per crearlo.",
             ephemeral=True,
         )
         return
 
     doc = response.data[0]
-
     doc_number = doc.get("doc_number")
 
     # Se non c'è un numero documento, lo genera
@@ -8828,8 +8834,11 @@ async def mostra_documento(interaction: discord.Interaction):
     
     file_documento = await renderizza_html_in_immagine(html_content)
 
-    await interaction.followup.send(
-        "🪪 Ecco la tua carta d'identità ufficiale:", file=file_documento
+    # 3. Sostituisce il messaggio di caricamento con l'immagine finale
+    # Nota: per gli edit in discord.py si usa 'attachments=' invece di 'file='
+    await interaction.edit_original_response(
+        content="🪪 Ecco la tua carta d'identità ufficiale:", 
+        attachments=[file_documento]
     )
 
 
