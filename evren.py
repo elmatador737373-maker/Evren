@@ -748,6 +748,357 @@ import datetime
 import discord
 from discord import ui
 from discord.ext import commands
+import io
+import html
+import discord
+from discord.ext import commands
+from discord import app_commands
+from datetime import datetime
+
+# ----------------- CONFIGURAZIONE ----------------- #
+# Configurazione 1:1 per ciascuna tipologia con Categoria e Ruolo Esclusivo
+TICKET_CONFIG = {
+    "supporto": {
+        "label": "Richiedi Supporto",
+        "emoji": "📌",
+        "category_id": 1555744095157100564,  # ID Categoria Supporto
+        "role_id": 1506696249292886108,      # Solo chi ha QUESTO ruolo vede il ticket
+        "prefix": "supporto"
+    },
+    "amministrazione": {
+        "label": "Richiesta Amministrazione",
+        "emoji": "⚜️",
+        "category_id": 1555744095157100564,  # ID Categoria Admin
+        "role_id": 1506696247908765789,      # Solo chi ha QUESTO ruolo vede il ticket
+        "prefix": "admin"
+    },
+    "partnership": {
+        "label": "Richiesta Partnership",
+        "emoji": "🤝",
+        "category_id": 1555744095157100564,  # ID Categoria Partnership
+        "role_id": 1506696249292886108,      # Solo chi ha QUESTO ruolo vede il ticket
+        "prefix": "partner"
+    },
+    "bug": {
+        "label": "Segnala Un Bug",
+        "emoji": "📮",
+        "category_id": 1555744095157100564,  # ID Categoria Bug
+        "role_id": 1506696249292886108,      # Solo chi ha QUESTO ruolo vede il ticket
+        "prefix": "bug"
+    },
+    "permadeath": {
+        "label": "Richiedi PermaDeath/Jail",
+        "emoji": "🏴‍☠️",
+        "category_id": 1555744095157100564,  # ID Categoria Perma/Jail
+        "role_id": 1506696247908765789,      # Solo chi ha QUESTO ruolo vede il ticket
+        "prefix": "perma"
+    }
+}
+
+LOG_CHANNEL_ID = 1506696329231995084  # ID Canale Log e Transcript Staff
+
+
+# ----------------- GENERAZIONE TRANSCRIPT HTML ----------------- #
+async def generate_html_transcript(channel: discord.TextChannel) -> bytes:
+    """Genera un transcript HTML formattato in stile Discord Dark restituendo i byte."""
+    messages = [msg async for msg in channel.history(limit=1000, oldest_first=True)]
+    
+    html_content = f"""<!DOCTYPE html>
+<html lang="it">
+<head>
+    <meta charset="UTF-8">
+    <title>Transcript #{channel.name}</title>
+    <style>
+        body {{
+            background-color: #313338;
+            color: #dbdee1;
+            font-family: 'gg sans', 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            margin: 0;
+            padding: 20px;
+        }}
+        .header {{
+            background: #2b2d31;
+            padding: 15px 20px;
+            border-radius: 8px;
+            margin-bottom: 20px;
+            border-left: 5px solid #d4af37;
+        }}
+        .msg-container {{
+            display: flex;
+            margin-bottom: 14px;
+        }}
+        .avatar {{
+            width: 42px;
+            height: 42px;
+            border-radius: 50%;
+            margin-right: 15px;
+        }}
+        .msg-body {{
+            flex-grow: 1;
+        }}
+        .author {{
+            font-weight: 600;
+            color: #f2f3f5;
+        }}
+        .timestamp {{
+            font-size: 0.75rem;
+            color: #949ba4;
+            margin-left: 8px;
+        }}
+        .content {{
+            margin-top: 4px;
+            line-height: 1.4;
+            white-space: pre-wrap;
+            word-break: break-word;
+        }}
+        .attachment {{
+            margin-top: 6px;
+            font-size: 0.85rem;
+            color: #00a8fc;
+        }}
+    </style>
+</head>
+<body>
+    <div class="header">
+        <h2 style="margin: 0; color: #f2f3f5;">Imperial Rome RP — Transcript #{channel.name}</h2>
+        <p style="margin: 5px 0 0 0; color: #949ba4;">Generato il: {datetime.now().strftime('%d/%m/%Y alle %H:%M:%S')}</p>
+    </div>
+"""
+    for msg in messages:
+        if not msg.content and not msg.attachments:
+            continue
+        avatar_url = msg.author.display_avatar.url
+        timestamp = msg.created_at.strftime('%d/%m/%Y %H:%M')
+        safe_text = html.escape(msg.clean_content)
+        
+        html_content += f"""
+    <div class="msg-container">
+        <img class="avatar" src="{avatar_url}" alt="avatar">
+        <div class="msg-body">
+            <div>
+                <span class="author">{html.escape(msg.author.display_name)}</span>
+                <span class="timestamp">{timestamp}</span>
+            </div>
+            <div class="content">{safe_text}</div>
+"""
+        for att in msg.attachments:
+            html_content += f'<div class="attachment">📎 Allegato: <a href="{att.url}" target="_blank" style="color: #00a8fc;">{html.escape(att.filename)}</a></div>'
+            
+        html_content += """
+        </div>
+    </div>
+"""
+    html_content += "</body></html>"
+    return html_content.encode("utf-8")
+
+
+# ----------------- VIEW PERSISTENTE: CONTROLLI TICKET ----------------- #
+class TicketControlView(discord.ui.View):
+    def __init__(self):
+        super().__init__(timeout=None)
+
+    @discord.ui.button(
+        label="Chiudi Ticket", 
+        style=discord.ButtonStyle.danger, 
+        emoji="🔒", 
+        custom_id="btn_close_ticket_persistent"
+    )
+    async def close_ticket(self, interaction: discord.Interaction, button: discord.ui.Button):
+        await interaction.response.defer(ephemeral=True)
+        channel = interaction.channel
+        guild = interaction.guild
+
+        # Ricava l'ID dell'utente dal topic del canale
+        ticket_owner_id = None
+        if channel.topic and channel.topic.startswith("ticket-user-"):
+            try:
+                ticket_owner_id = int(channel.topic.replace("ticket-user-", ""))
+            except ValueError:
+                pass
+
+        # Genera il file del transcript in memoria
+        transcript_raw = await generate_html_transcript(channel)
+        file_staff = discord.File(io.BytesIO(transcript_raw), filename=f"transcript-{channel.name}.html")
+
+        # 1. Invio del transcript in DM al cittadino
+        dm_sent = False
+        if ticket_owner_id:
+            ticket_owner = guild.get_member(ticket_owner_id) or await interaction.client.fetch_user(ticket_owner_id)
+            if ticket_owner:
+                try:
+                    file_dm = discord.File(io.BytesIO(transcript_raw), filename=f"transcript-{channel.name}.html")
+                    dm_embed = discord.Embed(
+                        title="🏛️ Imperial Rome Full RP — Ticket Archiviato",
+                        description=(
+                            f"Salve {ticket_owner.mention},\n"
+                            f"Il tuo ticket **#{channel.name}** è stato concluso e archiviato con successo dallo staff.\n\n"
+                            "In allegato trovi il file HTML interattivo con l'intera cronologia dei messaggi."
+                        ),
+                        color=0xd4af37,
+                        timestamp=datetime.now()
+                    )
+                    dm_embed.add_field(name="Chiuso Da", value=f"{interaction.user.display_name}", inline=True)
+                    dm_embed.add_field(name="Server", value=guild.name, inline=True)
+                    dm_embed.set_footer(text="Imperial Rome RP • Senatus Populusque Romanus")
+                    
+                    await ticket_owner.send(embed=dm_embed, file=file_dm)
+                    dm_sent = True
+                except discord.Forbidden:
+                    dm_sent = False
+
+        # 2. Invio nel canale Log dello Staff
+        log_channel = guild.get_channel(LOG_CHANNEL_ID)
+        if log_channel:
+            log_embed = discord.Embed(
+                title="📜 Ticket Chiuso & Archiviato",
+                description=f"Il canale **#{channel.name}** è stato archiviato.",
+                color=0x8b0000,
+                timestamp=datetime.now()
+            )
+            log_embed.set_author(name="Imperial Rome RP Logs", icon_url=guild.icon.url if guild.icon else None)
+            log_embed.add_field(name="Chiuso Da", value=f"{interaction.user.mention} (`{interaction.user.id}`)", inline=True)
+            log_embed.add_field(
+                name="Aperto Da", 
+                value=f"<@{ticket_owner_id}> (`{ticket_owner_id}`)" if ticket_owner_id else "Sconosciuto", 
+                inline=True
+            )
+            log_embed.add_field(name="DM Inviato", value="✅ Sì" if dm_sent else "⚠ No (DM Chiusi)", inline=True)
+            log_embed.set_footer(text="Imperial Rome Full RP • Sistema Ticket")
+            
+            await log_channel.send(embed=log_embed, file=file_staff)
+
+        await interaction.followup.send("Ticket archiviato. Chiusura in corso...", ephemeral=True)
+        await channel.delete(reason=f"Ticket chiuso da {interaction.user}")
+
+
+# ----------------- VIEW PERSISTENTE: SELETTORE PANNELLO ----------------- #
+class TicketPanelView(discord.ui.View):
+    def __init__(self):
+        super().__init__(timeout=None)
+
+    @discord.ui.select(
+        placeholder="Seleziona la tipologia di ticket da aprire...",
+        custom_id="select_ticket_category_persistent",
+        min_values=1,
+        max_values=1,
+        options=[
+            discord.SelectOption(
+                label=cfg["label"],
+                value=key,
+                emoji=cfg["emoji"],
+                description=f"Apri un ticket per {cfg['label']}"
+            )
+            for key, cfg in TICKET_CONFIG.items()
+        ]
+    )
+    async def select_ticket_callback(self, interaction: discord.Interaction, select: discord.ui.Select):
+        key = select.values[0]
+        cfg = TICKET_CONFIG[key]
+        guild = interaction.guild
+        user = interaction.user
+
+        category = guild.get_channel(cfg["category_id"])
+        staff_role = guild.get_role(cfg["role_id"])
+
+        if not category or not isinstance(category, discord.CategoryChannel):
+            return await interaction.response.send_message("⚠️ Categoria non configurata o inesistente!", ephemeral=True)
+
+        if not staff_role:
+            return await interaction.response.send_message("⚠️ Ruolo di supporto per questa categoria non trovato!", ephemeral=True)
+
+        # Controllo anti-duplicati: verifica se l'utente ha già un canale aperto nella stessa categoria
+        existing_channel = discord.utils.get(category.text_channels, topic=f"ticket-user-{user.id}")
+        if existing_channel:
+            return await interaction.response.send_message(
+                f"Hai già un ticket aperto in questa categoria: {existing_channel.mention}",
+                ephemeral=True
+            )
+
+        await interaction.response.defer(ephemeral=True)
+
+        # Permessi rigidi ed esclusivi:
+        # - @everyone: Non vede nulla
+        # - user (cittadino): Vede, invia messaggi, carica file e legge storico
+        # - staff_role (ruolo di questo specifico ticket): Unico ruolo autorizzato a vedere e rispondere
+        # - guild.me (il bot): Amministrazione del canale
+        overwrites = {
+            guild.default_role: discord.PermissionOverwrite(view_channel=False),
+            user: discord.PermissionOverwrite(
+                view_channel=True, 
+                send_messages=True, 
+                attach_files=True, 
+                embed_links=True, 
+                read_message_history=True
+            ),
+            staff_role: discord.PermissionOverwrite(
+                view_channel=True, 
+                send_messages=True, 
+                attach_files=True, 
+                embed_links=True, 
+                read_message_history=True
+            ),
+            guild.me: discord.PermissionOverwrite(
+                view_channel=True, 
+                send_messages=True, 
+                manage_channels=True,
+                read_message_history=True
+            )
+        }
+
+        channel_name = f"{cfg['prefix']}-{user.name}".lower().replace(" ", "-")
+        ticket_channel = await guild.create_text_channel(
+            name=channel_name,
+            category=category,
+            overwrites=overwrites,
+            topic=f"ticket-user-{user.id}"
+        )
+
+        ticket_embed = discord.Embed(
+            title=f"{cfg['emoji']} {cfg['label']}",
+            description=(
+                f"Ave, {user.mention}!\n\n"
+                f"La tua richiesta è stata inoltrata ai membri con ruolo {staff_role.mention}.\n"
+                "Un addetto prenderà in carico la tua segnalazione il prima possibile.\n\n"
+                "📌 **Cosa fare ora:**\n"
+                "• Descrivi nei dettagli la motivazione del ticket.\n"
+                "• Allega ID Discord/Steam del giocatore o prove video/screen se necessario.\n\n"
+                "*Premi il pulsante qui sotto per archiviare e chiudere il ticket.*"
+            ),
+            color=0xd4af37
+        )
+        ticket_embed.set_thumbnail(url=guild.icon.url if guild.icon else None)
+        ticket_embed.set_footer(text="Imperial Rome Full RP • Gestione Ticket")
+
+        ping_content = f"{user.mention} | {staff_role.mention}"
+        await ticket_channel.send(content=ping_content, embed=ticket_embed, view=TicketControlView())
+
+        await interaction.followup.send(f"✅ Ticket creato con successo: {ticket_channel.mention}", ephemeral=True)
+
+
+# ----------------- COMANDO SETUP PANNELLO ----------------- #
+@app_commands.command(name="setup_ticket", description="Invia il pannello ticket nel canale corrente.")
+@app_commands.default_permissions(administrator=True)
+async def setup_ticket(interaction: discord.Interaction):
+    embed = discord.Embed(
+        title="🏛️ IMPERIAL ROME FULL RP — CENTRO ASSISTENZA",
+        description=(
+            "Benvenuto nel centro comunicazioni dell'Impero.\n\n"
+            "Seleziona dal menu a tendina sottostante la categoria più consona alla tua esigenza:\n\n"
+            "📌 **Richiedi Supporto** — Assistenza generale e dubbi\n"
+            "⚜️ **Richiesta Amministrazione** — Questioni burocratiche e reclami\n"
+            "🤝 **Richiesta Partnership** — Collaborazioni e affiliazioni\n"
+            "📮 **Segnala Un Bug** — Segnalazione glitch tecnici e anomalie\n"
+            "🏴‍☠️ **Richiedi PermaDeath/Jail** — Richieste relative alle azioni RP pesanti\n\n"
+            "*Ti invitiamo a non aprire ticket multipli e a mantenere un linguaggio consono.*"
+        ),
+        color=0xd4af37
+    )
+    if interaction.guild.icon:
+        embed.set_thumbnail(url=interaction.guild.icon.url)
+    embed.set_footer(text="Imperial Rome RP • Senatus Populusque Romanus")
+
+    await interaction.channel.send(embed=embed, view=TicketPanelView())
+    await interaction.response.send_message("Pannello ticket configurato con successo!", ephemeral=True)
 
 import datetime
 import discord
@@ -9599,6 +9950,8 @@ async def on_ready():
   bot.add_view(DistributorePannelloView(supabase_client=supabase))
   bot.add_view(ApprovazioneStipendioView())
   bot.add_view(PannelloBackgroundView())
+  bot.add_view(TicketPanelView())
+  bot.add_view(TicketControlView())
 
   if not gestore_cantieri_loop.is_running():
     gestore_cantieri_loop.start()
