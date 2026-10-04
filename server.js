@@ -10,35 +10,52 @@ app.use(express.urlencoded({ limit: '50mb', extended: true }));
 const USER_ID = process.env.API_USER_ID || "Evren";
 const API_KEY = process.env.API_KEY || "Evren";
 
-// CODA SEQUENZIALE: Esegue una sola richiesta di rendering alla volta per evitare picchi di RAM
-let activeRenderPromise = Promise.resolve();
+// --- GESTIONE CODA AVANZATA E LIMITI DI CARICO ---
+const MAX_QUEUE_SIZE = 10;
+const requestQueue = [];
+let isProcessing = false;
 
-function enqueueRender(task) {
-  const result = activeRenderPromise.then(task, task);
-  activeRenderPromise = result.catch(() => {}); 
-  return result;
-}
+// --- GESTIONE BROWSER PERSISTENTE ---
+let globalBrowser = null;
+let rendersCount = 0;
+const MAX_RENDERS_BEFORE_RESTART = 50; // Riavvia il browser ogni 50 render per svuotare la RAM
 
-// Inizializzazione browser ultra-leggero
-async function getBrowser() {
-  return await puppeteer.launch({
+async function initBrowser() {
+  if (globalBrowser) return globalBrowser;
+
+  console.log("🚀 Avvio nuova istanza persistente di Chromium...");
+  globalBrowser = await puppeteer.launch({
     args: [
       ...chromium.args,
-      '--single-process',                  // Esegue tutto su un solo processo
+      '--single-process',
       '--disable-gpu',
       '--disable-dev-shm-usage',
       '--no-sandbox',
       '--no-zygote',
       '--disable-extensions',
       '--disable-background-networking',
-      '--disable-syntax-highlighting',
-      '--disable-spell-checking',
-      '--js-flags="--max-old-space-size=256"' // Impedisce al motore JS di superare 256MB di RAM
+      '--disable-web-security', // Disabilita CORS per velocizzare il caricamento locale
+      '--js-flags="--max-old-space-size=256"'
     ],
     defaultViewport: chromium.defaultViewport,
     executablePath: await chromium.executablePath(),
     headless: chromium.headless,
   });
+
+  // Se Chromium crasha internamente, scarta l'istanza per farla riavviare
+  globalBrowser.on('disconnected', () => {
+    console.warn("⚠️ Browser disconnesso. Verrà riavviato alla prossima richiesta.");
+    globalBrowser = null;
+  });
+
+  return globalBrowser;
+}
+
+async function closeBrowser() {
+  if (globalBrowser) {
+    await globalBrowser.close().catch(() => {});
+    globalBrowser = null;
+  }
 }
 
 // Middleware di autenticazione HTTP Basic Auth
@@ -57,42 +74,71 @@ function authenticate(req, res, next) {
   return res.status(403).json({ error: 'Credenziali non valide.' });
 }
 
+// --- LOGICA DI ELABORAZIONE CODA ---
+async function processQueue() {
+  if (isProcessing || requestQueue.length === 0) return;
+  isProcessing = true;
+
+  while (requestQueue.length > 0) {
+    const { req, res } = requestQueue.shift();
+
+    // OTTIMIZZAZIONE: Se il client si è disconnesso nel frattempo, non fare il rendering
+    if (req.destroyed) {
+      console.log("⏭️ Client disconnesso prima del render, salto la richiesta.");
+      continue;
+    }
+
+    await executeRender(req, res);
+  }
+
+  isProcessing = false;
+}
+
 // Logica di rendering dell'immagine
-async function processRender(req, res) {
-  let browser = null;
+async function executeRender(req, res) {
+  let context = null;
   let page = null;
 
   try {
+    // 1. Manutenzione preventiva per memory leaks
+    rendersCount++;
+    if (rendersCount > MAX_RENDERS_BEFORE_RESTART) {
+      console.log("🔄 Riavvio programmato del browser per liberare RAM...");
+      await closeBrowser();
+      rendersCount = 0;
+      if (global.gc) global.gc(); // Forza il Garbage Collector di Node
+    }
+
+    const browser = await initBrowser();
+    
+    // 2. Isolamento: usa un contesto incognito per ogni rendering (più leggero di una nuova finestra)
+    context = await browser.createIncognitoBrowserContext();
+    page = await context.newPage();
+
+    // Intercetta e blocca risorse inutili in background
+    await page.setRequestInterception(true);
+    page.on('request', (request) => {
+      const type = request.resourceType();
+      // Blocchiamo immagini esterne (se non richieste dal tuo HTML), font e media
+      if (['media', 'other', 'websocket'].includes(type)) {
+        request.abort();
+      } else {
+        request.continue();
+      }
+    });
+
     const { 
       html = '', 
       css = '', 
       viewport_width = 820, 
       viewport_height = 520, 
-      device_scale = 1 // Valore predefinito a 1 per risparmiare fino a 4x di RAM
+      device_scale = 1 
     } = req.body;
 
-    if (!html) {
-      return res.status(400).json({ error: 'Il campo HTML è obbligatorio.' });
-    }
-
-    browser = await getBrowser();
-    page = await browser.newPage();
-
-    // Intercetta e blocca risorse inutili in background
-    await page.setRequestInterception(true);
-    page.on('request', (req) => {
-      const type = req.resourceType();
-      if (['media', 'other'].includes(type)) {
-        req.abort();
-      } else {
-        req.continue();
-      }
-    });
-
     await page.setViewport({
-      width: parseInt(viewport_width, 10),
-      height: parseInt(viewport_height, 10),
-      deviceScaleFactor: parseFloat(device_scale)
+      width: parseInt(viewport_width, 10) || 820,
+      height: parseInt(viewport_height, 10) || 520,
+      deviceScaleFactor: parseFloat(device_scale) || 1
     });
 
     const fullContent = `
@@ -112,45 +158,53 @@ async function processRender(req, res) {
       </html>
     `;
 
-    // Timeout rigido a 15 secondi per evitare che pagine difettose blocchino il server
+    // Timeout ridotto a 10s: se l'HTML locale non si carica in 10s, c'è un problema
     await page.setContent(fullContent, { 
       waitUntil: 'domcontentloaded',
-      timeout: 15000 
+      timeout: 10000 
     });
 
     const imageBuffer = await page.screenshot({ type: 'png' });
 
-    res.setHeader('Content-Type', 'image/png');
-    res.send(imageBuffer);
+    if (!res.headersSent) {
+      res.setHeader('Content-Type', 'image/png');
+      res.send(imageBuffer);
+    }
 
   } catch (error) {
     console.error('❌ Errore durante il rendering:', error.message);
-    res.status(500).json({ error: 'Errore durante il rendering dell\'immagine o Timeout superato.' });
-  } finally {
-    // Pulizia garantita delle risorse aperte
-    if (page) await page.close().catch(() => {});
-    if (browser) await browser.close().catch(() => {});
-
-    // Invocazione esplicita del Garbage Collector per liberare RAM immediatamente
-    if (global.gc) {
-      global.gc();
+    if (!res.headersSent) {
+      res.status(500).json({ error: 'Errore durante il rendering o Timeout superato.' });
     }
+  } finally {
+    // Chiusura garantita della tab e del contesto isolato
+    if (page) await page.close().catch(() => {});
+    if (context) await context.close().catch(() => {});
   }
 }
 
-// Endpoint principale con gestione in coda
+// Endpoint principale
 app.post('/', authenticate, (req, res) => {
-  enqueueRender(() => processRender(req, res));
+  if (!req.body.html) {
+    return res.status(400).json({ error: 'Il campo HTML è obbligatorio.' });
+  }
+
+  // Se la coda è troppo lunga, rifiuta per proteggere il server
+  if (requestQueue.length >= MAX_QUEUE_SIZE) {
+    return res.status(429).json({ error: 'Server troppo occupato. Riprova tra poco.' });
+  }
+
+  requestQueue.push({ req, res });
+  processQueue(); // Avvia l'elaborazione se non è già in corso
 });
 
-// Endpoint di Health Check per UptimeRobot o monitoraggio
+// Endpoint di Health Check per UptimeRobot
 app.get('/health', (req, res) => {
-  res.json({ status: 'OK' });
+  res.status(200).json({ status: 'OK', queueSize: requestQueue.length, memoryLimit: 'Stable' });
 });
 
-const PORT = process.env.PORT || 10000; // Render usa tipicamente la 10000
+const PORT = process.env.PORT || 10000;
 
-// Aggiungi '0.0.0.0' come secondo parametro!
 app.listen(PORT, '0.0.0.0', () => {
-  console.log(`🚀 Server in ascolto sulla porta ${PORT}`);
+  console.log(`🚀 Server in ascolto su 0.0.0.0:${PORT}`);
 });
