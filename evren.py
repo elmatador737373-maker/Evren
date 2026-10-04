@@ -1045,7 +1045,7 @@ class TicketPanelView(discord.ui.View):
             )
         }
 
-        channel_name = f"{cfg['prefix']}-{user.name}".lower().replace(" ", "-")
+        channel_name = f"ticket-{cfg['prefix']}-{user.name}".lower().replace(" ", "-")
         ticket_channel = await guild.create_text_channel(
             name=channel_name,
             category=category,
