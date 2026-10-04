@@ -1229,6 +1229,532 @@ async def esegui_invio_report(titolo: str, descrizione: str):
 
     await canale_report.send(embed=embed, file=discord_file)
 
+import discord
+from discord.ext import commands
+import datetime
+
+# ---------------------------------------------------------
+# CONFIGURAZIONE CANALI LOG (Inserisci gli ID numerici dei canali)
+# ---------------------------------------------------------
+LOG_CHANNELS = {
+    "message": 1554500746496581713,     # ╰🖨️╮Message-Log
+    "kick_ban": 1554500752905605220,    # ╰🚫╮Kick-Ban-Log
+    "channel": 1554500755916984452,     # ╰📦╮Channel-Log
+    "role": 1554500759092203681,        # ╰🗳️╮Role-Log
+    "member": 1554500762292322417,      # ╰👱╮Member-Log
+    "mod": 1554500766092230707,         # ╰📗╮Mod-Log
+    "staff": 1554500772404920520,       # ╰⛑️╮Staff-Log
+    "voice": 1555231661891788870        # ╰🔊╮Voice-Logs
+}
+
+async def send_log(guild: discord.Guild, log_type: str, embed: discord.Embed):
+    channel_id = LOG_CHANNELS.get(log_type)
+    if not channel_id:
+        return
+    channel = guild.get_channel(channel_id)
+    if channel:
+        try:
+            await channel.send(embed=embed)
+        except discord.Forbidden:
+            print(f"[ERRORE] Permessi insufficienti per inviare log nel canale {channel.name}")
+        except Exception as e:
+            print(f"[ERRORE] Invio log fallito ({log_type}): {e}")
+
+# =========================================================
+# 1. MESSAGE LOGS (╰🖨️╮Message-Log)
+# =========================================================
+
+@bot.event
+async def on_message_delete(message: discord.Message):
+    if message.author.bot or not message.guild:
+        return
+
+    responsible_staff = "*Eliminato dall'autore o sconosciuto*"
+    try:
+        async for entry in message.guild.audit_logs(limit=3, action=discord.AuditLogAction.message_delete):
+            if entry.target.id == message.author.id and (datetime.datetime.now(datetime.timezone.utc) - entry.created_at).total_seconds() < 10:
+                responsible_staff = f"{entry.user.mention} (`{entry.user.id}`)"
+                break
+    except Exception:
+        pass
+
+    embed = discord.Embed(
+        title="🗑️ Messaggio Eliminato",
+        description="Un messaggio è stato rimosso da un canale testuale.",
+        color=discord.Color.dark_red(),
+        timestamp=datetime.datetime.now(datetime.timezone.utc)
+    )
+    embed.add_field(name="Autore", value=f"{message.author.mention} (`{message.author.id}`)", inline=True)
+    embed.add_field(name="Canale", value=f"{message.channel.mention} (`{message.channel.id}`)", inline=True)
+    embed.add_field(name="Staff Responsabile", value=responsible_staff, inline=False)
+    
+    content = message.clean_content if message.clean_content else "*Nessun contenuto testuale*"
+    if len(content) > 1024:
+        content = content[:1020] + "..."
+    embed.add_field(name="Contenuto Eliminato", value=f"> {content}", inline=False)
+
+    if message.attachments:
+        attachments_info = "\n".join([f"• [{att.filename}]({att.url})" for att in message.attachments])
+        embed.add_field(name="Allegati", value=attachments_info, inline=False)
+
+    embed.set_footer(text="Imperial Rome Full RP • Message-Log", icon_url=message.guild.icon.url if message.guild.icon else None)
+    await send_log(message.guild, "message", embed)
+
+@bot.event
+async def on_message_edit(before: discord.Message, after: discord.Message):
+    if before.author.bot or not before.guild or before.content == after.content:
+        return
+
+    embed = discord.Embed(
+        title="✏️ Messaggio Modificato",
+        description="Un utente ha modificato il contenuto di un messaggio.",
+        color=discord.Color.gold(),
+        timestamp=datetime.datetime.now(datetime.timezone.utc)
+    )
+    embed.add_field(name="Autore", value=f"{before.author.mention} (`{before.author.id}`)", inline=True)
+    embed.add_field(name="Canale", value=f"{before.channel.mention} (`{before.channel.id}`)", inline=True)
+    embed.add_field(name="Link al Messaggio", value=f"[Vai al Messaggio]({after.jump_url})", inline=False)
+
+    old_c = before.clean_content if before.clean_content else "*Vuoto*"
+    new_c = after.clean_content if after.clean_content else "*Vuoto*"
+    if len(old_c) > 1020: old_c = old_c[:1017] + "..."
+    if len(new_c) > 1020: new_c = new_c[:1017] + "..."
+
+    embed.add_field(name="Prima della modifica", value=f"> {old_c}", inline=False)
+    embed.add_field(name="Dopo la modifica", value=f"> {new_c}", inline=False)
+    embed.set_footer(text="Imperial Rome Full RP • Message-Log", icon_url=before.guild.icon.url if before.guild.icon else None)
+    await send_log(before.guild, "message", embed)
+
+# =========================================================
+# 2. KICK / BAN LOGS (╰🚫╮Kick-Ban-Log)
+# =========================================================
+
+@bot.event
+async def on_member_ban(guild: discord.Guild, user: discord.User | discord.Member):
+    staff = "*Non specificato*"
+    reason = "*Nessun motivo fornito*"
+    try:
+        async for entry in guild.audit_logs(limit=2, action=discord.AuditLogAction.ban):
+            if entry.target.id == user.id:
+                staff = f"{entry.user.mention} (`{entry.user.id}`)"
+                reason = entry.reason or reason
+                break
+    except Exception:
+        pass
+
+    embed = discord.Embed(
+        title="🔨 Membro Bannato",
+        description="Un utente è stato bandito permanentemente dal server.",
+        color=discord.Color.red(),
+        timestamp=datetime.datetime.now(datetime.timezone.utc)
+    )
+    embed.add_field(name="Utente", value=f"{user.mention} (`{user.name}` | `{user.id}`)", inline=False)
+    embed.add_field(name="Staff Responsabile", value=staff, inline=True)
+    embed.add_field(name="Motivazione", value=f"> {reason}", inline=False)
+    embed.set_thumbnail(url=user.display_avatar.url)
+    embed.set_footer(text="Imperial Rome Full RP • Kick-Ban-Log")
+    await send_log(guild, "kick_ban", embed)
+
+@bot.event
+async def on_member_unban(guild: discord.Guild, user: discord.User):
+    staff = "*Non specificato*"
+    reason = "*Nessuna motivazione*"
+    try:
+        async for entry in guild.audit_logs(limit=2, action=discord.AuditLogAction.unban):
+            if entry.target.id == user.id:
+                staff = f"{entry.user.mention} (`{entry.user.id}`)"
+                reason = entry.reason or reason
+                break
+    except Exception:
+        pass
+
+    embed = discord.Embed(
+        title="🔓 Membro Sbannato",
+        description="Il ban dell'utente è stato revocato.",
+        color=discord.Color.green(),
+        timestamp=datetime.datetime.now(datetime.timezone.utc)
+    )
+    embed.add_field(name="Utente", value=f"{user.mention} (`{user.name}` | `{user.id}`)", inline=False)
+    embed.add_field(name="Staff Responsabile", value=staff, inline=True)
+    embed.add_field(name="Motivazione", value=f"> {reason}", inline=False)
+    embed.set_thumbnail(url=user.display_avatar.url)
+    embed.set_footer(text="Imperial Rome Full RP • Kick-Ban-Log")
+    await send_log(guild, "kick_ban", embed)
+
+# =========================================================
+# 3. CHANNEL LOGS (╰📦╮Channel-Log)
+# =========================================================
+
+@bot.event
+async def on_guild_channel_create(channel: discord.abc.GuildChannel):
+    staff = "*Non identificato*"
+    try:
+        async for entry in channel.guild.audit_logs(limit=2, action=discord.AuditLogAction.channel_create):
+            if entry.target.id == channel.id:
+                staff = f"{entry.user.mention} (`{entry.user.id}`)"
+                break
+    except Exception:
+        pass
+
+    embed = discord.Embed(
+        title="📁 Canale Creato",
+        description=f"È stato creato un nuovo canale: {channel.name}",
+        color=discord.Color.blue(),
+        timestamp=datetime.datetime.now(datetime.timezone.utc)
+    )
+    embed.add_field(name="Canale", value=f"{channel.mention} (`{channel.id}`)", inline=True)
+    embed.add_field(name="Categoria", value=channel.category.name if channel.category else "*Nessuna*", inline=True)
+    embed.add_field(name="Tipo", value=str(channel.type).capitalize(), inline=True)
+    embed.add_field(name="Staff Responsabile", value=staff, inline=False)
+    embed.set_footer(text="Imperial Rome Full RP • Channel-Log")
+    await send_log(channel.guild, "channel", embed)
+
+@bot.event
+async def on_guild_channel_delete(channel: discord.abc.GuildChannel):
+    staff = "*Non identificato*"
+    try:
+        async for entry in channel.guild.audit_logs(limit=2, action=discord.AuditLogAction.channel_delete):
+            if entry.target.id == channel.id:
+                staff = f"{entry.user.mention} (`{entry.user.id}`)"
+                break
+    except Exception:
+        pass
+
+    embed = discord.Embed(
+        title="🗑️ Canale Eliminato",
+        description=f"Il canale **#{channel.name}** è stato rimosso.",
+        color=discord.Color.dark_grey(),
+        timestamp=datetime.datetime.now(datetime.timezone.utc)
+    )
+    embed.add_field(name="Nome", value=channel.name, inline=True)
+    embed.add_field(name="ID", value=f"`{channel.id}`", inline=True)
+    embed.add_field(name="Staff Responsabile", value=staff, inline=False)
+    embed.set_footer(text="Imperial Rome Full RP • Channel-Log")
+    await send_log(channel.guild, "channel", embed)
+
+@bot.event
+async def on_guild_channel_update(before: discord.abc.GuildChannel, after: discord.abc.GuildChannel):
+    if before.name == after.name and before.category == after.category:
+        return
+
+    staff = "*Non identificato*"
+    try:
+        async for entry in before.guild.audit_logs(limit=2, action=discord.AuditLogAction.channel_update):
+            if entry.target.id == before.id:
+                staff = f"{entry.user.mention} (`{entry.user.id}`)"
+                break
+    except Exception:
+        pass
+
+    embed = discord.Embed(
+        title="⚙️ Canale Modificato",
+        color=discord.Color.orange(),
+        timestamp=datetime.datetime.now(datetime.timezone.utc)
+    )
+    embed.add_field(name="Canale", value=f"{after.mention} (`{after.id}`)", inline=False)
+    if before.name != after.name:
+        embed.add_field(name="Nome Precedente", value=before.name, inline=True)
+        embed.add_field(name="Nuovo Nome", value=after.name, inline=True)
+    if before.category != after.category:
+        embed.add_field(name="Categoria Precedente", value=before.category.name if before.category else "*Nessuna*", inline=True)
+        embed.add_field(name="Nuova Categoria", value=after.category.name if after.category else "*Nessuna*", inline=True)
+    embed.add_field(name="Staff Responsabile", value=staff, inline=False)
+    embed.set_footer(text="Imperial Rome Full RP • Channel-Log")
+    await send_log(before.guild, "channel", embed)
+
+# =========================================================
+# 4. ROLE LOGS (╰🗳️╮Role-Log)
+# =========================================================
+
+@bot.event
+async def on_guild_role_create(role: discord.Role):
+    staff = "*Non identificato*"
+    try:
+        async for entry in role.guild.audit_logs(limit=2, action=discord.AuditLogAction.role_create):
+            if entry.target.id == role.id:
+                staff = f"{entry.user.mention} (`{entry.user.id}`)"
+                break
+    except Exception:
+        pass
+
+    embed = discord.Embed(
+        title="✨ Ruolo Creato",
+        description=f"È stato creato un nuovo ruolo nel server.",
+        color=discord.Color.brand_green(),
+        timestamp=datetime.datetime.now(datetime.timezone.utc)
+    )
+    embed.add_field(name="Ruolo", value=f"{role.mention} (`{role.id}`)", inline=True)
+    embed.add_field(name="Staff Responsabile", value=staff, inline=False)
+    embed.set_footer(text="Imperial Rome Full RP • Role-Log")
+    await send_log(role.guild, "role", embed)
+
+@bot.event
+async def on_guild_role_delete(role: discord.Role):
+    staff = "*Non identificato*"
+    try:
+        async for entry in role.guild.audit_logs(limit=2, action=discord.AuditLogAction.role_delete):
+            if entry.target.id == role.id:
+                staff = f"{entry.user.mention} (`{entry.user.id}`)"
+                break
+    except Exception:
+        pass
+
+    embed = discord.Embed(
+        title="❌ Ruolo Eliminato",
+        description=f"Il ruolo **@{role.name}** è stato rimosso.",
+        color=discord.Color.dark_red(),
+        timestamp=datetime.datetime.now(datetime.timezone.utc)
+    )
+    embed.add_field(name="Nome", value=role.name, inline=True)
+    embed.add_field(name="ID Ruolo", value=f"`{role.id}`", inline=True)
+    embed.add_field(name="Staff Responsabile", value=staff, inline=False)
+    embed.set_footer(text="Imperial Rome Full RP • Role-Log")
+    await send_log(role.guild, "role", embed)
+
+# =========================================================
+# 5. MEMBER LOGS (╰👱╮Member-Log) & ASSEGNAZIONE RUOLI / MUTE
+# =========================================================
+
+@bot.event
+async def on_member_join(member: discord.Member):
+    created_at = int(member.created_at.timestamp())
+    embed = discord.Embed(
+        title="📥 Membro Entrato",
+        description=f"{member.mention} è entrato nell'Impero Romano RP!",
+        color=discord.Color.green(),
+        timestamp=datetime.datetime.now(datetime.timezone.utc)
+    )
+    embed.add_field(name="Utente", value=f"{member.name} (`{member.id}`)", inline=True)
+    embed.add_field(name="Account Creato", value=f"<t:{created_at}:R>", inline=True)
+    embed.add_field(name="Membri Totali", value=str(member.guild.member_count), inline=True)
+    embed.set_thumbnail(url=member.display_avatar.url)
+    embed.set_footer(text="Imperial Rome Full RP • Member-Log")
+    await send_log(member.guild, "member", embed)
+
+@bot.event
+async def on_member_remove(member: discord.Member):
+    is_kick = False
+    staff = None
+    reason = "*Nessuna motivazione*"
+    try:
+        async for entry in member.guild.audit_logs(limit=2, action=discord.AuditLogAction.kick):
+            if entry.target.id == member.id and (datetime.datetime.now(datetime.timezone.utc) - entry.created_at).total_seconds() < 10:
+                is_kick = True
+                staff = entry.user
+                reason = entry.reason or reason
+                break
+    except Exception:
+        pass
+
+    if is_kick:
+        embed = discord.Embed(
+            title="👢 Membro Espulso (Kick)",
+            description="Un utente è stato espulso dal server.",
+            color=discord.Color.dark_orange(),
+            timestamp=datetime.datetime.now(datetime.timezone.utc)
+        )
+        embed.add_field(name="Utente", value=f"{member.mention} (`{member.name}` | `{member.id}`)", inline=False)
+        embed.add_field(name="Staff Responsabile", value=f"{staff.mention} (`{staff.id}`)", inline=True)
+        embed.add_field(name="Motivazione", value=f"> {reason}", inline=False)
+        embed.set_thumbnail(url=member.display_avatar.url)
+        embed.set_footer(text="Imperial Rome Full RP • Kick-Ban-Log")
+        await send_log(member.guild, "kick_ban", embed)
+    else:
+        roles = [r.mention for r in member.roles if r.name != "@everyone"]
+        roles_str = ", ".join(roles) if roles else "*Nessun ruolo speciale*"
+        embed = discord.Embed(
+            title="📤 Membro Uscito",
+            description=f"{member.mention} ha abbandonato il server.",
+            color=discord.Color.dark_grey(),
+            timestamp=datetime.datetime.now(datetime.timezone.utc)
+        )
+        embed.add_field(name="Utente", value=f"{member.name} (`{member.id}`)", inline=True)
+        embed.add_field(name="Ruoli Posseduti", value=roles_str, inline=False)
+        embed.add_field(name="Membri Rimanenti", value=str(member.guild.member_count), inline=True)
+        embed.set_thumbnail(url=member.display_avatar.url)
+        embed.set_footer(text="Imperial Rome Full RP • Member-Log")
+        await send_log(member.guild, "member", embed)
+
+@bot.event
+async def on_member_update(before: discord.Member, after: discord.Member):
+    guild = after.guild
+
+    # 1. Assegnazione e Rimozione Ruoli
+    if before.roles != after.roles:
+        added_roles = [r for r in after.roles if r not in before.roles]
+        removed_roles = [r for r in before.roles if r not in after.roles]
+
+        staff = "*Non identificato*"
+        try:
+            async for entry in guild.audit_logs(limit=2, action=discord.AuditLogAction.member_role_update):
+                if entry.target.id == after.id:
+                    staff = f"{entry.user.mention} (`{entry.user.id}`)"
+                    break
+        except Exception:
+            pass
+
+        for role in added_roles:
+            embed = discord.Embed(
+                title="🛡️ Ruolo Assegnato",
+                color=discord.Color.green(),
+                timestamp=datetime.datetime.now(datetime.timezone.utc)
+            )
+            embed.add_field(name="Utente", value=f"{after.mention} (`{after.id}`)", inline=True)
+            embed.add_field(name="Ruolo Assegnato", value=f"{role.mention} (`{role.id}`)", inline=True)
+            embed.add_field(name="Staff Responsabile", value=staff, inline=False)
+            embed.set_footer(text="Imperial Rome Full RP • Role-Log")
+            await send_log(guild, "role", embed)
+
+        for role in removed_roles:
+            embed = discord.Embed(
+                title="❌ Ruolo Rimosso",
+                color=discord.Color.red(),
+                timestamp=datetime.datetime.now(datetime.timezone.utc)
+            )
+            embed.add_field(name="Utente", value=f"{after.mention} (`{after.id}`)", inline=True)
+            embed.add_field(name="Ruolo Rimosso", value=f"{role.mention} (`{role.id}`)", inline=True)
+            embed.add_field(name="Staff Responsabile", value=staff, inline=False)
+            embed.set_footer(text="Imperial Rome Full RP • Role-Log")
+            await send_log(guild, "role", embed)
+
+    # 2. Timeout / Mute & Unmute
+    if before.timed_out_until != after.timed_out_until:
+        staff = "*Non identificato*"
+        reason = "*Nessuna motivazione*"
+        try:
+            async for entry in guild.audit_logs(limit=2, action=discord.AuditLogAction.member_update):
+                if entry.target.id == after.id:
+                    staff = f"{entry.user.mention} (`{entry.user.id}`)"
+                    reason = entry.reason or reason
+                    break
+        except Exception:
+            pass
+
+        if after.timed_out_until and after.timed_out_until > datetime.datetime.now(datetime.timezone.utc):
+            embed = discord.Embed(
+                title="🔇 Membro Messo in Timeout (Mute)",
+                description=f"{after.mention} è stato silenziato temporaneamente.",
+                color=discord.Color.red(),
+                timestamp=datetime.datetime.now(datetime.timezone.utc)
+            )
+            embed.add_field(name="Utente", value=f"{after.mention} (`{after.id}`)", inline=True)
+            embed.add_field(name="Scadenza Timeout", value=f"<t:{int(after.timed_out_until.timestamp())}:R>", inline=True)
+            embed.add_field(name="Staff Responsabile", value=staff, inline=False)
+            embed.add_field(name="Motivazione", value=f"> {reason}", inline=False)
+            embed.set_footer(text="Imperial Rome Full RP • Mod-Log")
+            await send_log(guild, "mod", embed)
+        else:
+            embed = discord.Embed(
+                title="🔊 Timeout Rimosso (Unmute)",
+                description=f"Il timeout per {after.mention} è terminato o è stato revocato.",
+                color=discord.Color.green(),
+                timestamp=datetime.datetime.now(datetime.timezone.utc)
+            )
+            embed.add_field(name="Utente", value=f"{after.mention} (`{after.id}`)", inline=True)
+            embed.add_field(name="Staff Responsabile", value=staff, inline=False)
+            embed.set_footer(text="Imperial Rome Full RP • Mod-Log")
+            await send_log(guild, "mod", embed)
+
+# =========================================================
+# 6. VOICE LOGS (╰🔊╮Voice-Logs)
+# =========================================================
+
+@bot.event
+async def on_voice_state_update(member: discord.Member, before: discord.VoiceState, after: discord.VoiceState):
+    guild = member.guild
+
+    if before.channel is None and after.channel is not None:
+        embed = discord.Embed(
+            title="📥 Ingresso Canale Vocale",
+            description=f"{member.mention} è entrato in una stanza vocale.",
+            color=discord.Color.green(),
+            timestamp=datetime.datetime.now(datetime.timezone.utc)
+        )
+        embed.add_field(name="Utente", value=f"{member.name} (`{member.id}`)", inline=True)
+        embed.add_field(name="Canale", value=f"🔊 {after.channel.name}", inline=True)
+        embed.set_footer(text="Imperial Rome Full RP • Voice-Logs")
+        await send_log(guild, "voice", embed)
+
+    elif before.channel is not None and after.channel is None:
+        embed = discord.Embed(
+            title="📤 Disconnessione Canale Vocale",
+            description=f"{member.mention} ha abbandonato la stanza vocale.",
+            color=discord.Color.red(),
+            timestamp=datetime.datetime.now(datetime.timezone.utc)
+        )
+        embed.add_field(name="Utente", value=f"{member.name} (`{member.id}`)", inline=True)
+        embed.add_field(name="Canale Precedente", value=f"🔊 {before.channel.name}", inline=True)
+        embed.set_footer(text="Imperial Rome Full RP • Voice-Logs")
+        await send_log(guild, "voice", embed)
+
+    elif before.channel != after.channel and before.channel is not None and after.channel is not None:
+        staff = "*Autonomo / Non registrato*"
+        try:
+            async for entry in guild.audit_logs(limit=2, action=discord.AuditLogAction.member_move):
+                if (datetime.datetime.now(datetime.timezone.utc) - entry.created_at).total_seconds() < 5:
+                    staff = f"{entry.user.mention} (`{entry.user.id}`)"
+                    break
+        except Exception:
+            pass
+
+        embed = discord.Embed(
+            title="🔀 Spostamento Canale Vocale",
+            description=f"{member.mention} ha cambiato stanza vocale.",
+            color=discord.Color.blue(),
+            timestamp=datetime.datetime.now(datetime.timezone.utc)
+        )
+        embed.add_field(name="Utente", value=f"{member.name} (`{member.id}`)", inline=True)
+        embed.add_field(name="Da", value=f"🔊 {before.channel.name}", inline=True)
+        embed.add_field(name="A", value=f"🔊 {after.channel.name}", inline=True)
+        embed.add_field(name="Staff Responsabile", value=staff, inline=False)
+        embed.set_footer(text="Imperial Rome Full RP • Voice-Logs")
+        await send_log(guild, "voice", embed)
+
+    elif before.mute != after.mute:
+        staff = "*Non identificato*"
+        action_text = "Muto Server Applicato" if after.mute else "Muto Server Rimosso"
+        color = discord.Color.dark_red() if after.mute else discord.Color.green()
+        try:
+            async for entry in guild.audit_logs(limit=2, action=discord.AuditLogAction.member_update):
+                if entry.target.id == member.id:
+                    staff = f"{entry.user.mention} (`{entry.user.id}`)"
+                    break
+        except Exception:
+            pass
+
+        embed = discord.Embed(
+            title=f"🎙️ {action_text}",
+            color=color,
+            timestamp=datetime.datetime.now(datetime.timezone.utc)
+        )
+        embed.add_field(name="Utente", value=f"{member.mention} (`{member.id}`)", inline=True)
+        embed.add_field(name="Canale", value=f"🔊 {after.channel.name}" if after.channel else "*Nessuno*", inline=True)
+        embed.add_field(name="Staff Responsabile", value=staff, inline=False)
+        embed.set_footer(text="Imperial Rome Full RP • Voice-Logs")
+        await send_log(guild, "voice", embed)
+
+# =========================================================
+# 7. COMANDI UTILITY STAFF & TICKET (Staff-Log & Ticket-Log)
+# =========================================================
+
+@bot.command(name="clear")
+@commands.has_permissions(manage_messages=True)
+async def clear_messages(ctx, amount: int):
+    """Esegue il purge di messaggi e registra l'azione dello Staff in Staff-Log."""
+    deleted = await ctx.channel.purge(limit=amount + 1)
+    
+    embed = discord.Embed(
+        title="🧹 Pulizia Chat (Bulk Delete)",
+        description=f"Uno staffer ha eseguito una pulizia della chat.",
+        color=discord.Color.purple(),
+        timestamp=datetime.datetime.now(datetime.timezone.utc)
+    )
+    embed.add_field(name="Staff Responsabile", value=f"{ctx.author.mention} (`{ctx.author.id}`)", inline=True)
+    embed.add_field(name="Canale", value=f"{ctx.channel.mention} (`{ctx.channel.id}`)", inline=True)
+    embed.add_field(name="Messaggi Eliminati", value=str(len(deleted) - 1), inline=True)
+    embed.set_footer(text="Imperial Rome Full RP • Staff-Log")
+    await send_log(ctx.guild, "staff", embed)
+
 
 # =============================================================================
 # --- LISTENER MESSAGGI & CANCELLAZIONI ---
