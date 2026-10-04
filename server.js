@@ -4,37 +4,44 @@ const chromium = require('@sparticuz/chromium');
 
 const app = express();
 
+// Limite aumentato per gestire HTML/CSS corposi e immagini base64
 app.use(express.json({ limit: '50mb' }));
 app.use(express.urlencoded({ limit: '50mb', extended: true }));
 
 const USER_ID = process.env.API_USER_ID || "Evren";
 const API_KEY = process.env.API_KEY || "Evren";
 
-// --- GESTIONE CODA AVANZATA E LIMITI DI CARICO ---
+// --- GESTIONE CODA & RISORSE ---
 const MAX_QUEUE_SIZE = 10;
 const requestQueue = [];
 let isProcessing = false;
 
-// --- GESTIONE BROWSER PERSISTENTE ---
+// --- GESTIONE BROWSER PERSISTENTE (SINGLETON) ---
 let globalBrowser = null;
 let rendersCount = 0;
-const MAX_RENDERS_BEFORE_RESTART = 50; // Riavvia il browser ogni 50 render per svuotare la RAM
+const MAX_RENDERS_BEFORE_RECYCLE = 40; // Ricicla il browser ogni 40 render per prevenire leak di RAM
 
 async function initBrowser() {
-  if (globalBrowser) return globalBrowser;
+  if (globalBrowser && globalBrowser.isConnected()) {
+    return globalBrowser;
+  }
 
-  console.log("🚀 Avvio nuova istanza persistente di Chromium...");
+  // Flag ottimizzati: disabilitano audio, animazioni inutili e riducono l'overhead a monte
   globalBrowser = await puppeteer.launch({
     args: [
       ...chromium.args,
-      '--single-process',
-      '--disable-gpu',
-      '--disable-dev-shm-usage',
       '--no-sandbox',
+      '--disable-setuid-sandbox',
+      '--disable-dev-shm-usage',
+      '--disable-gpu',
       '--no-zygote',
+      '--single-process',
       '--disable-extensions',
       '--disable-background-networking',
-      '--disable-web-security', // Disabilita CORS per velocizzare il caricamento locale
+      '--disable-component-update',
+      '--mute-audio',
+      '--no-default-browser-check',
+      '--disable-breakpad',
       '--js-flags="--max-old-space-size=256"'
     ],
     defaultViewport: chromium.defaultViewport,
@@ -42,16 +49,15 @@ async function initBrowser() {
     headless: chromium.headless,
   });
 
-  // Se Chromium crasha internamente, scarta l'istanza per farla riavviare
   globalBrowser.on('disconnected', () => {
-    console.warn("⚠️ Browser disconnesso. Verrà riavviato alla prossima richiesta.");
+    console.warn("⚠️ Browser Chromium disconnesso.");
     globalBrowser = null;
   });
 
   return globalBrowser;
 }
 
-async function closeBrowser() {
+async function recycleBrowser() {
   if (globalBrowser) {
     await globalBrowser.close().catch(() => {});
     globalBrowser = null;
@@ -74,7 +80,7 @@ function authenticate(req, res, next) {
   return res.status(403).json({ error: 'Credenziali non valide.' });
 }
 
-// --- LOGICA DI ELABORAZIONE CODA ---
+// Elaborazione sequenziale della coda
 async function processQueue() {
   if (isProcessing || requestQueue.length === 0) return;
   isProcessing = true;
@@ -82,9 +88,8 @@ async function processQueue() {
   while (requestQueue.length > 0) {
     const { req, res } = requestQueue.shift();
 
-    // OTTIMIZZAZIONE: Se il client si è disconnesso nel frattempo, non fare il rendering
+    // Se il bot/client ha chiuso la connessione nel frattempo, salta il lavoro
     if (req.destroyed) {
-      console.log("⏭️ Client disconnesso prima del render, salto la richiesta.");
       continue;
     }
 
@@ -94,33 +99,27 @@ async function processQueue() {
   isProcessing = false;
 }
 
-// Logica di rendering dell'immagine
+// Logica di rendering ultra-veloce
 async function executeRender(req, res) {
-  let context = null;
   let page = null;
 
   try {
-    // 1. Manutenzione preventiva per memory leaks
     rendersCount++;
-    if (rendersCount > MAX_RENDERS_BEFORE_RESTART) {
-      console.log("🔄 Riavvio programmato del browser per liberare RAM...");
-      await closeBrowser();
+    if (rendersCount > MAX_RENDERS_BEFORE_RECYCLE) {
+      await recycleBrowser();
       rendersCount = 0;
-      if (global.gc) global.gc(); // Forza il Garbage Collector di Node
+      if (global.gc) global.gc();
     }
 
     const browser = await initBrowser();
-    
-    // 2. Isolamento: usa un contesto incognito per ogni rendering (più leggero di una nuova finestra)
-    context = await browser.createIncognitoBrowserContext();
-    page = await context.newPage();
+    page = await browser.newPage();
 
-    // Intercetta e blocca risorse inutili in background
+    // BLOCCO SELETTIVO: permette immagini (per la fototessera), CSS e font inline
+    // Blocca video, audio, analytics e websocket che rallenterebbero l'esecuzione
     await page.setRequestInterception(true);
     page.on('request', (request) => {
-      const type = request.resourceType();
-      // Blocchiamo immagini esterne (se non richieste dal tuo HTML), font e media
-      if (['media', 'other', 'websocket'].includes(type)) {
+      const resourceType = request.resourceType();
+      if (['media', 'websocket', 'manifest', 'other'].includes(resourceType)) {
         request.abort();
       } else {
         request.continue();
@@ -135,9 +134,12 @@ async function executeRender(req, res) {
       device_scale = 1 
     } = req.body;
 
+    const width = parseInt(viewport_width, 10) || 820;
+    const height = parseInt(viewport_height, 10) || 520;
+
     await page.setViewport({
-      width: parseInt(viewport_width, 10) || 820,
-      height: parseInt(viewport_height, 10) || 520,
+      width: width,
+      height: height,
       deviceScaleFactor: parseFloat(device_scale) || 1
     });
 
@@ -158,53 +160,66 @@ async function executeRender(req, res) {
       </html>
     `;
 
-    // Timeout ridotto a 10s: se l'HTML locale non si carica in 10s, c'è un problema
+    // 'domcontentloaded' è fino a 3 volte più veloce di 'load' o 'networkidle0'
     await page.setContent(fullContent, { 
       waitUntil: 'domcontentloaded',
-      timeout: 10000 
+      timeout: 15000 
     });
 
-    const imageBuffer = await page.screenshot({ type: 'png' });
+    // Ottimizzazioni screenshot: clip esatto del viewport e cattura buffer PNG rapida
+    const imageBuffer = await page.screenshot({ 
+      type: 'png',
+      clip: { x: 0, y: 0, width: width, height: height },
+      optimizeForSpeed: true 
+    });
 
     if (!res.headersSent) {
       res.setHeader('Content-Type', 'image/png');
+      res.setHeader('Cache-Control', 'no-store');
       res.send(imageBuffer);
     }
 
   } catch (error) {
-    console.error('❌ Errore durante il rendering:', error.message);
+    console.error('❌ Errore rendering dettagliato:', error.stack || error.message);
     if (!res.headersSent) {
-      res.status(500).json({ error: 'Errore durante il rendering o Timeout superato.' });
+      res.status(500).json({ error: `Errore rendering: ${error.message}` });
     }
   } finally {
-    // Chiusura garantita della tab e del contesto isolato
-    if (page) await page.close().catch(() => {});
-    if (context) await context.close().catch(() => {});
+    if (page) {
+      await page.close().catch(() => {});
+    }
+    // Esecuzione Garbage Collector a fine operazione se avviato con --expose-gc
+    if (global.gc) {
+      global.gc();
+    }
   }
 }
 
-// Endpoint principale
+// Endpoint Principale POST
 app.post('/', authenticate, (req, res) => {
   if (!req.body.html) {
     return res.status(400).json({ error: 'Il campo HTML è obbligatorio.' });
   }
 
-  // Se la coda è troppo lunga, rifiuta per proteggere il server
   if (requestQueue.length >= MAX_QUEUE_SIZE) {
-    return res.status(429).json({ error: 'Server troppo occupato. Riprova tra poco.' });
+    return res.status(429).json({ error: 'Server occupato: troppe richieste in coda. Riprova tra poco.' });
   }
 
   requestQueue.push({ req, res });
-  processQueue(); // Avvia l'elaborazione se non è già in corso
+  processQueue();
 });
 
-// Endpoint di Health Check per UptimeRobot
-app.get('/health', (req, res) => {
-  res.status(200).json({ status: 'OK', queueSize: requestQueue.length, memoryLimit: 'Stable' });
+// Endpoint di Health Check leggero per UptimeRobot / Render
+app.get(['/', '/health'], (req, res) => {
+  res.status(200).json({ 
+    status: 'OK', 
+    queue: requestQueue.length,
+    renders: rendersCount
+  });
 });
 
+// Avvio del server su tutte le interfacce di rete (0.0.0.0) per Render
 const PORT = process.env.PORT || 10000;
-
 app.listen(PORT, '0.0.0.0', () => {
   console.log(`🚀 Server in ascolto su 0.0.0.0:${PORT}`);
 });
