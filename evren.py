@@ -861,7 +861,7 @@ async def generate_html_transcript(channel: discord.TextChannel) -> bytes:
 <body>
     <div class="header">
         <h2 style="margin: 0; color: #f2f3f5;">Imperial Rome RP — Transcript #{channel.name}</h2>
-        <p style="margin: 5px 0 0 0; color: #949ba4;">Generato il: {datetime.now().strftime('%d/%m/%Y alle %H:%M:%S')}</p>
+        <p style="margin: 5px 0 0 0; color: #949ba4;">Generato il: {datetime.datetime.now().strftime('%d/%m/%Y alle %H:%M:%S')}</p>
     </div>
 """
     for msg in messages:
@@ -1061,7 +1061,7 @@ class TicketPanelView(discord.ui.View):
                 "Un addetto prenderà in carico la tua segnalazione il prima possibile.\n\n"
                 "📌 **Cosa fare ora:**\n"
                 "• Descrivi nei dettagli la motivazione del ticket.\n"
-                "• Allega ID Discord/Steam del giocatore o prove video/screen se necessario.\n\n"
+                "• Allega ID Discord/PSN del giocatore o prove video/screen se necessario.\n\n"
                 "*Premi il pulsante qui sotto per archiviare e chiudere il ticket.*"
             ),
             color=0xd4af37
@@ -1098,12 +1098,10 @@ async def setup_ticket(interaction: discord.Interaction):
     await interaction.channel.send(embed=embed, view=TicketPanelView())
     await interaction.response.send_message("Pannello ticket configurato con successo!", ephemeral=True)
 
-import datetime
 import discord
 from discord import ui
 from discord.ext import commands
 import io
-import datetime
 import discord
 from discord import app_commands
 from discord.ext import commands, tasks
@@ -1217,10 +1215,10 @@ async def esegui_invio_report(titolo: str, descrizione: str):
     res = supabase.table("incarichi").select("*").order("created_at", desc=False).execute()
     file_buffer = genera_report_excel(staff_members, res.data or [])
 
-    data_str = datetime.datetime.now().strftime("%d-%m-%Y_%H-%M")
+    data_str = datetime.now().strftime("%d-%m-%Y_%H-%M")
     discord_file = discord.File(fp=file_buffer, filename=f"Report_Staff_{data_str}.xlsx")
 
-    embed = discord.Embed(title=titolo, description=descrizione, color=discord.Color.blue(), timestamp=datetime.datetime.now(datetime.timezone.utc))
+    embed = discord.Embed(title=titolo, description=descrizione, color=discord.Color.blue(), timestamp=datetime.now(datetime.timezone.utc))
     if server_staff.icon:
         embed.set_thumbnail(url=server_staff.icon.url)
     embed.set_footer(text="Archivio Supabase Incarichi")
@@ -1270,7 +1268,7 @@ async def on_message_delete(message: discord.Message):
     responsible_staff = "*Eliminato dall'autore o sconosciuto*"
     try:
         async for entry in message.guild.audit_logs(limit=3, action=discord.AuditLogAction.message_delete):
-            if entry.target.id == message.author.id and (datetime.datetime.now(datetime.timezone.utc) - entry.created_at).total_seconds() < 10:
+            if entry.target.id == message.author.id and (datetime.now(datetime.timezone.utc) - entry.created_at).total_seconds() < 10:
                 responsible_staff = f"{entry.user.mention} (`{entry.user.id}`)"
                 break
     except Exception:
@@ -1280,7 +1278,7 @@ async def on_message_delete(message: discord.Message):
         title="🗑️ Messaggio Eliminato",
         description="Un messaggio è stato rimosso da un canale testuale.",
         color=discord.Color.dark_red(),
-        timestamp=datetime.datetime.now(datetime.timezone.utc)
+        timestamp=datetime.now(datetime.timezone.utc)
     )
     embed.add_field(name="Autore", value=f"{message.author.mention} (`{message.author.id}`)", inline=True)
     embed.add_field(name="Canale", value=f"{message.channel.mention} (`{message.channel.id}`)", inline=True)
