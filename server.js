@@ -148,7 +148,9 @@ app.get('/health', (req, res) => {
   res.json({ status: 'OK' });
 });
 
-const PORT = process.env.PORT || 3000;
-app.listen(PORT, () => {
+const PORT = process.env.PORT || 10000; // Render usa tipicamente la 10000
+
+// Aggiungi '0.0.0.0' come secondo parametro!
+app.listen(PORT, '0.0.0.0', () => {
   console.log(`🚀 Server in ascolto sulla porta ${PORT}`);
 });
