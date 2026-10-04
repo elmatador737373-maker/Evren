@@ -1074,9 +1074,7 @@ class TicketPanelView(discord.ui.View):
 
         await interaction.followup.send(f"✅ Ticket creato con successo: {ticket_channel.mention}", ephemeral=True)
 
-
-# ----------------- COMANDO SETUP PANNELLO ----------------- #
-@app_commands.command(name="setup_ticket", description="Invia il pannello ticket nel canale corrente.")
+@bot.tree.command(name="setup_ticket", description="Invia il pannello ticket nel canale corrente.")
 @app_commands.default_permissions(administrator=True)
 async def setup_ticket(interaction: discord.Interaction):
     embed = discord.Embed(
