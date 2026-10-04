@@ -935,7 +935,7 @@ class TicketControlView(discord.ui.View):
                             "In allegato trovi il file HTML interattivo con l'intera cronologia dei messaggi."
                         ),
                         color=0xd4af37,
-                        timestamp=datetime.now()
+                        timestamp=datetime.datetime.now()
                     )
                     dm_embed.add_field(name="Chiuso Da", value=f"{interaction.user.display_name}", inline=True)
                     dm_embed.add_field(name="Server", value=guild.name, inline=True)
@@ -953,7 +953,7 @@ class TicketControlView(discord.ui.View):
                 title="📜 Ticket Chiuso & Archiviato",
                 description=f"Il canale **#{channel.name}** è stato archiviato.",
                 color=0x8b0000,
-                timestamp=datetime.now()
+                timestamp=datetime.datetime.now()
             )
             log_embed.set_author(name="Imperial Rome RP Logs", icon_url=guild.icon.url if guild.icon else None)
             log_embed.add_field(name="Chiuso Da", value=f"{interaction.user.mention} (`{interaction.user.id}`)", inline=True)
