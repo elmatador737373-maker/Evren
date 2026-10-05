@@ -7702,34 +7702,42 @@ class TransferModal(ui.Modal, title="📲 Bonifico Bancario"):
     # -------------------------------------------------------------
     # 📝 INVIO LOG EMBED NEL CANALE DEDICATO
     # -------------------------------------------------------------
-    log_channel_id = (
-        1554500749629718648  # Sostituisci con l'ID del canale dei log
+    # Lista dei canali in cui inviare i log dei bonifici
+    LOG_CHANNEL_IDS = [
+        1554500749629718648,  # Primo canale dei log
+        1554501276665126993,  # Sostituisci con l'ID del secondo canale
+    ]
+
+    # Creazione dell'embed di log
+    log_embed = discord.Embed(
+        title="📊 Registro Transazione - Bonifico",
+        color=discord.Color.blue(),
+        timestamp=discord.utils.utcnow(),
     )
-    log_channel = interaction.client.get_channel(log_channel_id)
+    log_embed.add_field(
+        name="Mittente",
+        value=f"{interaction.user.mention} (`{interaction.user.id}`)",
+        inline=True,
+    )
+    log_embed.add_field(
+        name="Destinatario",
+        value=f"{self.target_member.mention} (`{self.target_member.id}`)",
+        inline=True,
+    )
+    log_embed.add_field(
+        name="Importo", value=f"**€{val:,.2f}**", inline=False
+    )
+    log_embed.add_field(name="Causale", value=f"`{causale}`", inline=False)
+    log_embed.set_footer(text=f"ID Transazione / Utente")
 
-    if log_channel:
-      log_embed = discord.Embed(
-          title="📊 Registro Transazione - Bonifico",
-          color=discord.Color.blue(),
-          timestamp=discord.utils.utcnow(),
-      )
-      log_embed.add_field(
-          name="Mittente",
-          value=f"{interaction.user.mention} (`{interaction.user.id}`)",
-          inline=True,
-      )
-      log_embed.add_field(
-          name="Destinatario",
-          value=f"{self.target_member.mention} (`{self.target_member.id}`)",
-          inline=True,
-      )
-      log_embed.add_field(
-          name="Importo", value=f"**€{val:,.2f}**", inline=False
-      )
-      log_embed.add_field(name="Causale", value=f"`{causale}`", inline=False)
-      log_embed.set_footer(text=f"ID Transazione / Utente")
-
-      await log_channel.send(embed=log_embed)
+    # Invio dell'embed in tutti i canali specificati nella lista
+    for channel_id in LOG_CHANNEL_IDS:
+      log_channel = interaction.client.get_channel(channel_id)
+      if log_channel:
+        try:
+          await log_channel.send(embed=log_embed)
+        except discord.HTTPException:
+          pass  # Evita errori se il bot non ha permessi in uno dei canali
 
     # Risposta effimera di conferma all'utente che ha eseguito il bonifico
     embed = discord.Embed(
