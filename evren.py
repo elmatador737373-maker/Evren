@@ -754,7 +754,7 @@ ADMIN_ROLE_ID = 1554498655711666287  # Sostituisci con l'ID del tuo ruolo admin
 SERVER_ID_1 = 1340063967346688001  # Il server di cui controllare i membri con il ruolo
 SERVER_ID_2 = 1550809455405305916  # Il server in cui verificare la presenza
 
-@bot.tree.command(name="verifica_utenti", description="Verifica la presenza nel Server 2 degli utenti con un determinato ruolo nel Server 1 e invia il report in DM.")
+@bot.tree.command(name="verifica_utenti", description=".........")
 @app_commands.describe(ruolo_target="Il ruolo del Server 1 da controllare")
 async def verifica_utenti(interaction: discord.Interaction, ruolo_target: discord.Role):
     # 1. Controllo permessi
