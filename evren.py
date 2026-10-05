@@ -744,6 +744,84 @@ async def staff_item_deposito(
             f"🗑️ Rimosse **x{quantita} {oggetto}** dal deposito della fazione **{fazione}**."
         )
 
+import discord
+from discord import app_commands
+
+# ID dell'unico ruolo di amministrazione autorizzato ad usare il comando
+ADMIN_ROLE_ID = 1554498655711666287  # Sostituisci con l'ID del tuo ruolo admin
+
+# ID dei server
+SERVER_ID_1 = 1340063967346688001  # Il server di cui controllare i membri con il ruolo
+SERVER_ID_2 = 1550809455405305916  # Il server in cui verificare la presenza
+
+@bot.tree.command(name="verifica_utenti", description="Verifica la presenza nel Server 2 degli utenti con un determinato ruolo nel Server 1 e invia il report in DM.")
+@app_commands.describe(ruolo_target="Il ruolo del Server 1 da controllare")
+async def verifica_utenti(interaction: discord.Interaction, ruolo_target: discord.Role):
+    # 1. Controllo permessi
+    user_role_ids = [role.id for role in interaction.user.roles]
+    has_admin_role = ADMIN_ROLE_ID in user_role_ids
+    
+    if not has_admin_role and not interaction.user.guild_permissions.administrator:
+        await interaction.response.send_message("Non hai i permessi necessari per usare questo comando.", ephemeral=True)
+        return
+
+    # Rispondi subito per evitare il timeout di Discord
+    await interaction.response.defer(ephemeral=True)
+
+    # 2. Ottieni i server
+    guild_1 = bot.get_guild(SERVER_ID_1)
+    guild_2 = bot.get_guild(SERVER_ID_2)
+
+    if not guild_1 or not guild_2:
+        await interaction.followup.send("Errore: Impossibile trovare uno o entrambi i server specificati dal bot.", ephemeral=True)
+        return
+
+    # 3. Trova il ruolo nel Server 1
+    role_in_guild1 = guild_1.get_role(ruolo_target.id)
+    if not role_in_guild1:
+        await interaction.followup.send("Il ruolo selezionato non appartiene al Server 1 configurato.", ephemeral=True)
+        return
+
+    # 4. Raccogli e formatta la lista degli utenti con ✅ o ❌
+    righe_report = []
+    
+    for member in guild_1.members:
+        if role_in_guild1 in member.roles:
+            member_in_guild2 = guild_2.get_member(member.id)
+            if member_in_guild2:
+                righe_report.append(f"✅ {member.display_name} (`{member.id}`)")
+            else:
+                righe_report.append(f"❌ {member.display_name} (`{member.id}`)")
+
+    if not righe_report:
+        await interaction.followup.send("Non ci sono utenti con questo ruolo nel Server 1.", ephemeral=True)
+        return
+
+    # 5. Suddividi il testo in blocchi per evitare il limite di caratteri dei messaggi Discord (2000 caratteri)
+    messaggi = []
+    messaggio_corrente = f"**Report Verifica Ruolo: {role_in_guild1.name}**\n"
+    
+    for riga in righe_report:
+        if len(messaggio_corrente) + len(riga) + 1 > 1900:
+            messaggi.append(messaggio_corrente)
+            messaggio_corrente = ""
+        messaggio_corrente += riga + "\n"
+    
+    if messaggio_corrente:
+        messaggi.append(messaggio_corrente)
+
+    # 6. Prova a inviare i messaggi in DM all'utente
+    try:
+        for msg in messaggi:
+            await interaction.user.send(msg)
+        
+        # Conferma pubblica/effimera sul canale che il comando è andato a buon fine
+        await interaction.followup.send("Ti ho inviato il report completo con tutti gli utenti in DM!", ephemeral=True)
+        
+    except discord.Forbidden:
+        # Gestisce il caso in cui l'utente ha i DM chiusi
+        await interaction.followup.send("Errore: Non riesco a inviarti un messaggio privato. Controlla di avere i DM aperti per i membri del server.", ephemeral=True)
+
 import datetime
 import discord
 from discord import ui
