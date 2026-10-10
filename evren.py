@@ -26,16 +26,14 @@ SUPABASE_URL = os.getenv("SUPABASE_URL")
 SUPABASE_KEY = os.getenv("SUPABASE_KEY")
 IMGBB_API_KEY = os.getenv("IMGBB_API_KEY")
 
-# --- CONFIGURAZIONE RUOLI SPECIFICI ---
-RUOLO_STAFF_ID = 1554498655711666287           # Permesso per /crea_item
-RUOLO_BANCOMAT_ID = 1554499250841456662        # Permesso per accedere al Bancomat (opzionale)
-RUOLO_ARMERIA_ID = 1554499143916060693        # Permesso per registrare ed emettere armi
-RUOLO_MOTORIZZAZIONE_ID = 1554499153478947003  # Permesso per registrare veicoli e patenti
-RUOLO_POLIZIA_ID = 1554499085627822223         # Permesso per CAD Polizia e Porto d'Armi
-RUOLO_IMMOBILIARE_ID = 1554499124831977614     # Permesso per registrare le case/immobili
-RUOLO_RICHIESTO_ID = 1554499383330873394
-RUOLO_FBI_ID = 1554498655711666287
-# Mettilo in cima al file, prima delle funzioni audio
+RUOLO_STAFF_ID = 1456963041055998116
+RUOLO_CONTO_CORRENTE_ID = 1456963295335682139
+RUOLO_ARMERIA_ID = 1456963166583001198
+RUOLO_CONCESSIONARIO_ID = 1456963144877604937
+RUOLO_POLIZIA_ID = 1456963107325739048 
+RUOLO_IMMOBILIARE_ID = 1456963182534066208
+RUOLO_FBI_ID = 1558524809669771404
+
 FFMPEG_PATH = None  # Lasciandolo a None, discord.py cercherà ffmpeg automaticamente nel PATH del container
 
 supabase: Client = create_client(SUPABASE_URL, SUPABASE_KEY)
@@ -1189,11 +1187,11 @@ from openpyxl.styles import Font, Alignment, PatternFill, Border, Side
 # =============================================================================
 # --- CONFIGURAZIONI & ID (INSERISCI I TUOI DATI) ---
 # =============================================================================
-CANALE_INCARICHI_ID = 1550814668421865492       # Canale dove lo staff scrive gli incarichi
-RUOLO_STAFF_INCARICO_ID = 1550829235369672774   # Ruolo staff autorizzato a registrare incarichi
-RUOLO_AMMINISTRAZIONE_ID = 1550826263017562183  # Ruolo autorizzato al comando /report
-SERVER_STAFF_ID = 1550809455405305916           # ID server secondario staff
-CANALE_REPORT_EXCEL_ID = 1550842072007835649    # Canale dove viene inviato il file Excel
+CANALE_INCARICHI_ID = 1555315624782073986       # Canale dove lo staff scrive gli incarichi
+RUOLO_STAFF_INCARICO_ID = 1555308765618905138   # Ruolo staff autorizzato a registrare incarichi
+RUOLO_AMMINISTRAZIONE_ID = 1555613386283421796  # Ruolo autorizzato al comando /report
+SERVER_STAFF_ID = 1555301996997779670           # ID server secondario staff
+CANALE_REPORT_EXCEL_ID = 1555688281721802833    # Canale dove viene inviato il file Excel
 
 # Nota: Assicurati che l'oggetto `supabase` sia già definito e inizializzato altrove nel tuo script principale.
 
@@ -1311,14 +1309,14 @@ import datetime
 # CONFIGURAZIONE CANALI LOG (Inserisci gli ID numerici dei canali)
 # ---------------------------------------------------------
 LOG_CHANNELS = {
-    "message": 1554500746496581713,     # ╰🖨️╮Message-Log
-    "kick_ban": 1554500752905605220,    # ╰🚫╮Kick-Ban-Log
-    "channel": 1554500755916984452,     # ╰📦╮Channel-Log
-    "role": 1554500759092203681,        # ╰🗳️╮Role-Log
-    "member": 1554500762292322417,      # ╰👱╮Member-Log
-    "mod": 1554500766092230707,         # ╰📗╮Mod-Log
-    "staff": 1554500772404920520,       # ╰⛑️╮Staff-Log
-    "voice": 1555231661891788870        # ╰🔊╮Voice-Logs
+    "message": 1456963764954992732,     # ╰🖨️╮Message-Log
+    "kick_ban": 1456963740816900108,    # ╰🚫╮Kick-Ban-Log
+    "channel": 1456963764954992732,     # ╰📦╮Channel-Log
+    "role": 1456963742767124533,        # ╰🗳️╮Role-Log
+    "member": 1456963745166131246,      # ╰👱╮Member-Log
+    "mod": 1456963764954992732,         # ╰📗╮Mod-Log
+    "staff": 1456963764954992732,       # ╰⛑️╮Staff-Log
+    "voice": 1456963739394904165        # ╰🔊╮Voice-Logs
 }
 
 async def send_log(guild: discord.Guild, log_type: str, embed: discord.Embed):
@@ -1923,8 +1921,8 @@ async def invio_report_settimanale():
     await esegui_invio_report("📊 Report Incarichi Staff • Resoconto Settimanale", "Resoconto settimanale della domenica.")
 
 # --- CONFIGURAZIONE ID ---
-ROLE_ATTESA_WL_ID = 1554499278712610896       # Ruolo Attesa WL
-CANALE_BACKGROUND_ID = 1554500560466616340    # Canale invio schede
+ROLE_ATTESA_WL_ID = 1456963275408543765       # Ruolo Attesa WL
+CANALE_BACKGROUND_ID = 1456963734000898253    # Canale invio schede
 
 # Reazioni Staff animate
 EMOJI_ACCETTA_ID = 1555190974626660352
@@ -3299,7 +3297,7 @@ async def staff_info_error(interaction: discord.Interaction, error: app_commands
 import discord
 from discord import app_commands
 
-CANALE_LOG_ID = 1554500749629718648  # Inserisci qui l'ID del canale log
+CANALE_LOG_ID = 1456963737377570869  # Inserisci qui l'ID del canale log
 
 
 @bot.tree.command(
@@ -3330,7 +3328,7 @@ async def gestisci_soldi(
     importo: float,
 ):
     # Controllo Staff direttamente nel comando
-    if not any(role.id == 1554498527143399675 for role in interaction.user.roles):
+    if not any(role.id == RUOLO_STAFF_ID for role in interaction.user.roles):
         await interaction.response.send_message(
             "Non hai i permessi necessari per usare questo comando.",
             ephemeral=True,
@@ -3856,8 +3854,8 @@ async def passa(
 
 
 # --- CONFIGURAZIONE ---
-ID_RUOLO_AUTORIZZATO = 1253460150141059198  # ID del ruolo che può usare il comando
-ID_CANALE_LOGS = 1255868935790657587        # ID del canale dei log
+ID_RUOLO_AUTORIZZATO = RUOLO_STAFF_ID  # ID del ruolo che può usare il comando
+ID_CANALE_LOGS = 1456963764954992732        # ID del canale dei log
 
 @bot.command(name="elimina")
 async def delete_message(ctx):
@@ -5661,7 +5659,8 @@ class CreaDocumentiStep1Modal(ui.Modal, title="🪪 ┃ ʀᴇɢɪsᴛʀᴏ (1/2:
             view=view,
             ephemeral=True
         )
-
+        
+RUOLO_RICHIESTO_ID=None
 # =======================================================
 #  GENERATORE DOCUMENTI REALISTICI (HTML Personalizzato)
 # =======================================================
