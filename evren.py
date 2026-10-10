@@ -367,8 +367,8 @@ async def wipe_user(interaction: discord.Interaction, utente: discord.User):
             title="🧹 Wipe Completato con Successo",
             description=(
                 f"L'utente <@{target_id}> è stato completamente resettato.\n\n"
-                "• **Portafoglio (Wallet):** Impostato a `1500.0€`\n"
-                "• **Banca (Bank):** Impostato a `1500.0€`\n"
+                "• **Portafoglio (Wallet):** Impostato a `1500.0$`\n"
+                "• **Banca (Bank):** Impostato a `1500.0$`\n"
                 "• **Documenti:** Eliminati (`documents`)\n"
                 "• **Inventario:** Svuotato (`inventory`)\n"
                 "• **Licenze Guida & Armi:** Eliminate (`driver_licenses`, `gun_licenses`)\n"
@@ -938,7 +938,7 @@ async def generate_html_transcript(channel: discord.TextChannel) -> bytes:
 </head>
 <body>
     <div class="header">
-        <h2 style="margin: 0; color: #f2f3f5;">Imperial Rome RP — Transcript #{channel.name}</h2>
+        <h2 style="margin: 0; color: #f2f3f5;">Vice City RP — Transcript #{channel.name}</h2>
         <p style="margin: 5px 0 0 0; color: #949ba4;">Generato il: {datetime.datetime.now().strftime('%d/%m/%Y alle %H:%M:%S')}</p>
     </div>
 """
@@ -1006,7 +1006,7 @@ class TicketControlView(discord.ui.View):
                 try:
                     file_dm = discord.File(io.BytesIO(transcript_raw), filename=f"transcript-{channel.name}.html")
                     dm_embed = discord.Embed(
-                        title="🏛️ Imperial Rome Full RP — Ticket Archiviato",
+                        title="🌆 Vice City RP — Ticket Archiviato",
                         description=(
                             f"Salve {ticket_owner.mention},\n"
                             f"Il tuo ticket **#{channel.name}** è stato concluso e archiviato con successo dallo staff.\n\n"
@@ -1017,7 +1017,7 @@ class TicketControlView(discord.ui.View):
                     )
                     dm_embed.add_field(name="Chiuso Da", value=f"{interaction.user.display_name}", inline=True)
                     dm_embed.add_field(name="Server", value=guild.name, inline=True)
-                    dm_embed.set_footer(text="Imperial Rome RP • Senatus Populusque Romanus")
+                    dm_embed.set_footer(text="Vice City RP • Senatus Populusque Romanus")
                     
                     await ticket_owner.send(embed=dm_embed, file=file_dm)
                     dm_sent = True
@@ -1033,7 +1033,7 @@ class TicketControlView(discord.ui.View):
                 color=0x8b0000,
                 timestamp=datetime.datetime.now()
             )
-            log_embed.set_author(name="Imperial Rome RP Logs", icon_url=guild.icon.url if guild.icon else None)
+            log_embed.set_author(name="Vice City RP Logs", icon_url=guild.icon.url if guild.icon else None)
             log_embed.add_field(name="Chiuso Da", value=f"{interaction.user.mention} (`{interaction.user.id}`)", inline=True)
             log_embed.add_field(
                 name="Aperto Da", 
@@ -1041,7 +1041,7 @@ class TicketControlView(discord.ui.View):
                 inline=True
             )
             log_embed.add_field(name="DM Inviato", value="✅ Sì" if dm_sent else "⚠ No (DM Chiusi)", inline=True)
-            log_embed.set_footer(text="Imperial Rome Full RP • Sistema Ticket")
+            log_embed.set_footer(text="Vice City Full RP • Sistema Ticket")
             
             await log_channel.send(embed=log_embed, file=file_staff)
 
@@ -1145,7 +1145,7 @@ class TicketPanelView(discord.ui.View):
             color=0xd4af37
         )
         ticket_embed.set_thumbnail(url=guild.icon.url if guild.icon else None)
-        ticket_embed.set_footer(text="Imperial Rome Full RP • Gestione Ticket")
+        ticket_embed.set_footer(text="Vice City Full RP • Gestione Ticket")
 
         ping_content = f"{user.mention} | {staff_role.mention}"
         await ticket_channel.send(content=ping_content, embed=ticket_embed, view=TicketControlView())
@@ -1156,7 +1156,7 @@ class TicketPanelView(discord.ui.View):
 @app_commands.default_permissions(administrator=True)
 async def setup_ticket(interaction: discord.Interaction):
     embed = discord.Embed(
-        title="🏛️ IMPERIAL ROME FULL RP — CENTRO ASSISTENZA",
+        title="VICE CITY FULL RP — CENTRO ASSISTENZA",
         description=(
             "Benvenuto nel centro comunicazioni dell'Impero.\n\n"
             "Seleziona dal menu a tendina sottostante la categoria più consona alla tua esigenza:\n\n"
@@ -1171,7 +1171,7 @@ async def setup_ticket(interaction: discord.Interaction):
     )
     if interaction.guild.icon:
         embed.set_thumbnail(url=interaction.guild.icon.url)
-    embed.set_footer(text="Imperial Rome RP • Senatus Populusque Romanus")
+    embed.set_footer(text="Vice City RP • Senatus Populusque Romanus")
 
     await interaction.channel.send(embed=embed, view=TicketPanelView())
     await interaction.response.send_message("Pannello ticket configurato con successo!", ephemeral=True)
@@ -1371,7 +1371,7 @@ async def on_message_delete(message: discord.Message):
         attachments_info = "\n".join([f"• [{att.filename}]({att.url})" for att in message.attachments])
         embed.add_field(name="Allegati", value=attachments_info, inline=False)
 
-    embed.set_footer(text="Imperial Rome Full RP • Message-Log", icon_url=message.guild.icon.url if message.guild.icon else None)
+    embed.set_footer(text="Vice Rome Full RP • Message-Log", icon_url=message.guild.icon.url if message.guild.icon else None)
     await send_log(message.guild, "message", embed)
 
 @bot.event
@@ -1396,7 +1396,7 @@ async def on_message_edit(before: discord.Message, after: discord.Message):
 
     embed.add_field(name="Prima della modifica", value=f"> {old_c}", inline=False)
     embed.add_field(name="Dopo la modifica", value=f"> {new_c}", inline=False)
-    embed.set_footer(text="Imperial Rome Full RP • Message-Log", icon_url=before.guild.icon.url if before.guild.icon else None)
+    embed.set_footer(text="Vice City Full RP • Message-Log", icon_url=before.guild.icon.url if before.guild.icon else None)
     await send_log(before.guild, "message", embed)
 
 # =========================================================
@@ -1426,7 +1426,7 @@ async def on_member_ban(guild: discord.Guild, user: discord.User | discord.Membe
     embed.add_field(name="Staff Responsabile", value=staff, inline=True)
     embed.add_field(name="Motivazione", value=f"> {reason}", inline=False)
     embed.set_thumbnail(url=user.display_avatar.url)
-    embed.set_footer(text="Imperial Rome Full RP • Kick-Ban-Log")
+    embed.set_footer(text="Vice City Full RP • Kick-Ban-Log")
     await send_log(guild, "kick_ban", embed)
 
 @bot.event
@@ -1452,7 +1452,7 @@ async def on_member_unban(guild: discord.Guild, user: discord.User):
     embed.add_field(name="Staff Responsabile", value=staff, inline=True)
     embed.add_field(name="Motivazione", value=f"> {reason}", inline=False)
     embed.set_thumbnail(url=user.display_avatar.url)
-    embed.set_footer(text="Imperial Rome Full RP • Kick-Ban-Log")
+    embed.set_footer(text="Vice city Full RP • Kick-Ban-Log")
     await send_log(guild, "kick_ban", embed)
 
 # =========================================================
@@ -1480,7 +1480,7 @@ async def on_guild_channel_create(channel: discord.abc.GuildChannel):
     embed.add_field(name="Categoria", value=channel.category.name if channel.category else "*Nessuna*", inline=True)
     embed.add_field(name="Tipo", value=str(channel.type).capitalize(), inline=True)
     embed.add_field(name="Staff Responsabile", value=staff, inline=False)
-    embed.set_footer(text="Imperial Rome Full RP • Channel-Log")
+    embed.set_footer(text="Vice City Full RP • Channel-Log")
     await send_log(channel.guild, "channel", embed)
 
 @bot.event
@@ -1503,7 +1503,7 @@ async def on_guild_channel_delete(channel: discord.abc.GuildChannel):
     embed.add_field(name="Nome", value=channel.name, inline=True)
     embed.add_field(name="ID", value=f"`{channel.id}`", inline=True)
     embed.add_field(name="Staff Responsabile", value=staff, inline=False)
-    embed.set_footer(text="Imperial Rome Full RP • Channel-Log")
+    embed.set_footer(text="Vice City Full RP • Channel-Log")
     await send_log(channel.guild, "channel", embed)
 
 @bot.event
@@ -1533,7 +1533,7 @@ async def on_guild_channel_update(before: discord.abc.GuildChannel, after: disco
         embed.add_field(name="Categoria Precedente", value=before.category.name if before.category else "*Nessuna*", inline=True)
         embed.add_field(name="Nuova Categoria", value=after.category.name if after.category else "*Nessuna*", inline=True)
     embed.add_field(name="Staff Responsabile", value=staff, inline=False)
-    embed.set_footer(text="Imperial Rome Full RP • Channel-Log")
+    embed.set_footer(text="Vice City Full RP • Channel-Log")
     await send_log(before.guild, "channel", embed)
 
 # =========================================================
@@ -1559,7 +1559,7 @@ async def on_guild_role_create(role: discord.Role):
     )
     embed.add_field(name="Ruolo", value=f"{role.mention} (`{role.id}`)", inline=True)
     embed.add_field(name="Staff Responsabile", value=staff, inline=False)
-    embed.set_footer(text="Imperial Rome Full RP • Role-Log")
+    embed.set_footer(text="Vice City Full RP • Role-Log")
     await send_log(role.guild, "role", embed)
 
 @bot.event
@@ -1582,7 +1582,7 @@ async def on_guild_role_delete(role: discord.Role):
     embed.add_field(name="Nome", value=role.name, inline=True)
     embed.add_field(name="ID Ruolo", value=f"`{role.id}`", inline=True)
     embed.add_field(name="Staff Responsabile", value=staff, inline=False)
-    embed.set_footer(text="Imperial Rome Full RP • Role-Log")
+    embed.set_footer(text="Vice City Full RP • Role-Log")
     await send_log(role.guild, "role", embed)
 
 # =========================================================
@@ -1602,7 +1602,7 @@ async def on_member_join(member: discord.Member):
     embed.add_field(name="Account Creato", value=f"<t:{created_at}:R>", inline=True)
     embed.add_field(name="Membri Totali", value=str(member.guild.member_count), inline=True)
     embed.set_thumbnail(url=member.display_avatar.url)
-    embed.set_footer(text="Imperial Rome Full RP • Member-Log")
+    embed.set_footer(text="Vice City Full RP • Member-Log")
     await send_log(member.guild, "member", embed)
 
 @bot.event
@@ -1631,7 +1631,7 @@ async def on_member_remove(member: discord.Member):
         embed.add_field(name="Staff Responsabile", value=f"{staff.mention} (`{staff.id}`)", inline=True)
         embed.add_field(name="Motivazione", value=f"> {reason}", inline=False)
         embed.set_thumbnail(url=member.display_avatar.url)
-        embed.set_footer(text="Imperial Rome Full RP • Kick-Ban-Log")
+        embed.set_footer(text="Vice City Full RP • Kick-Ban-Log")
         await send_log(member.guild, "kick_ban", embed)
     else:
         roles = [r.mention for r in member.roles if r.name != "@everyone"]
@@ -1646,7 +1646,7 @@ async def on_member_remove(member: discord.Member):
         embed.add_field(name="Ruoli Posseduti", value=roles_str, inline=False)
         embed.add_field(name="Membri Rimanenti", value=str(member.guild.member_count), inline=True)
         embed.set_thumbnail(url=member.display_avatar.url)
-        embed.set_footer(text="Imperial Rome Full RP • Member-Log")
+        embed.set_footer(text="Vice City Full RP • Member-Log")
         await send_log(member.guild, "member", embed)
 
 @bot.event
@@ -1676,7 +1676,7 @@ async def on_member_update(before: discord.Member, after: discord.Member):
             embed.add_field(name="Utente", value=f"{after.mention} (`{after.id}`)", inline=True)
             embed.add_field(name="Ruolo Assegnato", value=f"{role.mention} (`{role.id}`)", inline=True)
             embed.add_field(name="Staff Responsabile", value=staff, inline=False)
-            embed.set_footer(text="Imperial Rome Full RP • Role-Log")
+            embed.set_footer(text="Vice City Full RP • Role-Log")
             await send_log(guild, "role", embed)
 
         for role in removed_roles:
@@ -1688,7 +1688,7 @@ async def on_member_update(before: discord.Member, after: discord.Member):
             embed.add_field(name="Utente", value=f"{after.mention} (`{after.id}`)", inline=True)
             embed.add_field(name="Ruolo Rimosso", value=f"{role.mention} (`{role.id}`)", inline=True)
             embed.add_field(name="Staff Responsabile", value=staff, inline=False)
-            embed.set_footer(text="Imperial Rome Full RP • Role-Log")
+            embed.set_footer(text="Vice City Full RP • Role-Log")
             await send_log(guild, "role", embed)
 
     # 2. Timeout / Mute & Unmute
@@ -1715,7 +1715,7 @@ async def on_member_update(before: discord.Member, after: discord.Member):
             embed.add_field(name="Scadenza Timeout", value=f"<t:{int(after.timed_out_until.timestamp())}:R>", inline=True)
             embed.add_field(name="Staff Responsabile", value=staff, inline=False)
             embed.add_field(name="Motivazione", value=f"> {reason}", inline=False)
-            embed.set_footer(text="Imperial Rome Full RP • Mod-Log")
+            embed.set_footer(text="Vice City Full RP • Mod-Log")
             await send_log(guild, "mod", embed)
         else:
             embed = discord.Embed(
@@ -1726,7 +1726,7 @@ async def on_member_update(before: discord.Member, after: discord.Member):
             )
             embed.add_field(name="Utente", value=f"{after.mention} (`{after.id}`)", inline=True)
             embed.add_field(name="Staff Responsabile", value=staff, inline=False)
-            embed.set_footer(text="Imperial Rome Full RP • Mod-Log")
+            embed.set_footer(text="Vice City Full RP • Mod-Log")
             await send_log(guild, "mod", embed)
 
 # =========================================================
@@ -1746,7 +1746,7 @@ async def on_voice_state_update(member: discord.Member, before: discord.VoiceSta
         )
         embed.add_field(name="Utente", value=f"{member.name} (`{member.id}`)", inline=True)
         embed.add_field(name="Canale", value=f"🔊 {after.channel.name}", inline=True)
-        embed.set_footer(text="Imperial Rome Full RP • Voice-Logs")
+        embed.set_footer(text="Vice City Full RP • Voice-Logs")
         await send_log(guild, "voice", embed)
 
     elif before.channel is not None and after.channel is None:
@@ -1758,7 +1758,7 @@ async def on_voice_state_update(member: discord.Member, before: discord.VoiceSta
         )
         embed.add_field(name="Utente", value=f"{member.name} (`{member.id}`)", inline=True)
         embed.add_field(name="Canale Precedente", value=f"🔊 {before.channel.name}", inline=True)
-        embed.set_footer(text="Imperial Rome Full RP • Voice-Logs")
+        embed.set_footer(text="Vice City Full RP • Voice-Logs")
         await send_log(guild, "voice", embed)
 
     elif before.channel != after.channel and before.channel is not None and after.channel is not None:
@@ -1781,7 +1781,7 @@ async def on_voice_state_update(member: discord.Member, before: discord.VoiceSta
         embed.add_field(name="Da", value=f"🔊 {before.channel.name}", inline=True)
         embed.add_field(name="A", value=f"🔊 {after.channel.name}", inline=True)
         embed.add_field(name="Staff Responsabile", value=staff, inline=False)
-        embed.set_footer(text="Imperial Rome Full RP • Voice-Logs")
+        embed.set_footer(text="Vice City Full RP • Voice-Logs")
         await send_log(guild, "voice", embed)
 
     elif before.mute != after.mute:
@@ -1804,7 +1804,7 @@ async def on_voice_state_update(member: discord.Member, before: discord.VoiceSta
         embed.add_field(name="Utente", value=f"{member.mention} (`{member.id}`)", inline=True)
         embed.add_field(name="Canale", value=f"🔊 {after.channel.name}" if after.channel else "*Nessuno*", inline=True)
         embed.add_field(name="Staff Responsabile", value=staff, inline=False)
-        embed.set_footer(text="Imperial Rome Full RP • Voice-Logs")
+        embed.set_footer(text="Vice City Full RP • Voice-Logs")
         await send_log(guild, "voice", embed)
 
 # =========================================================
@@ -1826,7 +1826,7 @@ async def clear_messages(ctx, amount: int):
     embed.add_field(name="Staff Responsabile", value=f"{ctx.author.mention} (`{ctx.author.id}`)", inline=True)
     embed.add_field(name="Canale", value=f"{ctx.channel.mention} (`{ctx.channel.id}`)", inline=True)
     embed.add_field(name="Messaggi Eliminati", value=str(len(deleted) - 1), inline=True)
-    embed.set_footer(text="Imperial Rome Full RP • Staff-Log")
+    embed.set_footer(text="Vice City Full RP • Staff-Log")
     await send_log(ctx.guild, "staff", embed)
 
 
@@ -2313,7 +2313,7 @@ async def staff_soldi_deposito(
     else:
         if current_wallet < importo:
             return await interaction.followup.send(
-                f"❌ Impossibile rimuovere €{importo:,.2f}. Il saldo attuale è di €{current_wallet:,.2f}."
+                f"❌ Impossibile rimuovere ${importo:,.2f}. Il saldo attuale è di ${current_wallet:,.2f}."
             )
         new_wallet = current_wallet - importo
 
@@ -2340,8 +2340,8 @@ async def staff_soldi_deposito(
 
     verb = "Aggiunti" if azione.value == "aggiungi" else "Rimosso"
     await interaction.followup.send(
-        f"💵 **{verb} €{importo:,.2f}** al deposito di **{fazione}**.\n"
-        f"💰 Nuovo saldo attuale: **€{new_wallet:,.2f}**"
+        f"💵 **{verb} ${importo:,.2f}** al deposito di **{fazione}**.\n"
+        f"💰 Nuovo saldo attuale: **${new_wallet:,.2f}**"
     )
 
 import discord
@@ -3247,9 +3247,9 @@ async def staff_info(interaction: discord.Interaction, target: discord.User):
 
         embed.add_field(
             name="💳 Saldo & Economia",
-            value=f"• **Contanti:** `€{cash:,.2f}`\n"
-                  f"• **Banca:** `€{bank:,.2f}`\n"
-                  f"• **Totale:** `€{total:,.2f}`",
+            value=f"• **Contanti:** `${cash:,.2f}`\n"
+                  f"• **Banca:** `${bank:,.2f}`\n"
+                  f"• **Totale:** `${total:,.2f}`",
             inline=False
         )
 
@@ -4718,7 +4718,7 @@ class CreaDocumentiStep2Modal(ui.Modal, title="🪪 ┃ ʀᴇɢɪsᴛʀᴏ (2/2:
         user_id = str(interaction.user.id)
 
         try:
-            cf_temporaneo = f"IMPERIAL-{user_id[-6:]}"
+            cf_temporaneo = f"VICE-{user_id[-6:]}"
             doc_numero = f"DOC-{user_id[-5:]}"
 
             # Dizionario pulito senza campi inesistenti nel database
@@ -5886,7 +5886,7 @@ async def emergenza_911(
       ),
       color=discord.Color.from_rgb(220, 20, 60),
   )
-  embed.set_footer(text="Imperial Rome Full Rp")
+  embed.set_footer(text="Vice City Full Rp")
 
   # 5. Invio del messaggio pubblico nel canale specifico
   await canale_emergenza.send(content=content_ping, embed=embed)
@@ -6106,7 +6106,7 @@ async def me(interaction: discord.Interaction, azione: str):
   )
 
   # Footer con il nome del server o del progetto roleplay
-  embed.set_footer(text="Imperial Rome Full Rp ")
+  embed.set_footer(text="Vice City Full Rp ")
 
   # Invia il messaggio direttamente nel canale in cui è stato eseguito il comando
   await interaction.channel.send(embed=embed)
@@ -6204,7 +6204,7 @@ async def compra(interaction: discord.Interaction, item: str, quantita: int = 1)
 # 📱 TELEFONO E RUBRICA
 # ==========================================
 
-class AggiungiContattoModal(ui.Modal, title="Nuovo Contatto - Imperial OS"):
+class AggiungiContattoModal(ui.Modal, title="Nuovo Contatto - Vice OS"):
     nome_contatto = ui.TextInput(
         label="Nome del Contatto",
         placeholder="Es. Mario Rossi",
@@ -6369,19 +6369,19 @@ class CreaPostSocialModal(ui.Modal, title="Crea un Post sui Social"):
 
 
 class SocialMediaView(ui.View):
-    def __init__(self, user_id: str, platform_name: str = "ImperialGram"):
+    def __init__(self, user_id: str, platform_name: str = "ViceGram"):
         super().__init__(timeout=300)
         self.user_id = user_id
         self.platform_name = platform_name
 
-    @ui.button(label="ImperialGram 📸", style=discord.ButtonStyle.secondary)
+    @ui.button(label="ViceGram 📸", style=discord.ButtonStyle.secondary)
     async def switch_gram(self, interaction: discord.Interaction, button: ui.Button):
-        self.platform_name = "ImperialGram"
+        self.platform_name = "ViceGram"
         await self.aggiorna_feed(interaction)
 
-    @ui.button(label="ImperialBird 🐦", style=discord.ButtonStyle.secondary)
+    @ui.button(label="ViceBird 🐦", style=discord.ButtonStyle.secondary)
     async def switch_bird(self, interaction: discord.Interaction, button: ui.Button):
-        self.platform_name = "ImperialBird"
+        self.platform_name = "ViceBird"
         await self.aggiorna_feed(interaction)
 
     @ui.button(label="Nuovo Post ✍️", style=discord.ButtonStyle.success, row=1)
@@ -6401,7 +6401,7 @@ class SocialMediaView(ui.View):
         embed = discord.Embed(
             title=f"🌐 Social Network — {self.platform_name}",
             description=f"*Esplora gli ultimi post condivisi dai cittadini su {self.platform_name}.*",
-            color=discord.Color.blue() if self.platform_name == "ImperialGram" else discord.Color.from_rgb(29, 161, 242)
+            color=discord.Color.blue() if self.platform_name == "ViceGram" else discord.Color.from_rgb(29, 161, 242)
         )
 
         if not posts:
@@ -6532,11 +6532,11 @@ class EvrenPhoneView(ui.View):
 
     async def apri_social_callback(self, interaction: discord.Interaction):
         social_view = SocialMediaView(self.user_id)
-        res = supabase.table("social_posts").select("*").eq("platform", "ImperialGram").order("created_at", desc=True).limit(5).execute()
+        res = supabase.table("social_posts").select("*").eq("platform", "ViceGram").order("created_at", desc=True).limit(5).execute()
         posts = res.data if res.data else []
         
         embed = discord.Embed(
-            title="🌐 Social Network — ImperialGram",
+            title="🌐 Social Network — ViceGram",
             description="*Esplora gli ultimi post condivisi dai cittadini.*",
             color=discord.Color.blue()
         )
@@ -6575,7 +6575,7 @@ class EvrenPhoneView(ui.View):
 
 
 
-@bot.tree.command(name="telefono", description="Apre lo schermo del tuo smartphone di Imperial OS.")
+@bot.tree.command(name="telefono", description="Apre lo schermo del tuo smartphone di Vice OS.")
 async def telefono(interaction: discord.Interaction):
     if RUOLO_RICHIESTO_ID is not None:
         ruolo = interaction.guild.get_role(RUOLO_RICHIESTO_ID)
@@ -6614,7 +6614,7 @@ async def telefono(interaction: discord.Interaction):
     view = EvrenPhoneView(user_id, phone_number)
     
     embed = discord.Embed(
-        title="📱 Imperial OS — Smartphone",
+        title="📱 Vice City OS — Smartphone",
         description="*Benvenuto nel tuo terminale personale. Gestisci contatti, chatta su WhatsApp e naviga sui Social Network.*",
         color=discord.Color.from_rgb(40, 167, 69)
     )
@@ -6702,13 +6702,13 @@ async def cerca_foto(interaction: discord.Interaction, foto: discord.Attachment)
 
         embed = discord.Embed(
             title="🔍 Esito Scansione Biometrica",
-            description="**Match trovato nel database centrale di Imperial City!**",
+            description="**Match trovato nel database centrale di Vice City!**",
             color=discord.Color.green()
         )
         embed.add_field(name="👤 Cittadino Identificato", value=f"`{nome_cittadino}`", inline=False)
         embed.add_field(name="📄 Riferimento / ID", value=f"`{codice_fiscale}`", inline=True)
         embed.add_field(name="📊 Affidabilità Match", value=f"`{round((1 - distanza) * 100, 1)}%`", inline=True)
-        embed.set_footer(text="Imperial OS — Sicurezza e Giustizia")
+        embed.set_footer(text="Vice City OS — Sicurezza e Giustizia")
 
         await interaction.followup.send(embed=embed, ephemeral=True)
         return
@@ -6782,7 +6782,7 @@ async def fazione_autocomplete(
 
 # --- PORTAFOGLIO ED OGGETTI ---
 
-@bot.tree.command(name="portafoglio", description="Visualizza i contanti e lo stato del tuo portafoglio su Imperial City OS.")
+@bot.tree.command(name="portafoglio", description="Visualizza i contanti e lo stato del tuo portafoglio su Vice City OS.")
 async def portafoglio(interaction: discord.Interaction):
     user_id = str(interaction.user.id)
     
@@ -6796,12 +6796,12 @@ async def portafoglio(interaction: discord.Interaction):
         contanti = res.data[0].get("wallet", 0)
 
     embed = discord.Embed(
-        title="💼 Portafoglio - Imperial OS",
+        title="💼 Portafoglio - Vice OS",
         description="Ecco il riepilogo del tuo denaro contante.",
         color=discord.Color.green()
     )
     embed.add_field(name="💵 Contanti", value=f"**€ {contanti:,.2f}**", inline=False)
-    embed.set_footer(text="Imperial City OS • Sistema Finanziario")
+    embed.set_footer(text="Vice City OS • Sistema Finanziario")
 
     await interaction.response.send_message(embed=embed, ephemeral=True)
 
@@ -7263,7 +7263,7 @@ async def deposito_fazione(interaction: discord.Interaction, fazione: str):
   embed.add_field(
       name="📦 Inventario Item", value=f"```{lista_item}```", inline=False
   )
-  embed.set_footer(text="Imperial City OS • Gestione Risorse Fazione")
+  embed.set_footer(text="Vixe City OS • Gestione Risorse Fazione")
 
   view = FactionVaultView(fazione)
   await interaction.response.send_message(embed=embed, view=view, ephemeral=True)
@@ -7289,7 +7289,7 @@ class ShopCategorySelect(ui.Select):
         items = res.data if res.data else []
 
         embed = discord.Embed(
-            title=f"🛒 Imperial Shop - Categoria: {categoria.capitalize()}",
+            title=f"🛒 Vice Shop - Categoria: {categoria.capitalize()}",
             description="Ecco gli articoli disponibili in questa categoria. Usa il comando `/compra [nome_item]` per acquistarli.",
             color=discord.Color.blue()
         )
@@ -7307,7 +7307,7 @@ class ShopCategorySelect(ui.Select):
                     inline=False
                 )
 
-        embed.set_footer(text="Imperial City OS • Economia")
+        embed.set_footer(text="Vice City OS • Economia")
         await interaction.response.edit_message(embed=embed, view=self.view)
 
 
@@ -7317,14 +7317,14 @@ class ShopView(ui.View):
         self.add_item(ShopCategorySelect())
 
 
-@bot.tree.command(name="shop", description="Visualizza lo store di Imperial City OS e naviga tra le categorie.")
+@bot.tree.command(name="shop", description="Visualizza lo store di Vice City OS e naviga tra le categorie.")
 async def shop(interaction: discord.Interaction):
     embed = discord.Embed(
-        title="🛒 Imperial City OS - Negozio Generale",
+        title="🛒 Vice City OS - Negozio Generale",
         description="Benvenuto nello shop ufficiale. Seleziona una categoria dal menu sottostante per visualizzare gli articoli in vendita.",
         color=discord.Color.blue()
     )
-    embed.set_footer(text="Imperial City OS • Economia")
+    embed.set_footer(text="Vice City OS • Economia")
     
     view = ShopView()
     await interaction.response.send_message(embed=embed, view=view, ephemeral=True)
@@ -9063,7 +9063,7 @@ async def genera_fattura_html(
             </div>
         </div>
         <div class="invoice-footer">
-            <span>Documento emesso e archiviato digitalmente tramite Imperial City OS</span>
+            <span>Documento emesso e archiviato digitalmente tramite Vice City OS</span>
             <span>Pagina 1 di 1</span>
         </div>
     </body>
@@ -9187,13 +9187,13 @@ async def emetti_fattura(interaction: discord.Interaction, azienda: str, utente:
     
     embed = discord.Embed(title="📑 Nuova Fattura Emessa", description=f"Fattura emessa con successo per {utente.mention} a nome dell'azienda **{azienda}** (P.IVA: {partita_iva})!", color=discord.Color.from_rgb(15, 23, 42))
     embed.set_image(url=f"attachment://fattura_{nuova_fattura['id']}.png")
-    embed.set_footer(text="Imperial City OS • Sistema Fiscale")
+    embed.set_footer(text="Vice City OS • Sistema Fiscale")
     await interaction.followup.send(embed=embed, file=file)
     
     # 4. Inoltro al destinatario
     try:
         dm_embed = discord.Embed(title="💳 Nuova Fattura Ricevuta", description=f"Ti è stata emessa una nuova fattura a nome dell'azienda **{azienda}** per un importo di **€ {importo:,.2f}**.\n\n💬 **Causale:** {causale}\n\nUsa il comando </mie_fatture:0> in città per visualizzare l'anteprima dettagliata ed effettuare il pagamento.", color=discord.Color.from_rgb(220, 38, 38))
-        dm_embed.set_footer(text="Imperial City OS • Sistema Fiscale")
+        dm_embed.set_footer(text="Vice City OS • Sistema Fiscale")
         await utente.send(embed=dm_embed)
     except discord.Forbidden:
         pass
@@ -9290,7 +9290,7 @@ async def mie_fatture(interaction: discord.Interaction):
             storico_testo = storico_testo[:1021] + "..."
         embed.add_field(name="📜 Storico Fatture Precedenti", value=storico_testo, inline=False)
         
-    embed.set_footer(text="Imperial City OS • Sistema Fiscale")
+    embed.set_footer(text="Vice City OS • Sistema Fiscale")
     view = FabbricaFattureView(fatture)
     await interaction.followup.send(embed=embed, file=file, view=view)
 
@@ -9381,7 +9381,7 @@ async def crea_azienda(interaction: discord.Interaction, nome: str, ruolo: disco
     embed.add_field(name="📑 Partita IVA", value=f"`{nuova_piva}`", inline=True)
     embed.add_field(name="⚖️ Tassazione", value=f"{percentuale_tasse}%", inline=True)
     embed.add_field(name="🎭 Ruolo Autorizzato", value=ruolo.mention, inline=False)
-    embed.set_footer(text="Imperial City OS • Registro Imprese")
+    embed.set_footer(text="Vice City OS • Registro Imprese")
     
     await interaction.followup.send(embed=embed)
 
@@ -10270,7 +10270,7 @@ async def perquisii(interaction: discord.Interaction, utente: discord.Member):
 
     embed_finale.add_field(
         name="💵 Denaro Contante Trovato",
-        value=f"**€{soldi_contanti:,.2f}**",
+        value=f"**${soldi_contanti:,.2f}**",
         inline=False,
     )
 
@@ -10339,7 +10339,7 @@ class PagaTasseView(discord.ui.View):
         # Disabilita il pulsante
         self.clear_items()
         await interaction.edit_original_response(
-            content=f"✅ **Tasse versate con successo!**\n{interaction.user.mention} ha pagato **€ {self.importo_tasse:,.2f}** allo stato tramite {metodo}.", 
+            content=f"✅ **Tasse versate con successo!**\n{interaction.user.mention} ha pagato **$ {self.importo_tasse:,.2f}** allo stato tramite {metodo}.", 
             view=self
         )
 
@@ -10399,7 +10399,7 @@ async def tasse(interaction: discord.Interaction, azienda: str):
     embed.add_field(name="📄 Fatture in Sospeso", value=str(len(fatture)), inline=True)
     embed.add_field(name="💰 Totale Fatturato", value=f"€ {totale_fatturato:,.2f}", inline=True)
     embed.add_field(name="⚖️ Aliquota Tasse", value=f"{tax_rate}%", inline=True)
-    embed.add_field(name="📉 Da Versare allo Stato", value=f"**€ {tasse_da_pagare:,.2f}**", inline=False)
+    embed.add_field(name="📉 Da Versare allo Stato", value=f"**$ {tasse_da_pagare:,.2f}**", inline=False)
     
     view = PagaTasseView(str(interaction.user.id), azienda, ids_fatture, tasse_da_pagare)
     await interaction.followup.send(embed=embed, view=view)
