@@ -138,8 +138,8 @@ def get_or_create_user(user_id: int, username: str):
         new_user = {
             "discord_id": str(user_id),
             "username": username,
-            "wallet": 1500.0,
-            "bank": 1500.0,
+            "wallet": 5000.0,
+            "bank": 5000.0,
             "pin": None,
             "max_weight": 10.0  # Limite peso base
         }
