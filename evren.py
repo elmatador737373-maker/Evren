@@ -9149,7 +9149,7 @@ async def renderizza_fattura_immagine(fattura) -> discord.File:
 
     user_id = "Evren"
     api_key = "Evren"
-    render_url = "https://evren-html.onrender.com"
+    render_url = "https://htmlevren.onrender.com"
     headers = {"Authorization": aiohttp.encode_basic_auth(str(user_id), str(api_key))}
 
     async with aiohttp.ClientSession() as session:
@@ -9775,7 +9775,7 @@ async def renderizza_html_in_immagine(html_content: str) -> discord.File:
     api_key = "Evren"
     
     # Endpoint puntato al tuo servizio Render
-    render_url = "https://evren-html.onrender.com"
+    render_url = "https://htmlevren.onrender.com"
     
     payload = {
         "html": html_content,
