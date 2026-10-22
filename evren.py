@@ -1920,13 +1920,12 @@ async def invio_report_settimanale():
     await esegui_invio_report("📊 Report Incarichi Staff • Resoconto Settimanale", "Resoconto settimanale della domenica.")
 
 # --- CONFIGURAZIONE ID ---
-ROLE_ATTESA_WL_ID = 1456963275408543765       # Ruolo Attesa WL
-CANALE_BACKGROUND_ID = 1456963734000898253    # Canale invio schede
+ROLE_ATTESA_WL_ID = 1560713014154629172       # Ruolo Attesa WL
+CANALE_BACKGROUND_ID = 1561391416624549899    # Canale invio schede
 
 # Reazioni Staff animate
-EMOJI_ACCETTA_ID = 1555190974626660352
-EMOJI_RIFIUTA_ID = 1555190971451441216
-
+EMOJI_ACCETTA_ID = 1562055581563486230
+EMOJI_RIFIUTA_ID = 1562851709922054194
 
 # --- SECONDO MODAL: DATI IC & STORIA ---
 class ModalDatiIC(ui.Modal, title="Passo 2: Dati In-Character (IC)"):
