@@ -2298,6 +2298,9 @@ async def reaction_background_wl(payload: discord.RawReactionActionEvent):
             pass
 
     if target_user:
+        # Sostituisci con l'ID reale del ruolo da assegnare in caso di approvazione
+        ROLE_ID_APPROVATO = 1560713004834885712
+
         if is_accettato:
             dm_embed = discord.Embed(
                 title="Esito Candidatura Background: APPROVATO",
@@ -2309,6 +2312,18 @@ async def reaction_background_wl(payload: discord.RawReactionActionEvent):
                 ),
                 color=discord.Color.green()
             )
+            
+            # --- AGGIUNTA RUOLO IN CASO DI APPROVAZIONE ---
+            if guild:
+                try:
+                    member = guild.get_member(target_user.id) or await guild.fetch_member(target_user.id)
+                    role = guild.get_role(ROLE_ID_APPROVATO)
+                    
+                    if member and role:
+                        await member.add_roles(role, reason=f"Background approvato da {staff_name}")
+                except discord.HTTPException as e:
+                    print(f"Errore durante l'assegnazione del ruolo: {e}")
+
         else:
             dm_embed = discord.Embed(
                 title="Esito Candidatura Background: RESPINTO",
@@ -2337,7 +2352,7 @@ async def setup_background(interaction: discord.Interaction):
         title="📋 Richiesta Whitelist • Invio Background",
         description=(
             "Benvenuto nella sezione di invio del Background.\n\n"
-            "• **Requisito:** Devi possedere il ruolo <@&1554499278712610896>\n"
+            "• **Requisito:** Devi possedere il ruolo <@&1560713014154629172>\n"
             "• Clicca sul pulsante sottostante per aprire il modulo e compilare i tuoi dati OOC e IC.\n"
             "• Una volta inviato, lo staff revisionerà la scheda e riceverai l'esito direttamente nei tuoi messaggi privati."
         ),
@@ -9870,7 +9885,7 @@ async def mostra_documento(interaction: discord.Interaction):
         # e inviamo il messaggio di errore privato (ephemeral)
         await interaction.delete_original_response()
         await interaction.followup.send(
-            "❌ Non possiedi ancora un documento registrato! Vai su <#1554500961324761119> per crearlo.",
+            "❌ Non possiedi ancora un documento registrato! Vai su <#1560715315460046888> per crearlo.",
             ephemeral=True,
         )
         return
