@@ -311,6 +311,62 @@ from discord.ext import commands
 import discord
 from discord import app_commands
 from discord.ext import commands
+import discord
+from discord import app_commands
+
+# CONFIGURAZIONE ID (Modifica questi numeri con i tuoi ID reali)
+ID_RUOLO_STAFF = 1560712740631486606  # ID del ruolo staff autorizzato a usare il comando
+
+# ID delle tue emoji (inserisci gli ID numerici delle emoji custom o animate)
+ID_EMOJI_SI = 1562055581563486230
+ID_EMOJI_NO = 1562851709922054194
+ID_EMOJI_TARDI = 1562854637785317436
+
+@bot.tree.command(name="sondaggio-orario", description="Crea un sondaggio Roleplay con reazioni e orario personalizzato.")
+@app_commands.describe(
+    orario="Scrivi l'orario del RP (es. 12:00, 15:30...)",
+    ruolo_da_pingare="Seleziona il ruolo da menzionare nel sondaggio"
+)
+async def sondaggio_orario(interaction: discord.Interaction, orario: str, ruolo_da_pingare: discord.Role):
+    
+    # 1. Controllo permessi staff tramite ID
+    if not any(role.id == ID_RUOLO_STAFF for role in interaction.user.roles):
+        return await interaction.response.send_message(
+            "❌ Non hai i permessi necessari per utilizzare questo comando!", 
+            ephemeral=True
+        )
+
+    # Recupera le emoji dal bot (o usa quelle standard se l'ID non è valido)
+    emoji_si = interaction.client.get_emoji(ID_EMOJI_SI) or "✅"
+    emoji_no = interaction.client.get_emoji(ID_EMOJI_NO) or "❌"
+    emoji_tardi = interaction.client.get_emoji(ID_EMOJI_TARDI) or "🕒"
+
+    # Testo del ping
+    ping_text = f"{ruolo_da_pingare.mention}"
+
+    # Creazione dell'Embed formattato con le emoji e la spiegazione
+    embed = discord.Embed(
+        description=f"📢 **Chi per RP alle {orario}?** 📢[span_0](start_span)[span_0](end_span)\n\n"
+                    f"{emoji_si} **SI CI SONO**[span_1](start_span)[span_1](end_span)\n\n"
+                    f"{emoji_no} **NO NON CI SARO'**[span_2](start_span)[span_2](end_span)\n\n"
+                    f"{emoji_tardi} **VENGO PIÙ TARDI**[span_3](start_span)[span_3](end_span)\n\n"
+                    f"Revelant Roleplay Ps4[span_4](start_span)[span_4](end_span)",
+        color=discord.Color.from_rgb(40, 40, 40)
+    )
+
+    # Risponde all'interazione inviando il messaggio
+    await interaction.response.send_message(content=ping_text, embed=embed)
+    
+    # Recupera il messaggio appena inviato per metterci le reazioni sopra in automatico
+    message = await interaction.original_response()
+
+    # Aggiunge le reazioni in sequenza
+    try:
+        await message.add_reaction(emoji_si)
+        await message.add_reaction(emoji_no)
+        await message.add_reaction(emoji_tardi)
+    except Exception as e:
+        print(f"Errore durante l'aggiunta delle reazioni: {e}")
 
 # Inserisci qui l'ID del ruolo autorizzato ad eseguire il wipe
 ALLOWED_ROLE_ID = 1253460150141059198 
