@@ -892,41 +892,41 @@ TICKET_CONFIG = {
     "supporto": {
         "label": "Richiedi Supporto",
         "emoji": "📌",
-        "category_id": 1555744095157100564,  # ID Categoria Supporto
-        "role_id": 1506696249292886108,      # Solo chi ha QUESTO ruolo vede il ticket
+        "category_id": 1562871908809052310,  # ID Categoria Supporto
+        "role_id": 1560712703717146805,      # Solo chi ha QUESTO ruolo vede il ticket
         "prefix": "supporto"
     },
     "amministrazione": {
         "label": "Richiesta Amministrazione",
         "emoji": "⚜️",
-        "category_id": 1555744095157100564,  # ID Categoria Admin
-        "role_id": 1506696247908765789,      # Solo chi ha QUESTO ruolo vede il ticket
+        "category_id": 1562871908809052310,  # ID Categoria Admin
+        "role_id": 1560712646011920528,      # Solo chi ha QUESTO ruolo vede il ticket
         "prefix": "admin"
     },
     "partnership": {
         "label": "Richiesta Partnership",
         "emoji": "🤝",
-        "category_id": 1555744095157100564,  # ID Categoria Partnership
-        "role_id": 1506696249292886108,      # Solo chi ha QUESTO ruolo vede il ticket
+        "category_id": 1562871908809052310,  # ID Categoria Partnership
+        "role_id": 1560712749800104066,      # Solo chi ha QUESTO ruolo vede il ticket
         "prefix": "partner"
     },
     "bug": {
         "label": "Segnala Un Bug",
         "emoji": "📮",
-        "category_id": 1555744095157100564,  # ID Categoria Bug
-        "role_id": 1506696249292886108,      # Solo chi ha QUESTO ruolo vede il ticket
+        "category_id": 1562871908809052310,  # ID Categoria Bug
+        "role_id": 1560712598855483435,      # Solo chi ha QUESTO ruolo vede il ticket
         "prefix": "bug"
     },
     "permadeath": {
         "label": "Richiedi PermaDeath/Jail",
         "emoji": "🏴‍☠️",
-        "category_id": 1555744095157100564,  # ID Categoria Perma/Jail
-        "role_id": 1506696247908765789,      # Solo chi ha QUESTO ruolo vede il ticket
+        "category_id": 1562871908809052310,  # ID Categoria Perma/Jail
+        "role_id": 1560712703717146805,      # Solo chi ha QUESTO ruolo vede il ticket
         "prefix": "perma"
     }
 }
 
-LOG_CHANNEL_ID = 1506696329231995084  # ID Canale Log e Transcript Staff
+LOG_CHANNEL_ID = 1562872456434294834  # ID Canale Log e Transcript Staff
 
 
 # ----------------- GENERAZIONE TRANSCRIPT HTML ----------------- #
