@@ -10683,6 +10683,36 @@ async def registra_casa(interaction: discord.Interaction, proprietario: discord.
     supabase.table("registered_properties").insert({"discord_id": str(proprietario.id), "address": indirizzo, "property_type": tipologia}).execute()
     embed = discord.Embed(title="🏠 Immobile Registrato", description=f"• Proprietario: {proprietario.mention}\n• Indirizzo: `{indirizzo}`\n• Categoria: `{tipologia}`", color=discord.Color.gold())
     await interaction.response.send_message(embed=embed)
+from flask import request, jsonify
+
+@app.route('/api/check-role', methods=['POST'])
+def check_role():
+    data = request.json
+    if not data:
+        return jsonify({"hasRole": False}), 400
+
+    discord_id = int(data.get("discord_id"))
+    role_id = int(data.get("role_id"))
+
+    try:
+        guild = bot.get_guild(1515883758341980211)
+        if not guild:
+            return jsonify({"hasRole": False})
+        
+        member = guild.get_member(discord_id)
+        if not member:
+            import asyncio
+            member = asyncio.run_coroutine_threadsafe(guild.fetch_member(discord_id), bot.loop).result()
+
+        if not member:
+            return jsonify({"hasRole": False})
+
+        has_role = any(r.id == role_id for r in member.roles)
+        return jsonify({"hasRole": has_role})
+        
+    except Exception as e:
+        print(f"Errore controllo ruolo python bot: {e}")
+        return jsonify({"hasRole": False})
 
 
 @bot.event
