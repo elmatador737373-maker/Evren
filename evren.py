@@ -3541,7 +3541,7 @@ import discord
 from discord import app_commands
 
 # Definisci il nome o l'ID del ruolo richiesto per usare questo comando
-REQUIRED_ROLE = 1253460150141059198  # Oppure puoi usare l'ID numerico: 123456789012345678
+REQUIRED_ROLE = 1560712795685789770  # Oppure puoi usare l'ID numerico: 123456789012345678
 
 @bot.command(name="serverslink")
 async def servers_link(ctx: commands.Context):
