@@ -346,11 +346,11 @@ async def sondaggio_orario(interaction: discord.Interaction, orario: str, ruolo_
 
     # Creazione dell'Embed formattato con le emoji e la spiegazione
     embed = discord.Embed(
-        description=f"📢 **Chi per RP alle {orario}?** 📢[span_0](start_span)[span_0](end_span)\n\n"
-                    f"{emoji_si} **SI CI SONO**[span_1](start_span)[span_1](end_span)\n\n"
-                    f"{emoji_no} **NO NON CI SARO'**[span_2](start_span)[span_2](end_span)\n\n"
-                    f"{emoji_tardi} **VENGO PIÙ TARDI**[span_3](start_span)[span_3](end_span)\n\n"
-                    f"Revelant Roleplay Ps4[span_4](start_span)[span_4](end_span)",
+        description=f"📢 **Chi per RP alle {orario}?** 📢\n\n"
+                    f"{emoji_si} **SI CI SONO**\n\n"
+                    f"{emoji_no} **NO NON CI SARO'**\n\n"
+                    f"{emoji_tardi} **VENGO PIÙ TARDI**\n\n"
+                    f"Revelant Roleplay Ps4/Ps5",
         color=discord.Color.from_rgb(40, 40, 40)
     )
 
