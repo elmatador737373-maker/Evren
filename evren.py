@@ -1350,7 +1350,7 @@ async def esegui_invio_report(titolo: str, descrizione: str):
     data_str = datetime.now().strftime("%d-%m-%Y_%H-%M")
     discord_file = discord.File(fp=file_buffer, filename=f"Report_Staff_{data_str}.xlsx")
 
-    embed = discord.Embed(title=titolo, description=descrizione, color=discord.Color.blue(), timestamp=datetime.now(datetime.timezone.utc))
+    embed = discord.Embed(title=titolo, description=descrizione, color=discord.Color.blue(), timestamp=datetime.datetime.now(datetime.timezone.utc))
     if server_staff.icon:
         embed.set_thumbnail(url=server_staff.icon.url)
     embed.set_footer(text="Archivio Supabase Incarichi")
@@ -1400,7 +1400,7 @@ async def on_message_delete(message: discord.Message):
     responsible_staff = "*Eliminato dall'autore o sconosciuto*"
     try:
         async for entry in message.guild.audit_logs(limit=3, action=discord.AuditLogAction.message_delete):
-            if entry.target.id == message.author.id and (datetime.now(datetime.timezone.utc) - entry.created_at).total_seconds() < 10:
+            if entry.target.id == message.author.id and (datetime.datetime.now(datetime.timezone.utc) - entry.created_at).total_seconds() < 10:
                 responsible_staff = f"{entry.user.mention} (`{entry.user.id}`)"
                 break
     except Exception:
@@ -1410,7 +1410,7 @@ async def on_message_delete(message: discord.Message):
         title="🗑️ Messaggio Eliminato",
         description="Un messaggio è stato rimosso da un canale testuale.",
         color=discord.Color.dark_red(),
-        timestamp=datetime.now(datetime.timezone.utc)
+        timestamp=datetime.datetime.now(datetime.timezone.utc)
     )
     embed.add_field(name="Autore", value=f"{message.author.mention} (`{message.author.id}`)", inline=True)
     embed.add_field(name="Canale", value=f"{message.channel.mention} (`{message.channel.id}`)", inline=True)
@@ -2096,29 +2096,42 @@ class ModalDatiIC(ui.Modal, title="Passo 2: Dati In-Character (IC)"):
             icon_url=interaction.user.display_avatar.url
         )
 
+        # Funzione di utilità per bloccare i testi al limite massimo consentito da Discord (1024 caratteri)
+        def safe_limit(text: str, max_chars: int = 1024) -> str:
+            if len(text) > max_chars:
+                return text[:max_chars - 3] + "..."
+            return text
+
+        # Preparazione protetta dei campi dell'embed
+        valore_ooc = safe_limit(
+            f"**ID PSN:** {self.dati_ooc['psn']}\n"
+            f"**Età OOC:** {self.dati_ooc['eta']}\n"
+            f"**Esperienza in RP:**\n{self.dati_ooc['esperienza']}"
+        )
+
+        valore_ic = safe_limit(
+            f"**Nome e Cognome:** {self.nome_cognome.value}\n"
+            f"**Data di Nascita:** {self.data_nascita.value}\n"
+            f"**Paure:** {self.paure.value}"
+        )
+
+        valore_storia = safe_limit(self.storia_pg.value)
+
         embed.add_field(
             name="Informazioni OOC",
-            value=(
-                f"**ID PSN:** {self.dati_ooc['psn']}\n"
-                f"**Età OOC:** {self.dati_ooc['eta']}\n"
-                f"**Esperienza in RP:**\n{self.dati_ooc['esperienza']}"
-            ),
+            value=valore_ooc,
             inline=False
         )
 
         embed.add_field(
             name="Dati Personaggio (IC)",
-            value=(
-                f"**Nome e Cognome:** {self.nome_cognome.value}\n"
-                f"**Data di Nascita:** {self.data_nascita.value}\n"
-                f"**Paure:** {self.paure.value}"
-            ),
+            value=valore_ic,
             inline=False
         )
 
         embed.add_field(
             name="Storia PG",
-            value=self.storia_pg.value,
+            value=valore_storia,
             inline=False
         )
 
@@ -2771,7 +2784,7 @@ async def fine_minatore(interaction: discord.Interaction):
     start_time = datetime.fromisoformat(created_at_str)
     target_material = session["target_material"]
     
-    now_time = datetime.now(timezone.utc)
+    now_time = datetime.datetime.now(timezone.utc)
 
     # Estrazione nome puro del materiale (dopo la barra "|")
     try:
