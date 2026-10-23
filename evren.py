@@ -313,43 +313,6 @@ from discord import app_commands
 from discord.ext import commands
 import discord
 from discord import app_commands
-ID_CANALE_BENVENUTO = 1560714598787588186
-@bot.event
-async def on_member_join(member: discord.Member):
-    # Inserisci qui l'ID del canale in cui inviare il benvenuto
-    channel_id = ID_CANALE_BENVENUTO  
-    channel = bot.get_channel(channel_id)
-    
-    if channel is None:
-        return
-
-    embed = discord.Embed(
-        title="🏙️ BENVENUTO SU REVELANT ROLEPLAY 🏙️",
-        description=(
-            f"👋 {member.mention}\n\n"
-            f"Benvenuto su **Revelant RP**, dove ogni storia ha inizio e ogni scelta può cambiare il tuo destino!\n\n"
-            "**🚔 COSA TI ASPETTA?**\n"
-            "• 🚔 Forze dell'Ordine e inseguimenti\n"
-            "• 💼 Lavori legali e attività criminali\n"
-            "• 🏙️ Una città tutta da vivere\n"
-            "• 🤝 Nuove amicizie e tante opportunità\n"
-            "• 🎭 Un'esperienza Roleplay coinvolgente\n\n"
-            "**📌 PRIMA DI INIZIARE**\n"
-            "• 📖 Leggi attentamente il regolamento.\n"
-            "• 🪪 Completa la registrazione richiesta."
-        ),
-        color=discord.Color.from_rgb(46, 204, 113)
-    )
-
-    # Foto profilo dell'utente come miniatura in alto a destra
-    embed.set_thumbnail(url=member.display_avatar.url)
-
-    # Banner in basso preso da ImgBB
-    embed.set_image(url="https://i.ibb.co/Ld8XRyTq/74139-DB8-7-F66-42-D8-AF83-95-E18-B00-AEF4.png")
-
-    embed.set_footer(text="Revelant RP • Buona permanenza!", icon_url=member.guild.icon.url if member.guild.icon else None)
-
-    await channel.send(content=f"👋 Benvenuto su Revelant! {member.mention}", embed=embed)
 
 # CONFIGURAZIONE ID (Modifica questi numeri con i tuoi ID reali)
 ID_RUOLO_STAFF = 1560712740631486606  # ID del ruolo staff autorizzato a usare il comando
@@ -1680,8 +1643,49 @@ async def on_guild_role_delete(role: discord.Role):
 # 5. MEMBER LOGS (╰👱╮Member-Log) & ASSEGNAZIONE RUOLI / MUTE
 # =========================================================
 
+import discord
+import datetime
+
+# ID del canale specifico per il benvenuto di Revelant RP
+ID_CANALE_BENVENUTO_REVELANT = 1560714598787588186
+
+async def invia_benvenuto_revelant(member: discord.Member):
+    """Funzione custom per inviare il benvenuto grafico di Revelant RP"""
+    channel = member.guild.get_channel(ID_CANALE_BENVENUTO_REVELANT)
+    if channel is None:
+        return
+
+    embed = discord.Embed(
+        title="🏙️ BENVENUTO SU REVELANT ROLEPLAY 🏙️",
+        description=(
+            f"👋 {member.mention}\n\n"
+            f"Benvenuto su **Revelant RP**, dove ogni storia ha inizio e ogni scelta può cambiare il tuo destino!\n\n"
+            "**🚔 COSA TI ASPETTA?**\n"
+            "• 🚔 Forze dell'Ordine e inseguimenti\n"
+            "• 💼 Lavori legali e attività criminali\n"
+            "• 🏙️ Una città tutta da vivere\n"
+            "• 🤝 Nuove amicizie e tante opportunità\n"
+            "• 🎭 Un'esperienza Roleplay coinvolgente\n\n"
+            "**📌 PRIMA DI INIZIARE**\n"
+            "• 📖 Leggi attentamente il regolamento.\n"
+            "• 🪪 Completa la registrazione richiesta."
+        ),
+        color=discord.Color.from_rgb(46, 204, 113)
+    )
+
+    embed.set_thumbnail(url=member.display_avatar.url)
+    embed.set_image(url="https://i.ibb.co/Ld8XRyTq/74139-DB8-7-F66-42-D8-AF83-95-E18-B00-AEF4.png")
+    embed.set_footer(text="Revelant RP • Buona permanenza!", icon_url=member.guild.icon.url if member.guild.icon else None)
+
+    await channel.send(content=f"👋 Benvenuto su Revelant! {member.mention}", embed=embed)
+
+
+# ==========================================
+# IL TUO EVENTO UNICO on_member_join
+# ==========================================
 @bot.event
 async def on_member_join(member: discord.Member):
+    # 1. Esegue la tua parte di log (Member-Log dell'Impero Romano RP)
     created_at = int(member.created_at.timestamp())
     embed = discord.Embed(
         title="📥 Membro Entrato",
@@ -1695,6 +1699,9 @@ async def on_member_join(member: discord.Member):
     embed.set_thumbnail(url=member.display_avatar.url)
     embed.set_footer(text="Revelant Full RP • Member-Log")
     await send_log(member.guild, "member", embed)
+
+    # 2. Chiama la funzione custom per inviare il messaggio di benvenuto nel canale dedicato
+    await invia_benvenuto_revelant(member)
 
 @bot.event
 async def on_member_remove(member: discord.Member):
