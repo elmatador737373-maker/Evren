@@ -4255,7 +4255,7 @@ async def invia_richiesta_stipendio(bot: commands.Bot, utente: discord.Member, t
     
     await notifica_utente_dm(bot, utente.id, embed_dm)
 
-CANALE_STIPENDI_ID = 1554501001598476379  # ID canale staff stipendi
+CANALE_STIPENDI_ID = 1560715299270033429  # ID canale staff stipendi
 TOLLERANZA_MINUTI = 15                  # Tolleranza minima in minuti
 
 
