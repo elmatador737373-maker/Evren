@@ -1347,7 +1347,7 @@ async def esegui_invio_report(titolo: str, descrizione: str):
     res = supabase.table("incarichi").select("*").order("created_at", desc=False).execute()
     file_buffer = genera_report_excel(staff_members, res.data or [])
 
-    data_str = datetime.now().strftime("%d-%m-%Y_%H-%M")
+    data_str = datetime.datetime.now().strftime("%d-%m-%Y_%H-%M")
     discord_file = discord.File(fp=file_buffer, filename=f"Report_Staff_{data_str}.xlsx")
 
     embed = discord.Embed(title=titolo, description=descrizione, color=discord.Color.blue(), timestamp=datetime.datetime.now(datetime.timezone.utc))
@@ -1365,14 +1365,14 @@ import datetime
 # CONFIGURAZIONE CANALI LOG (Inserisci gli ID numerici dei canali)
 # ---------------------------------------------------------
 LOG_CHANNELS = {
-    "message": 1456963764954992732,     # ╰🖨️╮Message-Log
-    "kick_ban": 1456963740816900108,    # ╰🚫╮Kick-Ban-Log
-    "channel": 1456963764954992732,     # ╰📦╮Channel-Log
-    "role": 1456963742767124533,        # ╰🗳️╮Role-Log
-    "member": 1456963745166131246,      # ╰👱╮Member-Log
-    "mod": 1456963764954992732,         # ╰📗╮Mod-Log
-    "staff": 1456963764954992732,       # ╰⛑️╮Staff-Log
-    "voice": 1456963739394904165        # ╰🔊╮Voice-Logs
+    "message": 1562850025820786790,     # ╰🖨️╮Message-Log
+    "kick_ban": 1561389750575956039,    # ╰🚫╮Kick-Ban-Log
+    "channel": 1562850171589632201,     # ╰📦╮Channel-Log
+    "role": 1561389855554932858,        # ╰🗳️╮Role-Log
+    "member": 1561389981900079125,      # ╰👱╮Member-Log
+    "mod": 1561389750575956039,         # ╰📗╮Mod-Log
+    "staff": 1561389750575956039,       # ╰⛑️╮Staff-Log
+    "voice": 1561389923641335919        # ╰🔊╮Voice-Logs
 }
 
 async def send_log(guild: discord.Guild, log_type: str, embed: discord.Embed):
@@ -5440,7 +5440,7 @@ async def gestore_cantieri_loop():
         else:
             if was_paused:
                 tempo_rimanente = cantiere.get("tempo_rimanente", 0)
-                nuovo_end_dt = datetime.now(timezone.utc) + timedelta(seconds=tempo_rimanente)
+                nuovo_end_dt = datetime.datetime.now(timezone.utc) + timedelta(seconds=tempo_rimanente)
                 nuovo_end_str = nuovo_end_dt.isoformat()
 
                 supabase.table("cantieri").update({
