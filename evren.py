@@ -10653,10 +10653,10 @@ async def registra_modifiche_error(
             await interaction.followup.send(msg, ephemeral=True)
         else:
             await interaction.response.send_message(msg, ephemeral=True)
-
+RUOLO_PATENTE_ID = 1560714251017134164
 @bot.tree.command(name="registra_patente", description="[MOTORIZZAZIONE] Rilascia una patente di guida.")
 async def registra_patente(interaction: discord.Interaction, cittadino: discord.Member, tipo_patente: str):
-    if RUOLO_MOTORIZZAZIONE_ID and interaction.guild.get_role(RUOLO_MOTORIZZAZIONE_ID) not in interaction.user.roles:
+    if RUOLO_PATENTE_ID and interaction.guild.get_role(RUOLO_PATENTE_ID) not in interaction.user.roles:
         await interaction.response.send_message("❌ Riservato alla Motorizzazione!")
         return
 
