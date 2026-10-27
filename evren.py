@@ -10686,7 +10686,7 @@ from discord import app_commands
 
 # --- CONFIGURAZIONE ---
 RUOLI_MECCANICI_IDS = [
-    1257782342504812688,  # ID Ruolo Meccanico Capo
+    1560713460034175056,  # ID Ruolo Meccanico Capo
     1253460183053504582,  # ID Ruolo Meccanico Standard
 ]
 
