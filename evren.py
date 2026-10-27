@@ -9347,7 +9347,7 @@ async def genera_fattura_html(
     </body>
     </html>
     """
-  return html_content
+    return html_content
 
 # =======================================================
 # 3. AUTOCOMPLETE AZIENDE
