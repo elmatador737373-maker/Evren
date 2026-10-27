@@ -1674,7 +1674,7 @@ async def invia_benvenuto_revelant(member: discord.Member):
     )
 
     embed.set_thumbnail(url=member.display_avatar.url)
-    embed.set_image(url="https://i.ibb.co/Ld8XRyTq/74139-DB8-7-F66-42-D8-AF83-95-E18-B00-AEF4.png")
+    embed.set_image(url="https://i.postimg.cc/m2fynPDw/49C483EF-529A-44A1-BDBB-A75CC98BA8E5.png.png")
     embed.set_footer(text="Revelant RP • Buona permanenza!", icon_url=member.guild.icon.url if member.guild.icon else None)
 
     await channel.send(content=f"👋 Benvenuto su Revelant! {member.mention}", embed=embed)
