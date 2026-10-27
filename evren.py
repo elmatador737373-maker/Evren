@@ -4843,7 +4843,7 @@ class CreaDocumentiStep2Modal(ui.Modal, title="🪪 ┃ ʀᴇɢɪsᴛʀᴏ (2/2:
         user_id = str(interaction.user.id)
 
         try:
-            cf_temporaneo = f"VICE-{user_id[-6:]}"
+            cf_temporaneo = f"REV-{user_id[-6:]}"
             doc_numero = f"DOC-{user_id[-5:]}"
 
             # Dizionario pulito senza campi inesistenti nel database
@@ -6495,19 +6495,19 @@ class CreaPostSocialModal(ui.Modal, title="Crea un Post sui Social"):
 
 
 class SocialMediaView(ui.View):
-    def __init__(self, user_id: str, platform_name: str = "ViceGram"):
+    def __init__(self, user_id: str, platform_name: str = "RevelantGram"):
         super().__init__(timeout=300)
         self.user_id = user_id
         self.platform_name = platform_name
 
-    @ui.button(label="ViceGram 📸", style=discord.ButtonStyle.secondary)
+    @ui.button(label="RevelantGram 📸", style=discord.ButtonStyle.secondary)
     async def switch_gram(self, interaction: discord.Interaction, button: ui.Button):
-        self.platform_name = "ViceGram"
+        self.platform_name = "RevelantGram"
         await self.aggiorna_feed(interaction)
 
-    @ui.button(label="ViceBird 🐦", style=discord.ButtonStyle.secondary)
+    @ui.button(label="RevelantBird 🐦", style=discord.ButtonStyle.secondary)
     async def switch_bird(self, interaction: discord.Interaction, button: ui.Button):
-        self.platform_name = "ViceBird"
+        self.platform_name = "RevelantBird"
         await self.aggiorna_feed(interaction)
 
     @ui.button(label="Nuovo Post ✍️", style=discord.ButtonStyle.success, row=1)
@@ -6527,7 +6527,7 @@ class SocialMediaView(ui.View):
         embed = discord.Embed(
             title=f"🌐 Social Network — {self.platform_name}",
             description=f"*Esplora gli ultimi post condivisi dai cittadini su {self.platform_name}.*",
-            color=discord.Color.blue() if self.platform_name == "ViceGram" else discord.Color.from_rgb(29, 161, 242)
+            color=discord.Color.blue() if self.platform_name == "RevelantGram" else discord.Color.from_rgb(29, 161, 242)
         )
 
         if not posts:
@@ -6658,11 +6658,11 @@ class EvrenPhoneView(ui.View):
 
     async def apri_social_callback(self, interaction: discord.Interaction):
         social_view = SocialMediaView(self.user_id)
-        res = supabase.table("social_posts").select("*").eq("platform", "ViceGram").order("created_at", desc=True).limit(5).execute()
+        res = supabase.table("social_posts").select("*").eq("platform", "RevelantGram").order("created_at", desc=True).limit(5).execute()
         posts = res.data if res.data else []
         
         embed = discord.Embed(
-            title="🌐 Social Network — ViceGram",
+            title="🌐 Social Network — RevelantGran",
             description="*Esplora gli ultimi post condivisi dai cittadini.*",
             color=discord.Color.blue()
         )
@@ -10035,6 +10035,42 @@ async def mostra_documento(interaction: discord.Interaction):
         attachments=[file_documento]
     )
 
+async def renderizza_html_in_immagine(html_content: str, filename: str = "documento.png") -> discord.File:
+    user_id = "Evren"
+    api_key = "Evren"
+    
+    # Endpoint puntato al tuo servizio Render
+    render_url = "https://htmlevren.onrender.com"
+    
+    payload = {
+        "html": html_content,
+        "viewport_width": 820,
+        "viewport_height": 520,
+        "device_scale": 2
+    }
+
+    headers = {
+        "Authorization": aiohttp.encode_basic_auth(user_id, api_key)
+    }
+
+    # Timeout di 15 secondi per evitare che la richiesta rimanga bloccata in caso di sovraccarico su Render
+    timeout = aiohttp.ClientTimeout(total=15)
+
+    try:
+        async with aiohttp.ClientSession(timeout=timeout) as session:
+            async with session.post(render_url, json=payload, headers=headers) as response:
+                if response.status == 200:
+                    # Legge direttamente il flusso di byte dell'immagine PNG generata
+                    screenshot_bytes = await response.read()
+                else:
+                    error_text = await response.text()
+                    raise Exception(f"Errore nel rendering HTML (Status {response.status}): {error_text}")
+    except asyncio.TimeoutError:
+        raise Exception("Il server di rendering ha impiegato troppo tempo a rispondere (Timeout). Riprova più tardi.")
+
+    buffer = io.BytesIO(screenshot_bytes)
+    buffer.seek(0)
+    return discord.File(buffer, filename=filename)
 
 
 import asyncio
