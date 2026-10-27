@@ -9073,171 +9073,263 @@ async def genera_fattura_html(
     data_emissione,
     stato="DA PAGARE",
 ):
-  colore_badge_bg = "#ffeeee" if stato.upper() == "DA PAGARE" else "#e6f4ea"
-  colore_badge_text = "#c5221f" if stato.upper() == "DA PAGARE" else "#137333"
-  colore_border = "#f28b82" if stato.upper() == "DA PAGARE" else "#81c995"
+    # Palette e configurazione colori basata sul tema Revelant
+    is_da_pagare = stato.upper() == "DA PAGARE"
+    
+    colore_badge_bg = "rgba(255, 42, 133, 0.15)" if is_da_pagare else "rgba(0, 240, 255, 0.15)"
+    colore_badge_text = "#ff2a85" if is_da_pagare else "#00f0ff"
+    colore_border = "#ff2a85" if is_da_pagare else "#00f0ff"
 
-  html_content = f"""
+    html_content = f"""
     <!DOCTYPE html>
     <html lang="it">
     <head>
         <meta charset="UTF-8">
+        <link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@700;900&family=Rajdhani:wght@600;700&display=swap" rel="stylesheet">
         <style>
             * {{ box-sizing: border-box; margin: 0; padding: 0; }}
             body {{
-                width: 794px; height: 1123px; background: #ffffff;
-                font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif;
-                color: #202124; padding: 50px 60px; display: flex;
-                flex-direction: column; justify-content: space-between;
+                width: 794px; 
+                height: 1123px; 
+                background: linear-gradient(135deg, #020817 0%, #06152d 50%, #0a0b10 100%);
+                font-family: 'Rajdhani', sans-serif;
+                color: #e2e8f0; 
+                padding: 45px 55px; 
+                display: flex;
+                flex-direction: column; 
+                justify-content: space-between;
                 position: relative;
+                overflow: hidden;
+                border: 2px solid #00f0ff;
+            }}
+            /* Sfondo geometrico tecnico */
+            .urban-bg {{
+                position: absolute;
+                top: 0; left: 0; width: 100%; height: 100%;
+                background-image: 
+                    radial-gradient(circle at 90% 10%, rgba(0, 119, 255, 0.2) 0%, transparent 40%),
+                    linear-gradient(rgba(0, 240, 255, 0.02) 1px, transparent 1px),
+                    linear-gradient(90deg, rgba(0, 240, 255, 0.02) 1px, transparent 1px);
+                background-size: 100% 100%, 30px 30px, 30px 30px;
+                z-index: 0;
+                pointer-events: none;
+            }}
+            .content-wrapper {{
+                position: relative;
+                z-index: 2;
+                display: flex;
+                flex-direction: column;
+                flex-grow: 1;
+                justify-content: space-between;
             }}
             .invoice-header {{
-                display: flex; justify-content: space-between; align-items: flex-start;
-                border-bottom: 3px solid #1a73e8; padding-bottom: 20px; margin-bottom: 30px;
+                display: flex; 
+                justify-content: space-between; 
+                align-items: flex-start;
+                border-bottom: 2.5px solid #00f0ff; 
+                padding-bottom: 20px; 
+                margin-bottom: 25px;
             }}
             .company-info h1 {{
-                margin: 0; font-size: 26px; font-weight: 800; color: #1a73e8;
-                letter-spacing: 0.5px; text-transform: uppercase;
+                margin: 0; 
+                font-family: 'Orbitron', sans-serif;
+                font-size: 28px; 
+                font-weight: 900; 
+                color: #ffffff;
+                letter-spacing: 3px; 
+                text-transform: uppercase;
+                text-shadow: 0 0 10px rgba(0, 240, 255, 0.5);
             }}
             .company-info span {{
-                font-size: 12px; color: #5f6368; text-transform: uppercase;
-                letter-spacing: 1.5px; font-weight: 600; display: block; margin-top: 4px;
+                font-size: 11.5px; 
+                color: #00f0ff; 
+                text-transform: uppercase;
+                letter-spacing: 2px; 
+                font-weight: 700; 
+                display: block; 
+                margin-top: 4px;
             }}
             .company-info .piva {{
-                font-size: 11px; color: #80868b; letter-spacing: 1px;
+                font-size: 11px; 
+                color: #94a3b8; 
+                letter-spacing: 1px;
+                margin-top: 2px;
             }}
             .invoice-meta {{ text-align: right; }}
-            .invoice-meta h2 {{ margin: 0 0 6px 0; font-size: 22px; color: #202124; font-weight: 700; }}
-            .invoice-meta p {{ margin: 3px 0; font-size: 13px; color: #5f6368; }}
+            .invoice-meta h2 {{ 
+                margin: 0 0 6px 0; 
+                font-family: 'Orbitron', sans-serif;
+                font-size: 20px; 
+                color: #ffffff; 
+                font-weight: 700; 
+                letter-spacing: 1px;
+            }}
+            .invoice-meta p {{ margin: 3px 0; font-size: 13.5px; color: #94a3b8; }}
+            .invoice-meta p b {{ color: #ffffff; }}
             .status-badge {{
-                display: inline-block; padding: 6px 12px; background-color: {colore_badge_bg};
-                color: {colore_badge_text}; border: 1px solid {colore_border}; border-radius: 4px;
-                font-size: 12px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.5px; margin-top: 8px;
+                display: inline-block; 
+                padding: 6px 14px; 
+                background-color: {colore_badge_bg};
+                color: {colore_badge_text}; 
+                border: 1.5px solid {colore_border}; 
+                border-radius: 4px;
+                font-family: 'Orbitron', sans-serif;
+                font-size: 11px; 
+                font-weight: 700; 
+                text-transform: uppercase; 
+                letter-spacing: 1px; 
+                margin-top: 10px;
+                box-shadow: 0 0 10px {colore_badge_bg};
             }}
-            .parties-section {{ display: flex; justify-content: space-between; margin-bottom: 40px; gap: 30px; }}
-            .party-box {{ flex: 1; background: #f8f9fa; padding: 18px 20px; border-radius: 8px; border: 1px solid #e8eaed; }}
+            .parties-section {{ 
+                display: flex; 
+                justify-content: space-between; 
+                margin-bottom: 35px; 
+                gap: 25px; 
+            }}
+            .party-box {{ 
+                flex: 1; 
+                background: rgba(255, 255, 255, 0.02); 
+                padding: 16px 20px; 
+                border-radius: 6px; 
+                border: 1px solid rgba(0, 240, 255, 0.2);
+                border-left: 3px solid #00f0ff;
+            }}
             .party-box h4 {{
-                margin: 0 0 8px 0; font-size: 11px; text-transform: uppercase; color: #5f6368;
-                letter-spacing: 1px; border-bottom: 1px solid #dadce0; padding-bottom: 6px;
+                margin: 0 0 8px 0; 
+                font-size: 10px; 
+                text-transform: uppercase; 
+                color: #00f0ff;
+                letter-spacing: 1.5px; 
+                border-bottom: 1px solid rgba(0, 240, 255, 0.15); 
+                padding-bottom: 5px;
+                font-weight: 700;
             }}
-            .party-box p {{ margin: 0; font-weight: 600; color: #202124; font-size: 15px; line-height: 1.4; }}
-            .invoice-table {{ width: 100%; border-collapse: collapse; margin-bottom: 30px; }}
+            .party-box p {{ margin: 0; font-weight: 700; color: #ffffff; font-size: 15px; line-height: 1.4; }}
+            
+            .invoice-table {{ 
+                width: 100%; 
+                border-collapse: collapse; 
+                margin-bottom: 30px; 
+                background: rgba(2, 6, 23, 0.5);
+                border-radius: 6px;
+                overflow: hidden;
+                border: 1px solid rgba(0, 240, 255, 0.2);
+            }}
             .invoice-table th {{
-                background-color: #f1f3f4; color: #3c4043; font-size: 12px; text-transform: uppercase;
-                text-align: left; padding: 12px 16px; border-bottom: 2px solid #bdc1c6; letter-spacing: 0.5px;
+                background-color: rgba(0, 119, 255, 0.15); 
+                color: #00f0ff; 
+                font-family: 'Orbitron', sans-serif;
+                font-size: 11px; 
+                text-transform: uppercase;
+                text-align: left; 
+                padding: 14px 18px; 
+                border-bottom: 2px solid #00f0ff; 
+                letter-spacing: 1px;
             }}
-            .invoice-table td {{ padding: 16px; font-size: 14px; border-bottom: 1px solid #e8eaed; color: #202124; }}
-            .invoice-table td.amount {{ text-align: right; font-weight: 700; }}
-            .totals-container {{ display: flex; justify-content: flex-end; margin-bottom: 50px; }}
-            .totals-box {{ width: 320px; background: #f8f9fa; border: 1px solid #e8eaed; border-radius: 8px; padding: 15px 20px; }}
-            .total-row {{ display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px; font-size: 13px; color: #5f6368; }}
+            .invoice-table td {{ 
+                padding: 18px; 
+                font-size: 14.5px; 
+                border-bottom: 1px solid rgba(255, 255, 255, 0.05); 
+                color: #f1f5f9; 
+                font-weight: 600;
+            }}
+            .invoice-table td.amount {{ text-align: right; font-weight: 700; color: #00f0ff; }}
+            
+            .totals-container {{ display: flex; justify-content: flex-end; margin-bottom: 40px; }}
+            .totals-box {{ 
+                width: 340px; 
+                background: rgba(255, 255, 255, 0.02); 
+                border: 1px solid rgba(0, 240, 255, 0.25); 
+                border-radius: 6px; 
+                padding: 18px 22px; 
+            }}
+            .total-row {{ display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px; font-size: 13.5px; color: #94a3b8; }}
             .total-row.final {{
-                margin-top: 10px; padding-top: 10px; border-top: 2px solid #dadce0;
-                font-size: 16px; color: #202124; font-weight: 700;
+                margin-top: 12px; 
+                padding-top: 12px; 
+                border-top: 2px solid rgba(0, 240, 255, 0.3);
+                font-size: 15px; 
+                color: #ffffff; 
+                font-weight: 700;
             }}
-            .total-row.final span.value {{ color: #1a73e8; font-size: 20px; }}
-            .invoice-footer {{ border-top: 1px solid #dadce0; padding-top: 15px; display: flex; justify-content: space-between; align-items: center; font-size: 11px; color: #5f6368; }}
+            .total-row.final span.value {{ color: #00f0ff; font-size: 22px; font-family: 'Orbitron', sans-serif; text-shadow: 0 0 8px rgba(0, 240, 255, 0.4); }}
+            
+            .invoice-footer {{ 
+                border-top: 1px solid rgba(255, 255, 255, 0.1); 
+                padding-top: 15px; 
+                display: flex; 
+                justify-content: space-between; 
+                align-items: center; 
+                font-size: 11px; 
+                color: #64748b; 
+                text-transform: uppercase;
+                letter-spacing: 1px;
+            }}
         </style>
     </head>
     <body>
-        <div>
-            <div class="invoice-header">
-                <div class="company-info">
-                    <h1>{azienda.upper()}</h1>
-                    <span>Fattura Elettronica / Documento Fiscale</span>
-                    <span class="piva">P.IVA: {partita_iva}</span>
+        <div class="urban-bg"></div>
+        
+        <div class="content-wrapper">
+            <div>
+                <div class="invoice-header">
+                    <div class="company-info">
+                        <h1>{azienda.upper()}</h1>
+                        <span>Fattura Elettronica — Revelant Network</span>
+                        <span class="piva">P.IVA: {partita_iva}</span>
+                    </div>
+                    <div class="invoice-meta">
+                        <h2>FATTURA #{invoice_id}</h2>
+                        <p>Data di emissione: <b>{data_emissione}</b></p>
+                        <div><span class="status-badge">{stato.upper()}</span></div>
+                    </div>
                 </div>
-                <div class="invoice-meta">
-                    <h2>FATTURA #{invoice_id}</h2>
-                    <p>Data di emissione: <b>{data_emissione}</b></p>
-                    <div><span class="status-badge">{stato.upper()}</span></div>
+                
+                <div class="parties-section">
+                    <div class="party-box">
+                        <h4>Emittente</h4>
+                        <p>{emittente}</p>
+                    </div>
+                    <div class="party-box">
+                        <h4>Cliente / Destinatario</h4>
+                        <p>{destinatario}</p>
+                    </div>
+                </div>
+
+                <table class="invoice-table">
+                    <thead>
+                        <tr>
+                            <th style="width: 72%;">Descrizione / Causale del Servizio</th>
+                            <th style="width: 28%; text-align: right;">Importo ($)</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <tr>
+                            <td>{causale}</td>
+                            <td class="amount">$ {importo:,.2f}</td>
+                        </tr>
+                    </tbody>
+                </table>
+
+                <div class="totals-container">
+                    <div class="totals-box">
+                        <div class="total-row"><span>Imponibile:</span><span>$ {importo:,.2f}</span></div>
+                        <div class="total-row"><span>IVA (0%):</span><span>$ 0,00</span></div>
+                        <div class="total-row final"><span>Totale Documento:</span><span class="value">$ {importo:,.2f}</span></div>
+                    </div>
                 </div>
             </div>
             
-            <div class="parties-section">
-                <div class="party-box">
-                    <h4>Emittente</h4>
-                    <p>{emittente}</p>
-                </div>
-                <div class="party-box">
-                    <h4>Cliente / Destinatario</h4>
-                    <p>{destinatario}</p>
-                </div>
+            <div class="invoice-footer">
+                <span>Documento emesso e archiviato digitalmente tramite Revelant OS</span>
+                <span>Pagina 1 di 1</span>
             </div>
-
-            <table class="invoice-table">
-                <thead>
-                    <tr>
-                        <th style="width: 75%;">Descrizione / Causale del Servizio</th>
-                        <th style="width: 25%; text-align: right;">Importo ($)</th>
-                    </tr>
-                </thead>
-                <tbody>
-                    <tr>
-                        <td>{causale}</td>
-                        <td class="amount">$ {importo:,.2f}</td>
-                    </tr>
-                </tbody>
-            </table>
-
-            <div class="totals-container">
-                <div class="totals-box">
-                    <div class="total-row"><span>Imponibile:</span><span>$ {importo:,.2f}</span></div>
-                    <div class="total-row"><span>IVA (0%):</span><span>$ 0,00</span></div>
-                    <div class="total-row final"><span>Totale Documento:</span><span class="value">$ {importo:,.2f}</span></div>
-                </div>
-            </div>
-        </div>
-        <div class="invoice-footer">
-            <span>Documento emesso e archiviato digitalmente tramite Revelant OS</span>
-            <span>Pagina 1 di 1</span>
         </div>
     </body>
     </html>
     """
   return html_content
-
-# =======================================================
-# 2. RENDERIZZAZIONE FATTURA IN IMMAGINE
-# =======================================================
-async def renderizza_fattura_immagine(fattura) -> discord.File:
-    html = await genera_fattura_html(
-        invoice_id=fattura["id"],
-        azienda=fattura["azienda"],
-        partita_iva=fattura.get("partita_iva", "N/D"),
-        emittente=fattura["emittente"],
-        destinatario=fattura["destinatario"],
-        importo=fattura["importo"],
-        causale=fattura["causale"],
-        data_emissione=fattura["data"],
-        stato=fattura["status"]
-    )
-    
-    payload = {
-        "html": html,
-        "viewport_width": 794,
-        "viewport_height": 1123,
-        "device_scale": 2
-    }
-
-    user_id = "Evren"
-    api_key = "Evren"
-    render_url = "https://htmlevren.onrender.com"
-    headers = {"Authorization": aiohttp.encode_basic_auth(str(user_id), str(api_key))}
-
-    async with aiohttp.ClientSession() as session:
-        async with session.post(render_url, json=payload, headers=headers) as response:
-            if response.status == 200:
-                screenshot_bytes = await response.read()
-            else:
-                error_text = await response.text()
-                raise Exception(f"Errore nel rendering (Status {response.status}): {error_text}")
-
-    buffer = io.BytesIO(screenshot_bytes)
-    buffer.seek(0)
-    # Rinominiamo il file in base all'ID per allinearlo con l'Embed
-    return discord.File(buffer, filename=f"fattura_{fattura['id']}.png")
-
 
 # =======================================================
 # 3. AUTOCOMPLETE AZIENDE
@@ -9582,18 +9674,18 @@ async def genera_carta_identita(
         except Exception as e:
             print(f"Errore download foto per Base64: {e}")
 
-    # 3. Configurazione dati geografici (Completamente a tema Revelant)
-    ente_titolo = "REVELANT DEPARTMENT OF CORRECTIONS"
-    sotto_titolo = "CARTA D'IDENTITÀ CRIMINALE / CRIMINAL ID"
-    colore_primario = "#ff2a85"  # Rosa Neon Revelant
-    colore_secondario = "#00f0ff" # Azzurro Neon Cyan
-    colore_terziario = "#ffe600"  # Giallo Sole anni '80
-    paese_cod = "VC"
-    stato_emittente = "VC"
+    # 3. Configurazione dati geografici e tema visivo Revelant (Ispirato al banner)
+    ente_titolo = "REVELANT"
+    sotto_titolo = "DEPARTMENT OF CORRECTIONS — CRIMINAL ID"
+    
+    # Palette basata sul banner: Blu Elettrico, Azzurro Cyan Ghiaccio, Accenti Bianchi e Sfondi Notturni
+    colore_primario = "#00f0ff"    # Cyan Elettrico
+    colore_secondario = "#0077ff"  # Blu Profondo
+    colore_accento = "#ffffff"     # Bianco Brillante
+    paese_cod = "RV"
+    stato_emittente = "REVELANT"
 
-    mrz_line1 = (
-        f"I<{paese_cod}{cognome.upper()}<<{nome.upper()}<<<<<<<<<<<<<<"
-    )
+    mrz_line1 = f"I<{paese_cod}{cognome.upper()}<<{nome.upper()}<<<<<<<<<<<<<<"
     mrz_line2 = f"{doc_number}9{paese_cod}{birth_date.replace('/', '')}M281231{stato_emittente}<<<<<<<$"
 
     html_content = f"""
@@ -9601,7 +9693,7 @@ async def genera_carta_identita(
     <html lang="it">
     <head>
         <meta charset="UTF-8">
-        <link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@700;900&family=VT323&family=Montserrat:wght@600;800&display=swap" rel="stylesheet">
+        <link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@700;900&family=VT323&family=Rajdhani:wght@600;700&display=swap" rel="stylesheet">
         <style>
             * {{
                 box-sizing: border-box;
@@ -9611,101 +9703,108 @@ async def genera_carta_identita(
             body {{
                 width: 820px;
                 height: 520px;
-                background: linear-gradient(135deg, #120428 0%, #290849 50%, #0d1b2a 100%);
-                font-family: 'Montserrat', sans-serif;
+                background: linear-gradient(135deg, #020817 0%, #06152d 50%, #0a0b10 100%);
+                font-family: 'Rajdhani', sans-serif;
                 overflow: hidden;
                 display: flex;
                 flex-direction: column;
                 justify-content: space-between;
-                border: 3px solid {colore_primario};
-                border-radius: 12px;
+                border: 2px solid {colore_primario};
+                border-radius: 10px;
                 position: relative;
-                box-shadow: 0 0 25px rgba(255, 42, 133, 0.4), inset 0 0 15px rgba(0, 240, 255, 0.2);
+                box-shadow: 0 0 30px rgba(0, 240, 255, 0.35), inset 0 0 20px rgba(0, 119, 255, 0.25);
             }}
-            /* Sfondo geometrico in stile Retro Synthwave / Revelant */
-            .security-bg {{
+            /* Sfondo tecnico / griglia urbana ispirata al banner */
+            .urban-bg {{
                 position: absolute;
                 top: 0; left: 0; width: 100%; height: 100%;
                 background-image: 
-                    linear-gradient(rgba(255, 42, 133, 0.08) 1px, transparent 1px),
-                    linear-gradient(90deg, rgba(0, 240, 255, 0.08) 1px, transparent 1px);
-                background-size: 20px 20px;
-                opacity: 0.6;
+                    radial-gradient(circle at 80% 20%, rgba(0, 119, 255, 0.25) 0%, transparent 50%),
+                    linear-gradient(rgba(0, 240, 255, 0.03) 1px, transparent 1px),
+                    linear-gradient(90deg, rgba(0, 240, 255, 0.03) 1px, transparent 1px);
+                background-size: 100% 100%, 25px 25px, 25px 25px;
                 z-index: 0;
             }}
-            /* Effetto Scanlines televisive anni '80 */
             .scanlines {{
                 position: absolute;
                 top: 0; left: 0; width: 100%; height: 100%;
-                background: linear-gradient(rgba(18, 4, 40, 0) 50%, rgba(0, 0, 0, 0.25) 50%);
-                background-size: 100% 4px;
-                z-index: 2;
+                background: linear-gradient(rgba(0,0,0,0) 50%, rgba(0, 0, 0, 0.3) 50%);
+                background-size: 100% 3px;
+                z-index: 1;
                 pointer-events: none;
             }}
+            /* Header in stile Banner Revelant */
             .header {{
-                background: linear-gradient(90deg, #1b0238 0%, #3a0ca3 100%);
-                color: #ffffff;
-                padding: 8px 20px;
+                background: linear-gradient(90deg, #020617 0%, #0b2545 100%);
+                padding: 10px 22px;
                 display: flex;
                 justify-content: space-between;
                 align-items: center;
-                border-bottom: 3px solid {colore_secondario};
+                border-bottom: 2.5px solid {colore_primario};
                 z-index: 3;
-                height: 62px;
+                height: 65px;
                 flex-shrink: 0;
-                box-shadow: 0 3px 15px rgba(0, 240, 255, 0.3);
+                box-shadow: 0 4px 20px rgba(0, 0, 0, 0.6);
+            }}
+            .header-left {{
+                display: flex;
+                flex-direction: column;
             }}
             .header-left h1 {{
                 font-family: 'Orbitron', sans-serif;
-                font-size: 15px;
-                letter-spacing: 2px;
+                font-size: 22px;
+                letter-spacing: 4px;
                 font-weight: 900;
                 text-transform: uppercase;
-                color: {colore_primario};
-                text-shadow: 0 0 8px rgba(255, 42, 133, 0.6);
+                color: {colore_accento};
+                text-shadow: 0 0 10px rgba(255, 255, 255, 0.6), 0 0 20px rgba(0, 240, 255, 0.5);
             }}
             .header-left span {{
-                font-size: 9px;
-                letter-spacing: 1.5px;
-                color: {colore_secondario};
+                font-family: 'Orbitron', sans-serif;
+                font-size: 8.5px;
+                letter-spacing: 2px;
+                color: {colore_primario};
                 text-transform: uppercase;
-                font-weight: 800;
-                text-shadow: 0 0 5px rgba(0, 240, 255, 0.5);
+                font-weight: 700;
             }}
-            .flag-strip {{
-                display: flex;
-                width: 36px;
-                height: 18px;
-                border-radius: 3px;
-                overflow: hidden;
-                box-shadow: 0 0 8px {colore_primario};
-                border: 1px solid {colore_secondario};
+            .badge-status {{
+                background: rgba(0, 240, 255, 0.1);
+                border: 1.5px solid {colore_primario};
+                padding: 4px 12px;
+                border-radius: 4px;
+                font-family: 'Orbitron', sans-serif;
+                font-size: 9px;
+                color: {colore_primario};
+                letter-spacing: 1.5px;
+                box-shadow: 0 0 10px rgba(0, 240, 255, 0.2);
             }}
-            .flag-strip div {{
-                flex: 1;
-            }}
-            .flag-green {{ background: {colore_primario}; }}
-            .flag-white {{ background: {colore_terziario}; }}
-            .flag-red {{ background: {colore_secondario}; }}
-
+            
+            /* Corpo Centrale */
             .body-content {{
-                padding: 12px 20px;
+                padding: 14px 22px;
                 display: flex;
-                gap: 20px;
+                gap: 22px;
                 z-index: 3;
                 flex-grow: 1;
-                align-items: flex-start;
+                align-items: center;
             }}
             .foto-container {{
-                width: 140px;
-                height: 185px;
-                border: 2.5px solid {colore_secondario};
+                width: 145px;
+                height: 190px;
+                border: 2px solid {colore_primario};
                 background: #000;
-                box-shadow: 0 0 15px rgba(0, 240, 255, 0.4);
+                box-shadow: 0 0 15px rgba(0, 240, 255, 0.3);
                 border-radius: 6px;
                 flex-shrink: 0;
                 overflow: hidden;
-                display: flex;
+                position: relative;
+            }}
+            .foto-container::after {{
+                content: '';
+                position: absolute;
+                bottom: 0; left: 0; width: 100%; height: 25px;
+                background: linear-gradient(to top, rgba(2, 6, 23, 0.8), transparent);
+                pointer-events: none;
             }}
             .foto-container img {{
                 width: 100%;
@@ -9713,58 +9812,64 @@ async def genera_carta_identita(
                 object-fit: cover;
                 object-position: center;
                 display: block;
-                filter: contrast(1.1) saturate(1.2);
+                filter: contrast(1.15) saturate(1.1);
             }}
+            
+            /* Griglia Dati ad alta leggibilità */
             .info-grid {{
                 flex-grow: 1;
                 display: grid;
                 grid-template-columns: 1fr 1fr;
-                gap: 4px 15px;
+                gap: 6px 16px;
             }}
             .field {{
                 display: flex;
                 flex-direction: column;
-                border-bottom: 1.5px solid rgba(0, 240, 255, 0.25);
-                padding-bottom: 2px;
+                background: rgba(255, 255, 255, 0.02);
+                border-left: 2.5px solid {colore_secondario};
+                padding: 3px 8px;
+                border-radius: 0 4px 4px 0;
             }}
             .field.full {{
                 grid-column: span 2;
+                border-left-color: {colore_primario};
             }}
             .label {{
-                font-size: 7.5px;
+                font-size: 8px;
                 text-transform: uppercase;
-                color: {colore_secondario};
-                font-weight: 800;
+                color: #8ab4f8;
+                font-weight: 700;
                 letter-spacing: 0.8px;
-                text-shadow: 0 0 4px rgba(0, 240, 255, 0.3);
             }}
             .value {{
-                font-size: 12px;
-                font-weight: 800;
+                font-size: 13px;
+                font-weight: 700;
                 color: #ffffff;
                 margin-top: 1px;
-                text-shadow: 0 0 4px rgba(255, 255, 255, 0.3);
+                letter-spacing: 0.5px;
             }}
             .value-highlight {{
-                color: {colore_terziario};
-                text-shadow: 0 0 6px rgba(255, 230, 0, 0.5);
+                color: {colore_primario};
+                text-shadow: 0 0 8px rgba(0, 240, 255, 0.4);
             }}
+
+            /* MRZ inferiore in stile terminale sicuro */
             .mrz-container {{
-                background: #0a0118;
-                padding: 6px 15px;
-                border-top: 2px solid {colore_primario};
+                background: #010409;
+                padding: 6px 20px;
+                border-top: 2px solid {colore_secondario};
                 font-family: 'VT323', monospace;
-                font-size: 18px;
+                font-size: 19px;
                 font-weight: bold;
-                letter-spacing: 3px;
-                color: {colore_secondario};
+                letter-spacing: 3.5px;
+                color: {colore_primario};
                 z-index: 3;
-                height: 48px;
+                height: 50px;
                 flex-shrink: 0;
                 display: flex;
                 flex-direction: column;
                 justify-content: center;
-                text-shadow: 0 0 6px rgba(0, 240, 255, 0.7);
+                text-shadow: 0 0 6px rgba(0, 240, 255, 0.6);
             }}
             .mrz-line {{
                 white-space: pre;
@@ -9774,7 +9879,7 @@ async def genera_carta_identita(
         </style>
     </head>
     <body>
-        <div class="security-bg"></div>
+        <div class="urban-bg"></div>
         <div class="scanlines"></div>
         
         <div class="header">
@@ -9782,11 +9887,7 @@ async def genera_carta_identita(
                 <h1>{ente_titolo}</h1>
                 <span>{sotto_titolo}</span>
             </div>
-            <div class="flag-strip" title="Revelant Department">
-                <div class="flag-green"></div>
-                <div class="flag-white"></div>
-                <div class="flag-red"></div>
-            </div>
+            <div class="badge-status">SECURE ID</div>
         </div>
         
         <div class="body-content">
@@ -9796,27 +9897,27 @@ async def genera_carta_identita(
             
             <div class="info-grid">
                 <div class="field">
-                    <span class="label">1. Cognome / Surname</span>
+                    <span class="label">Cognome / Surname</span>
                     <span class="value">{cognome.upper()}</span>
                 </div>
                 <div class="field">
-                    <span class="label">2. Nome / Given names</span>
+                    <span class="label">Nome / Given Name</span>
                     <span class="value">{nome.capitalize()}</span>
                 </div>
                 <div class="field full">
-                    <span class="label">3. Data e Luogo di Nascita / Date and place of birth</span>
+                    <span class="label">Data e Luogo di Nascita / Date & Place of Birth</span>
                     <span class="value">{birth_date} — {birth_place}</span>
                 </div>
                 <div class="field">
-                    <span class="label">4. Codice Fiscale / Tax Code</span>
+                    <span class="label">Codice Fiscale / Tax Code</span>
                     <span class="value">{cf.upper()}</span>
                 </div>
                 <div class="field">
-                    <span class="label">Numero Documento / Doc Number</span>
+                    <span class="label">N. Documento / Doc Number</span>
                     <span class="value">{doc_number}</span>
                 </div>
                 <div class="field">
-                    <span class="label">Occhi / Eyes — Capelli / Hair</span>
+                    <span class="label">Caratteristiche / Eyes & Hair</span>
                     <span class="value">{colore_occhi} / {colore_capelli}</span>
                 </div>
                 <div class="field">
@@ -9824,11 +9925,11 @@ async def genera_carta_identita(
                     <span class="value">{segni_particolari}</span>
                 </div>
                 <div class="field">
-                    <span class="label">🪪 Patenti di Guida</span>
+                    <span class="label">Patenti di Guida / Driver License</span>
                     <span class="value value-highlight">{driver_str}</span>
                 </div>
                 <div class="field">
-                    <span class="label">📜 Porto d'Armi</span>
+                    <span class="label">Porto d'Armi / Gun License</span>
                     <span class="value value-highlight">{gun_str}</span>
                 </div>
             </div>
@@ -9842,37 +9943,6 @@ async def genera_carta_identita(
     </html>
     """
     return html_content
-
-async def renderizza_html_in_immagine(html_content: str) -> discord.File:
-    user_id = "Evren"
-    api_key = "Evren"
-    
-    # Endpoint puntato al tuo servizio Render
-    render_url = "https://htmlevren.onrender.com"
-    
-    payload = {
-        "html": html_content,
-        "viewport_width": 820,
-        "viewport_height": 520,
-        "device_scale": 2
-    }
-
-    headers = {
-        "Authorization": aiohttp.encode_basic_auth(user_id, api_key)
-    }
-
-    async with aiohttp.ClientSession() as session:
-        async with session.post(render_url, json=payload, headers=headers) as response:
-            if response.status == 200:
-                # Legge direttamente il flusso di byte della carta d'identità in PNG
-                screenshot_bytes = await response.read()
-            else:
-                error_text = await response.text()
-                raise Exception(f"Errore nel rendering HTML (Status {response.status}): {error_text}")
-
-    buffer = io.BytesIO(screenshot_bytes)
-    buffer.seek(0)
-    return discord.File(buffer, filename="carta_identita.png")
 
 
 
@@ -9969,7 +10039,7 @@ import discord
 from discord import app_commands
 # Assicurati di avere a disposizione 'supabase' e 'renderizza_html_in_immagine' nel tuo ambiente
 
-# --- 1. GENERAZIONE HTML LIBRETTO (Completamente Italiano) ---
+# --- GENERAZIONE HTML LIBRETTO (Stile Statunitense / American Vehicle Registration) ---
 def genera_html_libretto(
     proprietario: str,
     targa: str,
@@ -9977,24 +10047,26 @@ def genera_html_libretto(
     stato_sequestro: str = "REGOLARE",
     modifiche: list[dict] = None,
 ) -> str:
-    # Genera un Telaio fittizio coerente con la targa
-    vin_fittizio = f"ZFA6P8CF{targa.upper()[:3]}92837"
+    # Genera un VIN (Vehicle Identification Number) in formato americano standard (17 caratteri)
+    vin_fittizio = f"1ZVBP8{targa.upper()[:3]}5G{targa.upper()[-2:] if len(targa)>=2 else '99'}1849"
 
-    # Colore dello stato (Rosso se sequestrato, Verde se regolare)
-    colore_stato = "#dc2626" if "SEQUESTRATO" in stato_sequestro else "#16a34a"
-    colore_istituzionale = "#0033A0" # Blu istituzionale Italia
+    # Colore dello stato (Rosa neon aggressivo se sequestrato/bloccato, Cyan brillante se regolare)
+    is_sequestrato = "SEQUESTRATO" in stato_sequestro.upper() or "IMPPOUND" in stato_sequestro.upper() or "REVOKED" in stato_sequestro.upper()
+    colore_stato_bg = "rgba(255, 42, 133, 0.15)" if is_sequestrato else "rgba(0, 240, 255, 0.15)"
+    colore_stato_text = "#ff2a85" if is_sequestrato else "#00f0ff"
+    colore_stato_border = "#ff2a85" if is_sequestrato else "#00f0ff"
 
-    # Formattazione lista modifiche
+    # Formattazione lista modifiche / aftermarket parts
     if modifiche:
         mod_html_list = "".join(
             [
-                f"<li><b>{mod.get('mod_type', 'Modifica')}:</b> {mod.get('details', 'N/D')}</li>"
+                f"<li><b>{mod.get('mod_type', 'Upgrade')}:</b> {mod.get('details', 'N/D')}</li>"
                 for mod in modifiche
             ]
         )
         modifiche_block = f"""
         <div class="field full">
-            <span class="label">Annotazioni / Modifiche Approvate</span>
+            <span class="label">Registered Modifications / Aftermarket Parts</span>
             <ul class="mod-list">
                 {mod_html_list}
             </ul>
@@ -10003,148 +10075,197 @@ def genera_html_libretto(
     else:
         modifiche_block = """
         <div class="field full">
-            <span class="label">Annotazioni / Modifiche Approvate</span>
-            <span class="value" style="font-size: 13px; color: #64748b;">NESSUNA MODIFICA REGISTRATA</span>
+            <span class="label">Registered Modifications / Aftermarket Parts</span>
+            <span class="value" style="font-size: 12.5px; color: #64748b; font-weight: 600;">NO REGISTERED MODIFICATIONS</span>
         </div>
         """
 
     return f"""
     <!DOCTYPE html>
-    <html lang="it">
+    <html lang="en">
     <head>
         <meta charset="UTF-8">
+        <link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@700;900&family=Rajdhani:wght@600;700&display=swap" rel="stylesheet">
         <style>
             * {{ box-sizing: border-box; margin: 0; padding: 0; }}
             body {{
-                width: 800px;
-                height: 580px;
-                background-color: #f7f4ea; /* Giallino carta tipico dei libretti italiani */
-                font-family: 'Courier New', Courier, monospace;
-                padding: 25px;
-                color: #1a1a1a;
-            }}
-            .card {{
-                border: 6px double {colore_istituzionale};
-                height: 100%;
-                padding: 20px 25px;
-                background-color: #faf8f2;
-                box-shadow: inset 0 0 10px rgba(0,0,0,0.05);
+                width: 820px;
+                height: 520px;
+                background: linear-gradient(135deg, #020817 0%, #06152d 50%, #0a0b10 100%);
+                font-family: 'Rajdhani', sans-serif;
+                padding: 22px;
+                color: #e2e8f0;
+                overflow: hidden;
                 display: flex;
                 flex-direction: column;
                 justify-content: space-between;
+                border: 2px solid #00f0ff;
+                border-radius: 10px;
                 position: relative;
+                box-shadow: 0 0 30px rgba(0, 240, 255, 0.35), inset 0 0 20px rgba(0, 119, 255, 0.25);
+            }}
+            /* Sfondo geometrico tecnico coerente con il brand */
+            .urban-bg {{
+                position: absolute;
+                top: 0; left: 0; width: 100%; height: 100%;
+                background-image: 
+                    radial-gradient(circle at 90% 20%, rgba(0, 119, 255, 0.2) 0%, transparent 50%),
+                    linear-gradient(rgba(0, 240, 255, 0.02) 1px, transparent 1px),
+                    linear-gradient(90deg, rgba(0, 240, 255, 0.02) 1px, transparent 1px);
+                background-size: 100% 100%, 25px 25px, 25px 25px;
+                z-index: 0;
+                pointer-events: none;
+            }}
+            .card {{
+                position: relative;
+                z-index: 2;
+                height: 100%;
+                display: flex;
+                flex-direction: column;
+                justify-content: space-between;
             }}
             .header {{
-                text-align: center;
-                border-bottom: 2px solid {colore_istituzionale};
+                text-align: left;
+                border-bottom: 2px solid #00f0ff;
                 padding-bottom: 10px;
+                display: flex;
+                justify-content: space-between;
+                align-items: center;
             }}
-            .header h1 {{
-                font-size: 20px;
+            .header-titles h1 {{
+                font-family: 'Orbitron', sans-serif;
+                font-size: 17px;
                 letter-spacing: 2px;
-                color: {colore_istituzionale};
-                font-weight: bold;
+                color: #ffffff;
+                font-weight: 900;
                 text-transform: uppercase;
+                text-shadow: 0 0 8px rgba(0, 240, 255, 0.5);
             }}
-            .header h2 {{
-                font-size: 15px;
-                color: #4b5563;
+            .header-titles h2 {{
+                font-family: 'Orbitron', sans-serif;
+                font-size: 8.5px;
+                color: #00f0ff;
+                letter-spacing: 2px;
+                margin-top: 3px;
+                font-weight: 700;
+            }}
+            .badge-top {{
+                background: rgba(0, 240, 255, 0.1);
+                border: 1px solid #00f0ff;
+                padding: 4px 10px;
+                border-radius: 4px;
+                font-family: 'Orbitron', sans-serif;
+                font-size: 8.5px;
+                color: #00f0ff;
                 letter-spacing: 1px;
-                margin-top: 4px;
-            }}
-            .watermark {{
-                position: absolute;
-                top: 50%;
-                left: 50%;
-                transform: translate(-50%, -50%) rotate(-25deg);
-                font-size: 65px;
-                color: rgba(0, 51, 160, 0.05);
-                font-weight: bold;
-                pointer-events: none;
-                white-space: nowrap;
-                text-align: center;
             }}
             .grid {{
                 display: grid;
                 grid-template-columns: 1fr 1fr;
-                gap: 12px 20px;
-                margin-top: 10px;
+                gap: 10px 18px;
+                margin-top: 8px;
             }}
             .field {{
-                border-bottom: 1px dashed #94a3b8;
-                padding-bottom: 4px;
+                background: rgba(255, 255, 255, 0.02);
+                border-left: 2.5px solid #0077ff;
+                padding: 4px 10px;
+                border-radius: 0 4px 4px 0;
+                border-bottom: none;
             }}
             .field.full {{
                 grid-column: span 2;
+                border-left-color: #00f0ff;
             }}
             .label {{
-                font-size: 10px;
-                font-weight: bold;
-                color: #64748b;
+                font-size: 8.5px;
+                font-weight: 700;
+                color: #8ab4f8;
                 text-transform: uppercase;
                 display: block;
+                letter-spacing: 0.8px;
             }}
             .value {{
-                font-size: 16px;
-                font-weight: bold;
-                color: #0f172a;
+                font-size: 14px;
+                font-weight: 700;
+                color: #ffffff;
                 text-transform: uppercase;
+                margin-top: 1px;
+                letter-spacing: 0.5px;
+            }}
+            .plate-value {{
+                color: #00f0ff; 
+                font-family: 'Orbitron', sans-serif;
+                font-size: 18px; 
+                text-shadow: 0 0 8px rgba(0, 240, 255, 0.4);
             }}
             .mod-list {{
-                list-style-type: square;
-                padding-left: 18px;
+                list-style-type: none;
+                padding-left: 0;
                 margin-top: 3px;
                 font-size: 12px;
-                color: #1e293b;
-                max-height: 75px;
+                color: #f1f5f9;
+                max-height: 65px;
                 overflow: hidden;
             }}
+            .mod-list li {{
+                background: rgba(0, 240, 255, 0.05);
+                margin-bottom: 2px;
+                padding: 2px 6px;
+                border-radius: 3px;
+                border: 1px solid rgba(0, 240, 255, 0.1);
+            }}
             .footer {{
-                border-top: 2px solid {colore_istituzionale};
+                border-top: 1px solid rgba(255, 255, 255, 0.1);
                 padding-top: 10px;
                 display: flex;
                 justify-content: space-between;
                 align-items: center;
             }}
             .stamp {{
-                border: 2px solid {colore_stato};
-                color: {colore_stato};
-                padding: 4px 12px;
-                font-weight: bold;
-                font-size: 13px;
+                background-color: {colore_stato_bg};
+                border: 1.5px solid {colore_stato_border};
+                color: {colore_stato_text};
+                padding: 5px 14px;
+                font-family: 'Orbitron', sans-serif;
+                font-weight: 700;
+                font-size: 11px;
                 border-radius: 4px;
-                transform: rotate(-2deg);
                 text-transform: uppercase;
+                letter-spacing: 1px;
+                box-shadow: 0 0 10px {colore_stato_bg};
             }}
         </style>
     </head>
     <body>
+        <div class="urban-bg"></div>
+        
         <div class="card">
-            <div class="watermark">REPUBBLICA ITALIANA<br>M.I.T.</div>
-            
             <div class="header">
-                <h1>Ministero delle Infrastrutture e dei Trasporti</h1>
-                <h2>CARTA DI CIRCOLAZIONE</h2>
+                <div class="header-titles">
+                    <h1>State of Revelant — Dept. of Motor Vehicles</h1>
+                    <h2>CERTIFICATE OF VEHICLE REGISTRATION</h2>
+                </div>
+                <div class="badge-top">OFFICIAL DMV</div>
             </div>
 
             <div class="grid">
                 <div class="field full">
-                    <span class="label">Intestatario (C.1.1 / C.1.2)</span>
+                    <span class="label">Registered Owner / Lessee</span>
                     <span class="value">{proprietario}</span>
                 </div>
 
                 <div class="field">
-                    <span class="label">Targa (A)</span>
-                    <span class="value" style="color: {colore_istituzionale}; font-size: 20px;">{targa}</span>
+                    <span class="label">License Plate (Plate No.)</span>
+                    <span class="value plate-value">{targa}</span>
                 </div>
 
                 <div class="field">
-                    <span class="label">Numero di Telaio (E)</span>
-                    <span class="value">{vin_fittizio}</span>
+                    <span class="label">Vehicle Identification Number (VIN)</span>
+                    <span class="value" style="font-size: 12.5px; letter-spacing: 1px;">{vin_fittizio}</span>
                 </div>
 
                 <div class="field full">
-                    <span class="label">Marca e Modello (D.1 / D.3)</span>
+                    <span class="label">Make, Model & Body Type</span>
                     <span class="value">{modello}</span>
                 </div>
 
@@ -10152,14 +10273,13 @@ def genera_html_libretto(
             </div>
 
             <div class="footer">
-                <span style="font-size: 9px; color: #64748b;">REPUBBLICA ITALIANA • DOCUMENTO DI CIRCOLAZIONE UFFICIALE</span>
+                <span style="font-size: 9px; color: #64748b; letter-spacing: 1px; text-transform: uppercase;">REVELANT DMV • OFFICIAL STATE REGISTRATION DOCUMENT</span>
                 <div class="stamp">{stato_sequestro}</div>
             </div>
         </div>
     </body>
     </html>
     """
-
 
 # --- 2. AUTOCOMPLETE DINAMICO (Attinge da public.registered_vehicles) ---
 async def veicoli_autocomplete(
