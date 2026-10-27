@@ -7399,41 +7399,60 @@ async def deposito_fazione(interaction: discord.Interaction, fazione: str):
 class ShopCategorySelect(ui.Select):
     def __init__(self):
         options = [
-            discord.SelectOption(label="Armi", description="Acquista armi e munizioni", emoji="🔫", value="armi"),
-            discord.SelectOption(label="Mediche", description="Kit medici e bende", emoji="💊", value="mediche"),
-            discord.SelectOption(label="Utility", description="Zaini, chiavi e strumenti vari", emoji="🛠️", value="utility"),
-            discord.SelectOption(label="Edilizia", description="Materiali da costruzione", emoji="🏗️", value="edilizia"),
-            discord.SelectOption(label="Generale", description="Oggetti vari di consumo", emoji="🎒", value="generale"),
-            discord.SelectOption(label="Altro", description="Oggetti speciali ed extra", emoji="📦", value="altro"),
+            discord.SelectOption(label="Armi e Munizioni", description="Acquista armi e attrezzatura tattica", emoji="🔫", value="arma"),
+            discord.SelectOption(label="Medicina e Bende", description="Kit medici, bende e medicinali", emoji="💊", value="medicina"),
+            discord.SelectOption(label="Utility e Strumenti", description="Zaini, chiavi e strumenti vari", emoji="🛠️", value="utility"),
+            discord.SelectOption(label="Cibo e Bevande", description="Generi alimentari e bevande", emoji="🍔", value="cibo"),
+            discord.SelectOption(label="Droghe e Extra", description="Sostanze e articoli speciali", emoji="📦", value="droga"),
+            discord.SelectOption(label="Altro", description="Oggetti vari e kit di benvenuto", emoji="🎒", value="altro"),
         ]
         super().__init__(placeholder="📂 Seleziona una categoria...", min_values=1, max_values=1, options=options)
 
     async def callback(self, interaction: discord.Interaction):
         categoria = self.values[0]
         
-        res = supabase.table("custom_items").select("*").eq("category", categoria).execute()
-        items = res.data if res.data else []
+        try:
+            # Esegue la query filtrando esattamente per la categoria scelta nel database
+            res = supabase.table("custom_items").select("*").eq("category", categoria).execute()
+            items = res.data if res.data else []
+        except Exception as e:
+            print(f"Errore query Supabase shop: {e}")
+            items = []
 
         embed = discord.Embed(
-            title=f"🛒 Revelant Shop - Categoria: {categoria.capitalize()}",
+            title=f"🛒 Revelant Shop — Categoria: {categoria.upper()}",
             description="Ecco gli articoli disponibili in questa categoria. Usa il comando `/compra [nome_item]` per acquistarli.",
-            color=discord.Color.blue()
+            color=discord.Color.from_rgb(0, 240, 255) # Cyan Revelant
         )
 
         if not items:
-            embed.add_field(name="Vuoto", value="Non ci sono oggetti in questa categoria al momento.", inline=False)
+            embed.add_field(name="Catalogo Vuoto", value="Non ci sono oggetti in questa categoria al momento.", inline=False)
         else:
+            # Controllo di sicurezza per il limite massimo di 25 campi di Discord
+            if len(items) > 25:
+                items = items[:25]
+                embed.set_footer(text="⚠️ Mostrati i primi 25 articoli della categoria | Revelant OS")
+            else:
+                embed.set_footer(text=f"Totale articoli trovati: {len(items)} | Revelant OS • Economia")
+
             for item in items:
                 nome = item.get("name", "Oggetto")
                 prezzo = item.get("price", 0)
-                ruolo_req = item.get("required_role_id", "Nessuno")
+                peso = item.get("weight", 0.0)
+                ruolo_req = item.get("required_role_id")
+                
+                # Gestione pulita del ruolo richiesto (Menzione o Nessuno)
+                if ruolo_req and str(ruolo_req) != "0" and str(ruolo_req) != "Nessuno":
+                    ruolo_str = f"<@&{ruolo_req}>"
+                else:
+                    ruolo_str = "Nessuno"
+
                 embed.add_field(
                     name=f"🔹 {nome}",
-                    value=f"💰 Prezzo: **$ {prezzo:,.2f}**\n🔒 Ruolo richiesto: `{ruolo_req}`",
-                    inline=False
+                    value=f"💰 **Prezzo:** $ {prezzo:,.2f}\n⚖️ **Peso:** {peso} kg\n🔒 **Richiede:** {ruolo_str}",
+                    inline=True # Griglia a 2 colonne ordinata e pulita
                 )
 
-        embed.set_footer(text="Revelant OS • Economia")
         await interaction.response.edit_message(embed=embed, view=self.view)
 
 
@@ -7446,15 +7465,14 @@ class ShopView(ui.View):
 @bot.tree.command(name="shop", description="Visualizza lo store di Revelant OS e naviga tra le categorie.")
 async def shop(interaction: discord.Interaction):
     embed = discord.Embed(
-        title="🛒 Revelant OS - Negozio Generale",
-        description="Benvenuto nello shop ufficiale. Seleziona una categoria dal menu sottostante per visualizzare gli articoli in vendita.",
-        color=discord.Color.blue()
+        title="🛒 Revelant OS — Official Store",
+        description="Benvenuto nello shop ufficiale di Revelant. Seleziona una categoria dal menu a tendina sottostante per esplorare l'inventario sincronizzato.",
+        color=discord.Color.from_rgb(0, 119, 255) # Blu Revelant
     )
     embed.set_footer(text="Revelant OS • Economia")
     
     view = ShopView()
     await interaction.response.send_message(embed=embed, view=view, ephemeral=True)
-
 
 
 @bot.tree.command(name="crea_item", description="[STAFF] Crea un nuovo oggetto con meccaniche specifiche.")
