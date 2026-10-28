@@ -4778,42 +4778,59 @@ async def item_give(interaction: discord.Interaction, utente: discord.Member, it
     category = item_data.get("category", "Generale")
     weight = item_data.get("weight", 0.1)
 
-    nome_finale_oggetto = item_name
-    matricola_testo = ""
+    is_arma = category.lower() in ["armi", "arma"]
+    armi_aggiunte_testo = []
 
-    # Gestione matricola per le armi esattamente come nel comando /compra
-    if category.lower() in ["armi", "arma"]:
-        parte1 = "".join(random.choices(string.digits + string.ascii_uppercase, k=4))
-        parte2 = "".join(random.choices(string.digits + string.ascii_uppercase, k=4))
-        matricola = f"{parte1}-{parte2}"
-        
-        nome_finale_oggetto = f"{item_name} [{matricola}]"
-        matricola_testo = f"\nMatricola: **{matricola}**"
+    if is_arma:
+        # Se è un'arma, iteriamo per ogni pezzo richiesto per generare matricole separate
+        for _ in range(quantita):
+            parte1 = "".join(random.choices(string.digits + string.ascii_uppercase, k=4))
+            parte2 = "".join(random.choices(string.digits + string.ascii_uppercase, k=4))
+            matricola = f"{parte1}-{parte2}"
+            
+            nome_finale_oggetto = f"{item_name} [{matricola}]"
+            armi_aggiunte_testo.append(f"• **{nome_finale_oggetto}**")
 
-    # Controllo se l'utente possiede già esattamente questo oggetto nel database
-    res_inv = supabase.table("inventory").select("*").eq("discord_id", user_id).ilike("item_name", nome_finale_oggetto).execute()
+            # Inseriamo ogni arma come riga separata con quantità 1
+            supabase.table("inventory").insert({
+                "discord_id": user_id,
+                "item_name": nome_finale_oggetto,
+                "category": category,
+                "weight": weight,
+                "quantity": 1
+            }).execute()
 
-    if res_inv.data:
-        # Se esiste già, aggiorniamo la quantità
-        vecchia_qta = res_inv.data[0]["quantity"]
-        nuova_qta = vecchia_qta + quantita
-        supabase.table("inventory").update({"quantity": nuova_qta}).eq("discord_id", user_id).ilike("item_name", nome_finale_oggetto).execute()
+        # Messaggio di conferma specifico per le armi
+        lista_armi_str = "\n".join(armi_aggiunte_testo)
+        await interaction.response.send_message(
+            f"✅ Aggiunte {quantita} armi con matricole uniche all'inventario di {utente.mention}:\n{lista_armi_str}",
+            ephemeral=True
+        )
+
     else:
-        # Altrimenti inseriamo una nuova riga
-        supabase.table("inventory").insert({
-            "discord_id": user_id,
-            "item_name": nome_finale_oggetto,
-            "category": category,
-            "weight": weight,
-            "quantity": quantita
-        }).execute()
+        # Logica standard per gli oggetti non-arma (accumulazione della quantità)
+        nome_finale_oggetto = item_name
+        
+        res_inv = supabase.table("inventory").select("*").eq("discord_id", user_id).ilike("item_name", nome_finale_oggetto).execute()
 
-    await interaction.response.send_message(
-        f"✅ Oggetto aggiunto con successo all'inventario di {utente.mention}!\n"
-        f"Oggetto: **{nome_finale_oggetto}** (Quantità: `{quantita}`)"
-        f"{matricola_testo}",
-        ephemeral=True
-    )
+        if res_inv.data:
+            vecchia_qta = res_inv.data[0]["quantity"]
+            nuova_qta = vecchia_qta + quantita
+            supabase.table("inventory").update({"quantity": nuova_qta}).eq("discord_id", user_id).ilike("item_name", nome_finale_oggetto).execute()
+        else:
+            supabase.table("inventory").insert({
+                "discord_id": user_id,
+                "item_name": nome_finale_oggetto,
+                "category": category,
+                "weight": weight,
+                "quantity": quantita
+            }).execute()
+
+        await interaction.response.send_message(
+            f"✅ Oggetto aggiunto con successo all'inventario di {utente.mention}!\n"
+            f"Oggetto: **{nome_finale_oggetto}** (Quantità: `{quantita}`)",
+            ephemeral=True
+        )
 
     # =======================================================
 #  SECONDO MODULO: DETTAGLI FISICI E SALVATAGGIO
@@ -6270,11 +6287,6 @@ async def compra(interaction: discord.Interaction, item: str, quantita: int = 1)
     category = item_data.get("category", "Generale")
     weight_unitario = item_data.get("weight", 0.1)
 
-    # Le armi con matricola solitamente si acquistano una alla volta
-    if category.lower() in ["armi", "arma"] and quantita > 1:
-        await interaction.response.send_message("❌ Non puoi acquistare più armi contemporaneamente a causa della generazione della matricola. Imposta quantità a 1.", ephemeral=True)
-        return
-
     if required_role_id:
         if not any(r.id == int(required_role_id) for r in user.roles):
             await interaction.response.send_message(f"❌ Non possiedi il ruolo richiesto per poter acquistare **{item_name}**.", ephemeral=True)
@@ -6292,39 +6304,68 @@ async def compra(interaction: discord.Interaction, item: str, quantita: int = 1)
         )
         return
     
-    nome_finale_oggetto = item_name
-    matricola_testo = ""
-
-    if category.lower() in ["armi", "arma"]:
-        parte1 = "".join(random.choices(string.digits + string.ascii_uppercase, k=4))
-        parte2 = "".join(random.choices(string.digits + string.ascii_uppercase, k=4))
-        matricola = f"{parte1}-{parte2}"
-        
-        nome_finale_oggetto = f"{item_name} [{matricola}]"
-        matricola_testo = f"\nMatricola: **{matricola}**"
-
+    is_arma = category.lower() in ["armi", "arma"]
     nuovo_saldo = contanti_attuali - prezzo_totale
+    
+    # Aggiorniamo subito il wallet dell'utente
     supabase.table("users").update({"wallet": nuovo_saldo}).eq("discord_id", user_id).execute()
 
-    peso_totale = weight_unitario * quantita
+    armi_aggiunte_testo = []
 
-    supabase.table("inventory").insert({
-        "discord_id": user_id,
-        "item_name": nome_finale_oggetto,
-        "category": category,
-        "weight": peso_totale,
-        "quantity": quantita
-    }).execute()
+    if is_arma:
+        # Se è un'arma, iteriamo per ogni pezzo per generare matricole uniche e righe separate
+        for _ in range(quantita):
+            parte1 = "".join(random.choices(string.digits + string.ascii_uppercase, k=4))
+            parte2 = "".join(random.choices(string.digits + string.ascii_uppercase, k=4))
+            matricola = f"{parte1}-{parte2}"
+            
+            nome_finale_oggetto = f"{item_name} [{matricola}]"
+            armi_aggiunte_testo.append(f"• **{nome_finale_oggetto}**")
 
-    testo_quantita = f" (Quantità: {quantita})" if quantita > 1 else ""
+            supabase.table("inventory").insert({
+                "discord_id": user_id,
+                "item_name": nome_finale_oggetto,
+                "category": category,
+                "weight": weight_unitario,
+                "quantity": 1
+            }).execute()
 
-    await interaction.response.send_message(
-        f"✅ Acquisto effettuato con successo!\n"
-        f"Hai comprato: **{nome_finale_oggetto}**{testo_quantita} per **$ {prezzo_totale:,.2f}**."
-        f"{matricola_testo}\n"
-        f"Nuovo saldo contanti: **$ {nuovo_saldo:,.2f}**",
-        ephemeral=True
-    )
+        lista_armi_str = "\n".join(armi_aggiunte_testo)
+        await interaction.response.send_message(
+            f"✅ Acquisto effettuato con successo!\n"
+            f"Hai comprato {quantita} armi con matricole uniche per **$ {prezzo_totale:,.2f}**:\n{lista_armi_str}\n"
+            f"Nuovo saldo contanti: **$ {nuovo_saldo:,.2f}**",
+            ephemeral=True
+        )
+
+    else:
+        # Logica standard per gli oggetti non-arma
+        nome_finale_oggetto = item_name
+        peso_totale = weight_unitario * quantita
+
+        res_inv = supabase.table("inventory").select("*").eq("discord_id", user_id).ilike("item_name", nome_finale_oggetto).execute()
+
+        if res_inv.data:
+            vecchia_qta = res_inv.data[0]["quantity"]
+            nuova_qta = vecchia_qta + quantita
+            supabase.table("inventory").update({"quantity": nuova_qta}).eq("discord_id", user_id).ilike("item_name", nome_finale_oggetto).execute()
+        else:
+            supabase.table("inventory").insert({
+                "discord_id": user_id,
+                "item_name": nome_finale_oggetto,
+                "category": category,
+                "weight": peso_totale,
+                "quantity": quantita
+            }).execute()
+
+        testo_quantita = f" (Quantità: {quantita})" if quantita > 1 else ""
+
+        await interaction.response.send_message(
+            f"✅ Acquisto effettuato con successo!\n"
+            f"Hai comprato: **{nome_finale_oggetto}**{testo_quantita} per **$ {prezzo_totale:,.2f}**.\n"
+            f"Nuovo saldo contanti: **$ {nuovo_saldo:,.2f}**",
+            ephemeral=True
+        )
 
 # ==========================================
 # 📱 TELEFONO E RUBRICA
@@ -7061,207 +7102,299 @@ class WithdrawCashModal(discord.ui.Modal, title="Preleva Denaro dalla Cassa"):
     )
 
 
+import discord
+from discord.ui import Select, View
+from difflib import get_close_matches
+
+# --- CLASSI DI SUPPORTO PER LA SELEZIONE MULTIPLA ---
+
+class SelectItemView(View):
+    def __init__(self, opzioni, callback_funzione):
+        super().__init__(timeout=60)
+        self.add_item(SelectItemSelect(opzioni, callback_funzione))
+
+class SelectItemSelect(Select):
+    def __init__(self, opzioni, callback_funzione):
+        # opzioni è una lista di stringhe (i nomi degli oggetti trovati)
+        options = [discord.SelectOption(label=opt[:100], value=opt) for opt in opzioni[:25]]
+        super().__init__(placeholder="Scegli l'oggetto corretto...", min_values=1, max_values=1, options=options)
+        self.callback_funzione = callback_funzione
+
+    async def callback(self, interaction: discord.Interaction):
+        await self.callback_funzione(interaction, self.values[0])
+
+
+# --- MODALE PER IL DEPOSITO ---
+
 class DepositItemModal(discord.ui.Modal, title="Deposita Oggetto"):
-
-  item_name = discord.ui.TextInput(
-      label="Nome dell'oggetto", placeholder="Es. Pistola", required=True
-  )
-  quantity = discord.ui.TextInput(
-      label="Quantità", placeholder="1", required=True, default="1"
-  )
-
-  def __init__(self, fazione: str):
-    super().__init__()
-    self.fazione = fazione
-
-  async def on_submit(self, interaction: discord.Interaction):
-    q_str = self.quantity.value
-    input_item = self.item_name.value.strip()
-
-    try:
-      quantita = int(q_str)
-      if quantita <= 0:
-        raise ValueError()
-    except ValueError:
-      await interaction.response.send_message(
-          "❌ Quantità non valida.", ephemeral=True
-      )
-      return
-
-    discord_id = str(interaction.user.id)
-
-    user_items = (
-        supabase.table("inventory")
-        .select("*")
-        .eq("discord_id", discord_id)
-        .execute()
+    item_name = discord.ui.TextInput(
+        label="Nome dell'oggetto", placeholder="Es. Pistola", required=True
     )
-    if not user_items.data:
-      await interaction.response.send_message(
-          "❌ Il tuo inventario è vuoto.", ephemeral=True
-      )
-      return
-
-    nomi_disponibili = [row["item_name"] for row in user_items.data]
-    simili = get_close_matches(
-        input_item, nomi_disponibili, n=1, cutoff=0.4
+    quantity = discord.ui.TextInput(
+        label="Quantità", placeholder="1", required=True, default="1"
     )
 
-    if not simili:
-      await interaction.response.send_message(
-          f"❌ Non possiedi alcun oggetto simile a **{input_item}**.",
-          ephemeral=True,
-      )
-      return
+    def __init__(self, fazione: str):
+        super().__init__()
+        self.fazione = fazione
 
-    nome_effettivo = simili[0]
-    item_data = next(
-        r for r in user_items.data if r["item_name"].lower() == nome_effettivo.lower()
-    )
+    async def on_submit(self, interaction: discord.Interaction):
+        q_str = self.quantity.value
+        input_item = self.item_name.value.strip()
 
-    if item_data["quantity"] < quantita:
-      await interaction.response.send_message(
-          f"❌ Ne possiedi solo {item_data['quantity']}x di **{nome_effettivo}**.",
-          ephemeral=True,
-      )
-      return
+        try:
+            quantita = int(q_str)
+            if quantita <= 0:
+                raise ValueError()
+        except ValueError:
+            await interaction.response.send_message("❌ Quantità non valida.", ephemeral=True)
+            return
 
-    nuova_q_utente = item_data["quantity"] - quantita
-    if nuova_q_utente <= 0:
-      supabase.table("inventory").delete().eq("id", item_data["id"]).execute()
-    else:
-      supabase.table("inventory").update({"quantity": nuova_q_utente}).eq(
-          "id", item_data["id"]
-      ).execute()
+        discord_id = str(interaction.user.id)
 
-    f_inv = (
-        supabase.table("faction_inventory")
-        .select("*")
-        .ilike("faction_name", self.fazione)
-        .ilike("item_name", nome_effettivo)
-        .execute()
-    )
-    if f_inv.data:
-      q_esistente = f_inv.data[0]["quantity"]
-      supabase.table("faction_inventory").update(
-          {"quantity": q_esistente + quantita}
-      ).eq("id", f_inv.data[0]["id"]).execute()
-    else:
-      supabase.table("faction_inventory").insert({
-          "faction_name": self.fazione,
-          "item_name": item_data["item_name"],
-          "category": item_data["category"],
-          "weight": item_data["weight"],
-          "quantity": quantita,
-      }).execute()
+        user_items = (
+            supabase.table("inventory")
+            .select("*")
+            .eq("discord_id", discord_id)
+            .execute()
+        )
+        if not user_items.data:
+            await interaction.response.send_message("❌ Il tuo inventario è vuoto.", ephemeral=True)
+            return
 
-    msg = f"✅ Hai depositato **{quantita}x {item_data['item_name']}**"
-    if input_item.lower() != nome_effettivo.lower():
-      msg += f" *(cercando '{input_item}', trovato '{nome_effettivo}')*"
-    await interaction.response.send_message(msg, ephemeral=True)
+        # Troviamo tutti i nomi unici presenti nell'inventario dell'utente
+        nomi_disponibili = list(set([row["item_name"] for row in user_items.data]))
+        simili = get_close_matches(input_item, nomi_disponibili, n=5, cutoff=0.4)
 
+        if not simili:
+            await interaction.response.send_message(
+                f"❌ Non possiedi alcun oggetto simile a **{input_item}**.",
+                ephemeral=True,
+            )
+            return
+
+        # Se troviamo più corrispondenze simili, chiediamo all'utente quale intende depositare
+        if len(simili) > 1 and input_item.lower() not in [s.lower() for s in simili]:
+            async def target_callback(interact: discord.Interaction, scelta: str):
+                await self.process_deposit(interact, scelta, quantita, user_items.data, discord_id)
+
+            view = SelectItemView(simili, target_callback)
+            await interaction.response.send_message(
+                "🔍 Ho trovato più oggetti corrispondenti. Seleziona quello che desideri depositare:",
+                view=view,
+                ephemeral=True
+            )
+            return
+
+        # Se c'è una sola corrispondenza netta o corrispondenza esatta
+        nome_effettivo = simili[0]
+        await self.process_deposit(interaction, nome_effettivo, quantita, user_items.data, discord_id)
+
+    async def process_deposit(self, interaction: discord.Interaction, nome_effettivo: str, quantita: int, inventory_data: list, discord_id: str):
+        # Filtriamo tutti gli elementi nell'inventario che corrispondono a quel nome (es. armi con diverse matricole)
+        elementi_corrispondenti = [
+            r for r in inventory_data if r["item_name"].lower() == nome_effettivo.lower()
+        ]
+
+        if not elementi_corrispondenti:
+            await interaction.response.send_message("❌ Oggetto non trovato nel tuo inventario.", ephemeral=True)
+            return
+
+        # Calcoliamo la quantità totale posseduta per quel nome
+        quantita_totale_posseduta = sum(item["quantity"] for item in elementi_corrispondenti)
+
+        if quantita_totale_posseduta < quantita:
+            await interaction.response.send_message(
+                f"❌ Ne possiedi solo {quantita_totale_posseduta}x di **{nome_effettivo}**.",
+                ephemeral=True,
+            )
+            return
+
+        oggetti_depositati_testo = []
+        quantita_rimanente_da_prelevare = quantita
+
+        # Consumiamo gli oggetti dall'inventario utente scalando progressivamente (gestisce righe multiple o armi con matricola)
+        for item_data in elementi_corrispondenti:
+            if quantita_rimanente_da_prelevare <= 0:
+                break
+
+            q_disponibile_riga = item_data["quantity"]
+            categoria = item_data.get("category", "Generale")
+            is_arma = categoria.lower() in ["armi", "arma"]
+
+            # Se è un'arma o ha quantità 1, gestiamo riga per riga
+            q_da_prendere_qui = min(q_disponibile_riga, quantita_rimanente_da_prelevare)
+
+            nuova_q_utente = q_disponibile_riga - q_da_prendere_qui
+            if nuova_q_utente <= 0:
+                supabase.table("inventory").delete().eq("id", item_data["id"]).execute()
+            else:
+                supabase.table("inventory").update({"quantity": nuova_q_utente}).eq("id", item_data["id"]).execute()
+
+            # Aggiorniamo il deposito della fazione per questo specifico item_name (mantenendo distinte le matricole)
+            f_inv = (
+                supabase.table("faction_inventory")
+                .select("*")
+                .ilike("faction_name", self.fazione)
+                .eq("item_name", item_data["item_name"])
+                .execute()
+            )
+
+            if f_inv.data:
+                q_esistente = f_inv.data[0]["quantity"]
+                supabase.table("faction_inventory").update(
+                    {"quantity": q_esistente + q_da_prendere_qui}
+                ).eq("id", f_inv.data[0]["id"]).execute()
+            else:
+                supabase.table("faction_inventory").insert({
+                    "faction_name": self.fazione,
+                    "item_name": item_data["item_name"],
+                    "category": categoria,
+                    "weight": item_data["weight"],
+                    "quantity": q_da_prendere_qui,
+                }).execute()
+
+            oggetti_depositati_testo.append(f"• **{q_da_prendere_qui}x {item_data['item_name']}**")
+            quantita_rimanente_da_prelevare -= q_da_prendere_qui
+
+        riepilogo_str = "\n".join(oggetti_depositati_testo)
+        msg = f"✅ Hai depositato con successo nel deposito della fazione **{self.fazione}**:\n{riepilogo_str}"
+        
+        if interaction.response.is_done():
+            await interaction.followup.send(msg, ephemeral=True)
+        else:
+            await interaction.response.send_message(msg, ephemeral=True)
+
+
+# --- MODALE PER IL PRELIEVO ---
 
 class WithdrawItemModal(discord.ui.Modal, title="Preleva Oggetto"):
-
-  item_name = discord.ui.TextInput(
-      label="Nome dell'oggetto", placeholder="Es. Pistola", required=True
-  )
-  quantity = discord.ui.TextInput(
-      label="Quantità", placeholder="1", required=True, default="1"
-  )
-
-  def __init__(self, fazione: str):
-    super().__init__()
-    self.fazione = fazione
-
-  async def on_submit(self, interaction: discord.Interaction):
-    q_str = self.quantity.value
-    input_item = self.item_name.value.strip()
-
-    try:
-      quantita = int(q_str)
-      if quantita <= 0:
-        raise ValueError()
-    except ValueError:
-      await interaction.response.send_message(
-          "❌ Quantità non valida.", ephemeral=True
-      )
-      return
-
-    faction_items = (
-        supabase.table("faction_inventory")
-        .select("*")
-        .ilike("faction_name", self.fazione)
-        .execute()
+    item_name = discord.ui.TextInput(
+        label="Nome dell'oggetto", placeholder="Es. Pistola", required=True
     )
-    if not faction_items.data:
-      await interaction.response.send_message(
-          "❌ Il deposito della fazione è vuoto.", ephemeral=True
-      )
-      return
-
-    nomi_disponibili = [row["item_name"] for row in faction_items.data]
-    simili = get_close_matches(
-        input_item, nomi_disponibili, n=1, cutoff=0.4
+    quantity = discord.ui.TextInput(
+        label="Quantità", placeholder="1", required=True, default="1"
     )
 
-    if not simili:
-      await interaction.response.send_message(
-          f"❌ Nessun oggetto simile a **{input_item}** nel deposito della"
-          " fazione.",
-          ephemeral=True,
-      )
-      return
+    def __init__(self, fazione: str):
+        super().__init__()
+        self.fazione = fazione
 
-    nome_effettivo = simili[0]
-    f_item = next(
-        r for r in faction_items.data if r["item_name"].lower() == nome_effettivo.lower()
-    )
+    async def on_submit(self, interaction: discord.Interaction):
+        q_str = self.quantity.value
+        input_item = self.item_name.value.strip()
 
-    if f_item["quantity"] < quantita:
-      await interaction.response.send_message(
-          f"❌ La fazione possiede solo {f_item['quantity']}x di"
-          f" **{nome_effettivo}**.",
-          ephemeral=True,
-      )
-      return
+        try:
+            quantita = int(q_str)
+            if quantita <= 0:
+                raise ValueError()
+        except ValueError:
+            await interaction.response.send_message("❌ Quantità non valida.", ephemeral=True)
+            return
 
-    nuova_q_fazione = f_item["quantity"] - quantita
-    if nuova_q_fazione <= 0:
-      supabase.table("faction_inventory").delete().eq(
-          "id", f_item["id"]
-      ).execute()
-    else:
-      supabase.table("faction_inventory").update(
-          {"quantity": nuova_q_fazione}
-      ).eq("id", f_item["id"]).execute()
+        faction_items = (
+            supabase.table("faction_inventory")
+            .select("*")
+            .ilike("faction_name", self.fazione)
+            .execute()
+        )
+        if not faction_items.data:
+            await interaction.response.send_message("❌ Il deposito della fazione è vuoto.", ephemeral=True)
+            return
 
-    discord_id = str(interaction.user.id)
-    u_inv = (
-        supabase.table("inventory")
-        .select("*")
-        .eq("discord_id", discord_id)
-        .ilike("item_name", nome_effettivo)
-        .execute()
-    )
-    if u_inv.data:
-      q_u_esistente = u_inv.data[0]["quantity"]
-      supabase.table("inventory").update(
-          {"quantity": q_u_esistente + quantita}
-      ).eq("id", u_inv.data[0]["id"]).execute()
-    else:
-      supabase.table("inventory").insert({
-          "discord_id": discord_id,
-          "item_name": f_item["item_name"],
-          "category": f_item["category"],
-          "weight": f_item["weight"],
-          "quantity": quantita,
-      }).execute()
+        nomi_disponibili = list(set([row["item_name"] for row in faction_items.data]))
+        simili = get_close_matches(input_item, nomi_disponibili, n=5, cutoff=0.4)
 
-    msg = f"✅ Hai prelevato **{quantita}x {f_item['item_name']}**"
-    if input_item.lower() != nome_effettivo.lower():
-      msg += f" *(cercando '{input_item}', trovato '{nome_effettivo}')*"
-    await interaction.response.send_message(msg, ephemeral=True)
+        if not simili:
+            await interaction.response.send_message(
+                f"❌ Nessun oggetto simile a **{input_item}** nel deposito della fazione.",
+                ephemeral=True,
+            )
+            return
+
+        if len(simili) > 1 and input_item.lower() not in [s.lower() for s in simili]:
+            async def target_callback(interact: discord.Interaction, scelta: str):
+                await self.process_withdraw(interact, scelta, quantita, faction_items.data)
+
+            view = SelectItemView(simili, target_callback)
+            await interaction.response.send_message(
+                "🔍 Ho trovato più oggetti corrispondenti nel deposito. Seleziona quello da prelevare:",
+                view=view,
+                ephemeral=True
+            )
+            return
+
+        nome_effettivo = simili[0]
+        await self.process_withdraw(interaction, nome_effettivo, quantita, faction_items.data)
+
+    async def process_withdraw(self, interaction: discord.Interaction, nome_effettivo: str, quantita: int, faction_items_data: list):
+        elementi_corrispondenti = [
+            r for r in faction_items_data if r["item_name"].lower() == nome_effettivo.lower()
+        ]
+
+        if not elementi_corrispondenti:
+            await interaction.response.send_message("❌ Oggetto non trovato nel deposito della fazione.", ephemeral=True)
+            return
+
+        quantita_totale_deposito = sum(item["quantity"] for item in elementi_corrispondenti)
+
+        if quantita_totale_deposito < quantita:
+            await interaction.response.send_message(
+                f"❌ La fazione possiede solo {quantita_totale_deposito}x di **{nome_effettivo}**.",
+                ephemeral=True,
+            )
+            return
+
+        discord_id = str(interaction.user.id)
+        oggetti_prelevati_testo = []
+        quantita_rimanente_da_prelevare = quantita
+
+        for f_item in elementi_corrispondenti:
+            if quantita_rimanente_da_prelevare <= 0:
+                break
+
+            q_disponibile_riga = f_item["quantity"]
+            q_da_prendere_qui = min(q_disponibile_riga, quantita_rimanente_da_prelevare)
+
+            nuova_q_fazione = q_disponibile_riga - q_da_prendere_qui
+            if nuova_q_fazione <= 0:
+                supabase.table("faction_inventory").delete().eq("id", f_item["id"]).execute()
+            else:
+                supabase.table("faction_inventory").update({"quantity": nuova_q_fazione}).eq("id", f_item["id"]).execute()
+
+            # Inseriamo o aggiorniamo nell'inventario dell'utente
+            u_inv = (
+                supabase.table("inventory")
+                .select("*")
+                .eq("discord_id", discord_id)
+                .eq("item_name", f_item["item_name"])
+                .execute()
+            )
+
+            if u_inv.data:
+                q_u_esistente = u_inv.data[0]["quantity"]
+                supabase.table("inventory").update(
+                    {"quantity": q_u_esistente + q_da_prendere_qui}
+                ).eq("id", u_inv.data[0]["id"]).execute()
+            else:
+                supabase.table("inventory").insert({
+                    "discord_id": discord_id,
+                    "item_name": f_item["item_name"],
+                    "category": f_item["category"],
+                    "weight": f_item["weight"],
+                    "quantity": q_da_prendere_qui,
+                }).execute()
+
+            oggetti_prelevati_testo.append(f"• **{q_da_prendere_qui}x {f_item['item_name']}**")
+            quantita_rimanente_da_prelevare -= q_da_prendere_qui
+
+        riepilogo_str = "\n".join(oggetti_prelevati_testo)
+        msg = f"✅ Hai prelevato con successo dal deposito della fazione:\n{riepilogo_str}"
+
+        if interaction.response.is_done():
+            await interaction.followup.send(msg, ephemeral=True)
+        else:
+            await interaction.response.send_message(msg, ephemeral=True)
 
 
 class FactionVaultView(discord.ui.View):
