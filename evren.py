@@ -9754,9 +9754,37 @@ async def crea_azienda(interaction: discord.Interaction, nome: str, ruolo: disco
     
     await interaction.followup.send(embed=embed)
 
+
 import aiohttp
 import base64
-# Assicurati di importare o avere definito 'supabase' nel tuo file globale
+import hashlib
+import io
+import discord
+import random
+import string
+import asyncio
+
+# Sostituisci con la tua chiave API di ImgBB (puoi ottenerla gratis su https://api.imgbb.com/)
+
+async def upload_su_imgbb(image_bytes: bytes) -> str:
+    """Carica i byte dell'immagine su ImgBB e restituisce l'URL diretto."""
+    url = "https://api.imgbb.com/1/upload"
+    
+    encoded_image = base64.b64encode(image_bytes).decode("utf-8")
+    payload = {
+        "key": IMGBB_API_KEY,
+        "image": encoded_image
+    }
+    
+    async with aiohttp.ClientSession() as session:
+        async with session.post(url, data=payload) as response:
+            if response.status == 200:
+                data = await response.json()
+                return data["data"]["url"]
+            else:
+                error_text = await response.text()
+                raise Exception(f"Errore caricamento su ImgBB (Status {response.status}): {error_text}")
+
 
 async def genera_carta_identita(
     discord_id,
@@ -9811,7 +9839,7 @@ async def genera_carta_identita(
     except Exception as e:
         print(f"Errore nel recupero licenze per {discord_id}: {e}")
 
-    # 2. Download e conversione della foto in Base64 per HTCI
+    # 2. Download e conversione della foto in Base64 (Evita schermate nere)
     photo_src = photo_url
     if photo_url and photo_url.startswith("http"):
         try:
@@ -9939,9 +9967,12 @@ async def genera_carta_identita(
                 flex-grow: 1;
                 align-items: center;
             }}
+            /* Fix Foto: Dimensioni fisse e posizionamento per evitare schermate nere */
             .foto-container {{
-                width: 145px;
-                height: 190px;
+                width: 145px !important;
+                height: 190px !important;
+                min-width: 145px;
+                min-height: 190px;
                 border: 2px solid {colore_primario};
                 background: #000;
                 box-shadow: 0 0 15px rgba(0, 240, 255, 0.3);
@@ -9949,6 +9980,7 @@ async def genera_carta_identita(
                 flex-shrink: 0;
                 overflow: hidden;
                 position: relative;
+                display: block;
             }}
             .foto-container::after {{
                 content: '';
@@ -9956,13 +9988,18 @@ async def genera_carta_identita(
                 bottom: 0; left: 0; width: 100%; height: 25px;
                 background: linear-gradient(to top, rgba(2, 6, 23, 0.8), transparent);
                 pointer-events: none;
+                z-index: 2;
             }}
             .foto-container img {{
-                width: 100%;
-                height: 100%;
-                object-fit: cover;
-                object-position: center;
-                display: block;
+                width: 145px !important;
+                height: 190px !important;
+                object-fit: cover !important;
+                object-position: center !important;
+                display: block !important;
+                position: absolute;
+                top: 0;
+                left: 0;
+                z-index: 1;
                 filter: contrast(1.15) saturate(1.1);
             }}
             
@@ -10043,7 +10080,7 @@ async def genera_carta_identita(
         
         <div class="body-content">
             <div class="foto-container">
-                <img src="{photo_src}" />
+                <img src="{photo_src}" alt="Foto Profilo" />
             </div>
             
             <div class="info-grid">
@@ -10096,13 +10133,6 @@ async def genera_carta_identita(
     return html_content
 
 
-
-import random
-import string
-
-import random
-import string
-
 @bot.tree.command(
     name="mostra_documento",
     description="Mostra la tua carta d'identità ufficiale in chat.",
@@ -10143,30 +10173,70 @@ async def mostra_documento(interaction: discord.Interaction):
         supabase.table("documents").update({"doc_number": doc_number}).eq(
             "discord_id", user_id
         ).execute()
+        doc["doc_number"] = doc_number
 
-    # Chiamata alla funzione aggiornata senza la residenza
-    html_content = await genera_carta_identita(
-        discord_id=interaction.user.id,
-        nome=doc["name"],
-        cognome=doc["surname"],
-        birth_date=doc["birth_date"],
-        birth_place=doc["birth_place"],
-        cf=doc["cf"],
-        doc_number=doc_number,
-        photo_url=doc["photo_url"],
-        colore_occhi=doc["eye_color"],
-        colore_capelli=doc["hair_color"],
-        segni_particolari=doc["distinct_marks"],
-    )
-    
-    file_documento = await renderizza_html_in_immagine(html_content)
+    # Generazione dell'hash per verificare se i dati sono cambiati
+    raw_data_string = f"{doc.get('name')}{doc.get('surname')}{doc.get('birth_date')}{doc.get('birth_place')}{doc.get('cf')}{doc_number}{doc.get('photo_url')}{doc.get('eye_color')}{doc.get('hair_color')}{doc.get('distinct_marks')}"
+    current_data_hash = hashlib.md5(raw_data_string.encode('utf-8')).hexdigest()
+
+    cached_hash = doc.get("data_hash")
+    cached_img_url = doc.get("imgbb_url")
+
+    file_documento = None
+
+    # Se i dati non sono cambiati e abbiamo un link valido su ImgBB, lo scarichiamo direttamente
+    if cached_hash == current_data_hash and cached_img_url:
+        try:
+            async with aiohttp.ClientSession() as session:
+                async with session.get(cached_img_url) as resp:
+                    if resp.status == 200:
+                        img_bytes = await resp.read()
+                        buffer = io.BytesIO(img_bytes)
+                        buffer.seek(0)
+                        file_documento = discord.File(buffer, filename="documento.png")
+        except Exception as e:
+            print(f"Impossibile recuperare l'immagine da ImgBB, eseguo il render: {e}")
+
+    # Se non è in cache o i dati sono variati, procediamo al render ed eventuale salvataggio su ImgBB
+    if not file_documento:
+        html_content = await genera_carta_identita(
+            discord_id=interaction.user.id,
+            nome=doc["name"],
+            cognome=doc["surname"],
+            birth_date=doc["birth_date"],
+            birth_place=doc["birth_place"],
+            cf=doc["cf"],
+            doc_number=doc_number,
+            photo_url=doc["photo_url"],
+            colore_occhi=doc["eye_color"],
+            colore_capelli=doc["hair_color"],
+            segni_particolari=doc["distinct_marks"],
+        )
+        
+        file_documento = await renderizza_html_in_immagine(html_content)
+        
+        # Estraiamo i byte per caricarli su ImgBB
+        file_documento.fp.seek(0)
+        image_bytes = file_documento.fp.read()
+        file_documento.fp.seek(0)
+
+        try:
+            new_imgbb_url = await upload_su_imgbb(image_bytes)
+            
+            # Aggiorna il database Supabase con il nuovo link e l'hash aggiornato
+            supabase.table("documents").update({
+                "imgbb_url": new_imgbb_url,
+                "data_hash": current_data_hash
+            }).eq("discord_id", user_id).execute()
+        except Exception as e:
+            print(f"Errore durante l'upload su ImgBB o salvataggio su Supabase: {e}")
 
     # 3. Sostituisce il messaggio di caricamento con l'immagine finale
-    # Nota: per gli edit in discord.py si usa 'attachments=' invece di 'file='
     await interaction.edit_original_response(
         content="🪪 Ecco la tua carta d'identità ufficiale:", 
         attachments=[file_documento]
     )
+
 
 async def renderizza_html_in_immagine(html_content: str, filename: str = "documento.png") -> discord.File:
     user_id = "Evren"
@@ -10204,7 +10274,6 @@ async def renderizza_html_in_immagine(html_content: str, filename: str = "docume
     buffer = io.BytesIO(screenshot_bytes)
     buffer.seek(0)
     return discord.File(buffer, filename=filename)
-
 
 import asyncio
 import random
