@@ -260,6 +260,250 @@ class ServerSelect(discord.ui.Select):
             view=confirm_view
         )
 
+import discord
+from discord import app_commands
+
+# ID del ruolo abilitato a eseguire i comandi e banner Imgur
+WHITELISTER_ROLE_ID = 1560712731647148082  # Sostituisci con l'ID reale
+BANNER_ONLINE_URL = "https://i.ibb.co/fGFQyhQg/foto.png"
+BANNER_OFFLINE_URL = "https://i.ibb.co/QFFGxNFx/foto.png"
+FOOTER_TEXT = "Revelant RP | Ps4/Ps5 "
+
+
+# Funzione di controllo per verificare se l'utente possiede il ruolo
+def is_whitelister():
+    async def predicate(interaction: discord.Interaction) -> bool:
+        if isinstance(interaction.user, discord.Member):
+            return any(role.id == WHITELISTER_ROLE_ID for role in interaction.user.roles)
+        return False
+    return app_commands.check(predicate)
+
+
+# ---------------- COMANDO: WHITELIST ONLINE ----------------
+@bot.tree.command(name="wl-online", description="Notifica l'apertura delle sessioni Whitelist")
+@is_whitelister()
+async def wl_online(interaction: discord.Interaction):
+    embed = discord.Embed(
+        title="🔘 Whitelist Online 🔘",
+        description=(
+            "**Prima di affrontare la whitelist**\n"
+            "si raccomanda di leggere bene\n"
+            "il **regolamento** ↗️."
+        ),
+        color=discord.Color.from_rgb(46, 204, 113)  # Verde
+    )
+    
+    # Prende l'icona del server in cui viene eseguito il comando
+    if interaction.guild and interaction.guild.icon:
+        embed.set_thumbnail(url=interaction.guild.icon.url)
+        
+    embed.set_image(url=BANNER_ONLINE_URL)
+    embed.set_footer(text=FOOTER_TEXT)
+
+    await interaction.response.send_message(embed=embed)
+
+
+# ---------------- COMANDO: WHITELIST OFFLINE ----------------
+@bot.tree.command(name="wl-offline", description="Notifica la chiusura delle sessioni Whitelist")
+@is_whitelister()
+async def wl_offline(interaction: discord.Interaction):
+    embed = discord.Embed(
+        title="🔘 Whitelist Offline 🔘",
+        description=(
+            "**Saranno riaperte** ⚙️ quando un **whitelister**\n"
+            "sarà disponibile ⏳.\n\n"
+            "*_Non contattate in privato i whitelister, grazie._*"
+        ),
+        color=discord.Color.from_rgb(231, 76, 60)  # Rosso
+    )
+    
+    # Prende l'icona del server in cui viene eseguito il comando
+    if interaction.guild and interaction.guild.icon:
+        embed.set_thumbnail(url=interaction.guild.icon.url)
+        
+    embed.set_image(url=BANNER_OFFLINE_URL)
+    embed.set_footer(text=FOOTER_TEXT)
+
+    await interaction.response.send_message(embed=embed)
+
+
+# Gestione errore se l'utente non possiede il ruolo richiesto
+@wl_online.error
+@wl_offline.error
+async def wl_error_handler(interaction: discord.Interaction, error: app_commands.AppCommandError):
+    if isinstance(error, app_commands.CheckFailure):
+        await interaction.response.send_message(
+            "❌ Non hai i permessi necessari (ruolo Whitelister mancante) per usare questo comando.",
+            ephemeral=True
+        )
+
+import discord
+from discord import app_commands
+
+# ---------------- ID DEI RUOLI DI ESECUZIONE (PER COMANDO) ----------------
+ROLE_EXEC_RP_ONLINE = 1560712740631486606
+ROLE_EXEC_RP_OFFLINE = 1560712740631486606
+ROLE_EXEC_BANDO_APERTO = 1560712685199560756
+ROLE_EXEC_BANDO_CHIUSO = 1560712685199560756
+ROLE_EXEC_BUONGIORNO = 1560712685199560756
+ROLE_EXEC_BUONANOTTE = 1560712685199560756
+
+# ---------------- ID DEL RUOLO DA TAGGARE NEGLI EMBED ----------------
+CITTADINO_ID = 1560712977261273088  # Inserisci l'ID reale del ruolo Cittadino
+
+# ---------------- LINK DEI BANNER (IMGUR) ----------------
+BANNER_RP_ONLINE_URL = "https://i.ibb.co/G3c8krWZ/foto.png"
+BANNER_RP_OFFLINE_URL = "https://i.ibb.co/zhzM572j/foto.png"
+BANNER_BANDO_APERTO_URL = "https://i.ibb.co/0yXT76MV/foto.png"
+BANNER_BANDO_CHIUSO_URL = "https://i.ibb.co/WWdkVDVg/foto.png"
+BANNER_BUONGIORNO_URL = "https://i.ibb.co/BS9Q6jf/foto.png"
+BANNER_BUONANOTTE_URL = "https://i.ibb.co/HLMZtQvv/foto.png"
+
+FOOTER_TEXT = "Revelant RP | Ps4/Ps5"
+
+
+# Funzione di controllo permessi per ogni singolo comando
+def has_role(role_id: int):
+    async def predicate(interaction: discord.Interaction) -> bool:
+        if isinstance(interaction.user, discord.Member):
+            return any(role.id == role_id for role in interaction.user.roles)
+        return False
+    return app_commands.check(predicate)
+
+
+# ---------------- 1. COMANDO: RP ONLINE ----------------
+@bot.tree.command(name="rp-online", description="Notifica l'apertura delle sessioni RP Online")
+@app_commands.describe(host="ID Psn dell'host della sessione ")
+@has_role(ROLE_EXEC_RP_ONLINE)
+async def rp_online(interaction: discord.Interaction, host: str = None):
+    embed = discord.Embed(
+        title="🟢 • STATO: ONLINE",
+        description="Le sessioni RP sono ufficialmente **attive** e aperte ai giocatori.",
+        color=discord.Color.from_rgb(46, 204, 113)
+    )
+    
+    host_display = host if host else "Facoltativo"
+    embed.add_field(name="🌐 Host Sessione", value=host_display, inline=False)
+    
+    if interaction.guild and interaction.guild.icon:
+        embed.set_thumbnail(url=interaction.guild.icon.url)
+    embed.set_image(url=BANNER_RP_ONLINE_URL)
+    embed.set_footer(text=FOOTER_TEXT)
+
+    # Tag fuori dall'embed
+    content = f"<@&{CITTADINO_ID}>"
+    await interaction.response.send_message(content=content, embed=embed)
+
+
+# ---------------- 2. COMANDO: RP OFFLINE ----------------
+@bot.tree.command(name="rp-offline", description="Notifica la chiusura delle sessioni RP")
+@has_role(ROLE_EXEC_RP_OFFLINE)
+async def rp_offline(interaction: discord.Interaction):
+    embed = discord.Embed(
+        title="🔴 • STATO: OFFLINE",
+        description="Le sessioni RP sono momentaneamente **chiuse** o non attive.",
+        color=discord.Color.from_rgb(231, 76, 60)
+    )
+    
+    if interaction.guild and interaction.guild.icon:
+        embed.set_thumbnail(url=interaction.guild.icon.url)
+    embed.set_image(url=BANNER_RP_OFFLINE_URL)
+    embed.set_footer(text=FOOTER_TEXT)
+
+    await interaction.response.send_message(embed=embed)
+
+
+# ---------------- 3. COMANDO: BANDO APERTO ----------------
+@bot.tree.command(name="bando-aperto", description="Notifica l'apertura dei bandi")
+@has_role(ROLE_EXEC_BANDO_APERTO)
+async def bando_aperto(interaction: discord.Interaction):
+    embed = discord.Embed(
+        title="📋 • BANDO: APERTO",
+        description="Le candidature per entrare a far parte dei gruppi o dello staff sono **aperte**!",
+        color=discord.Color.from_rgb(46, 204, 113)
+    )
+    
+    if interaction.guild and interaction.guild.icon:
+        embed.set_thumbnail(url=interaction.guild.icon.url)
+    embed.set_image(url=BANNER_BANDO_APERTO_URL)
+    embed.set_footer(text=FOOTER_TEXT)
+
+    # Tag fuori dall'embed
+    content = f"<@&{CITTADINO_ID}>"
+    await interaction.response.send_message(content=content, embed=embed)
+
+
+# ---------------- 4. COMANDO: BANDO CHIUSO ----------------
+@bot.tree.command(name="bando-chiuso", description="Notifica la chiusura dei bandi")
+@has_role(ROLE_EXEC_BANDO_CHIUSO)
+async def bando_chiuso(interaction: discord.Interaction):
+    embed = discord.Embed(
+        title="🔒 • BANDO: CHIUSO",
+        description="Al momento le candidature sono **chiuse**. Non si accettano nuove richieste.",
+        color=discord.Color.from_rgb(231, 76, 60)
+    )
+    
+    if interaction.guild and interaction.guild.icon:
+        embed.set_thumbnail(url=interaction.guild.icon.url)
+    embed.set_image(url=BANNER_BANDO_CHIUSO_URL)
+    embed.set_footer(text=FOOTER_TEXT)
+
+    await interaction.response.send_message(embed=embed)
+
+
+# ---------------- 5. COMANDO: BUONGIORNO ----------------
+@bot.tree.command(name="buongiorno", description="Invia il messaggio di buongiorno alla community")
+@has_role(ROLE_EXEC_BUONGIORNO)
+async def buongiorno(interaction: discord.Interaction):
+    embed = discord.Embed(
+        title="🌅 • BUONGIORNO COMMUNITY",
+        description="Le attività giornaliere si concludono. Riposatevi bene, ci vediamo domani in città!",
+        color=discord.Color.from_rgb(241, 196, 15)
+    )
+    
+    if interaction.guild and interaction.guild.icon:
+        embed.set_thumbnail(url=interaction.guild.icon.url)
+    embed.set_image(url=BANNER_BUONGIORNO_URL)
+    embed.set_footer(text=FOOTER_TEXT)
+
+    # Tag fuori dall'embed
+    content = f"<@&{CITTADINO_ID}>"
+    await interaction.response.send_message(content=content, embed=embed)
+
+
+# ---------------- 6. COMANDO: BUONANOTTE ----------------
+@bot.tree.command(name="buonanotte", description="Invia il messaggio di buonanotte alla community")
+@has_role(ROLE_EXEC_BUONANOTTE)
+async def buonanotte(interaction: discord.Interaction):
+    embed = discord.Embed(
+        title="🌙 • BUONANOTTE RP",
+        description="Le attività giornaliere si concludono. Riposatevi bene, ci vediamo domani in città!",
+        color=discord.Color.from_rgb(155, 89, 182)
+    )
+    
+    if interaction.guild and interaction.guild.icon:
+        embed.set_thumbnail(url=interaction.guild.icon.url)
+    embed.set_image(url=BANNER_BUONANOTTE_URL)
+    embed.set_footer(text=FOOTER_TEXT)
+
+    # Tag fuori dall'embed
+    content = f"<@&{CITTADINO_ID}>"
+    await interaction.response.send_message(content=content, embed=embed)
+
+
+# ---------------- GESTIONE ERRORI GLOBALE ----------------
+@rp_online.error
+@rp_offline.error
+@bando_aperto.error
+@bando_chiuso.error
+@buongiorno.error
+@buonanotte.error
+async def global_error_handler(interaction: discord.Interaction, error: app_commands.AppCommandError):
+    if isinstance(error, app_commands.CheckFailure):
+        await interaction.response.send_message(
+            "❌ Non hai i permessi necessari (il ruolo specifico per questo comando) per eseguirlo.",
+            ephemeral=True
+        )
 
 class ServerListView(discord.ui.View):
     def __init__(self, guilds):
