@@ -541,6 +541,36 @@ async def list_servers(ctx: commands.Context):
 
 
 
+@bot.tree.command(name="say", description="Fa ripetere un messaggio al bot, con testo o immagini.")
+@app_commands.describe(
+    testo="Il testo che il bot deve scrivere",
+    immagine="Un file immagine da allegare"
+)
+async def say(interaction: discord.Interaction, testo: str = None, immagine: discord.Attachment = None):
+    # Controlla se l'utente che esegue il comando è il proprietario del bot
+    app_info = await bot.application_info()
+    if interaction.user != app_info.owner and interaction.user.id not in getattr(app_info, "team", []): # Compatibile anche con i team di sviluppatori
+        # Se non è il proprietario, blocca il comando
+        await interaction.response.send_message("❌ Non hai i permessi per usare questo comando. Solo il proprietario può farlo.", ephemeral=True)
+        return
+
+    if not testo and not immagine:
+        await interaction.response.send_message("⚠️ Devi inserire almeno del **testo** o allegare un'**immagine**!", ephemeral=True)
+        return
+
+    await interaction.response.send_message("✅ Messaggio inviato!", ephemeral=True)
+
+    kwargs = {}
+    if testo:
+        kwargs["content"] = testo
+
+    if immagine:
+        if not immagine.content_type or not immagine.content_type.startswith("image/"):
+            await interaction.edit_original_response(content="❌ Il file allegato deve essere un'immagine valida!")
+            return
+        kwargs["file"] = await immagine.to_file()
+
+    await interaction.channel.send(**kwargs)
 
 import discord
 from discord.ext import commands
