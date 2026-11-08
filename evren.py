@@ -391,7 +391,7 @@ async def rp_online(interaction: discord.Interaction, host: str = None):
     embed.set_footer(text=FOOTER_TEXT)
 
     # Tag fuori dall'embed
-    content = f"<@&{CITTADINO_ID}>"
+    content = f"<@&1560712977261273088>"
     await interaction.response.send_message(content=content, embed=embed)
 
 
@@ -429,7 +429,7 @@ async def bando_aperto(interaction: discord.Interaction):
     embed.set_footer(text=FOOTER_TEXT)
 
     # Tag fuori dall'embed
-    content = f"<@&{CITTADINO_ID}>"
+    content = f"<@&1560712977261273088>"
     await interaction.response.send_message(content=content, embed=embed)
 
 
@@ -457,7 +457,7 @@ async def bando_chiuso(interaction: discord.Interaction):
 async def buongiorno(interaction: discord.Interaction):
     embed = discord.Embed(
         title="🌅 • BUONGIORNO COMMUNITY",
-        description="Le attività giornaliere si concludono. Riposatevi bene, ci vediamo domani in città!",
+        description="Le attività giornaliere stanno per iniziare. Caricatevi al massimo, ci vediamo oggi in città! ☀️☕",
         color=discord.Color.from_rgb(241, 196, 15)
     )
     
@@ -467,7 +467,7 @@ async def buongiorno(interaction: discord.Interaction):
     embed.set_footer(text=FOOTER_TEXT)
 
     # Tag fuori dall'embed
-    content = f"<@&{CITTADINO_ID}>"
+    content = f"<@&1560712977261273088>"
     await interaction.response.send_message(content=content, embed=embed)
 
 
@@ -487,7 +487,7 @@ async def buonanotte(interaction: discord.Interaction):
     embed.set_footer(text=FOOTER_TEXT)
 
     # Tag fuori dall'embed
-    content = f"<@&{CITTADINO_ID}>"
+    content = f"<@&1560712977261273088>"
     await interaction.response.send_message(content=content, embed=embed)
 
 
