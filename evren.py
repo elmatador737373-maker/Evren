@@ -7,8 +7,8 @@ import discord
 from discord.ext import commands, tasks
 
 # =====================================================================
-# MINE ROLEPLAY - DISCORD SERVER ARCHITECT & BACKUP BOT (FULL EDITION)
-# Formato 100% Uniforme: Categorie, Canali Testuali, Vocali & Ruoli
+# MINE ROLEPLAY - DISCORD SERVER ARCHITECT & BACKUP BOT (PERMESSI FULL)
+# Permessi automatici granulari su Ruoli, Categorie e Singoli Canali
 # =====================================================================
 
 TOKEN = os.getenv("DISCORD_TOKEN")
@@ -97,154 +97,224 @@ RUOLI_TEMPLATE = [
 ]
 
 # =====================================================================
-# STRUTTURA CATEGORIE E CANALI (100% FORMATO IDENTICO: 〔emoji〕・ɴᴏᴍᴇ)
+# STRUTTURA CATEGORIE E CANALI CON PERMESSO SPECIFICO PER OGNI CANALE
+# Formato canale: (tipo, nome, permesso_canale)
 # =====================================================================
 STRUTTURA_SERVER = [
-    ("⫷༺ 📊 𝐒𝐓𝐀𝐓𝐈𝐒𝐓𝐈𝐂𝐇𝐄 𝐌𝐈𝐍𝐄 𝐑𝐎𝐋𝐄𝐏𝐥𝐚𝐲 ༻⫸", "stats", [
-        ("voice", "〔📊〕・ᴍᴇᴍʙʀɪ-ᴛᴏᴛᴀʟɪ-0"),
-        ("voice", "〔🛡️〕・ꜱᴛᴀꜰꜰ-ᴛᴏᴛᴀʟɪ-0"),
-        ("voice", "〔🪪〕・ᴄɪᴛᴛᴀᴅɪɴɪ-0"),
-        ("voice", "〔🟢〕・ꜱᴇʀᴠᴇʀ-ᴏɴʟɪɴᴇ"),
+    ("⫷༺ 📊 𝐒𝐓𝐀𝐓𝐈𝐒𝐓𝐈𝐂𝐇𝐄 𝐌𝐈𝐍𝐄 𝐑𝐎𝐋𝐄𝐏𝐋𝐀𝐘 ༻⫸", "stats", [
+        ("voice", "〔📊〕・ᴍᴇᴍʙʀɪ-ᴛᴏᴛᴀʟɪ-0", "stats"),
+        ("voice", "〔🛡️〕・ꜱᴛᴀꜰꜰ-ᴛᴏᴛᴀʟɪ-0", "stats"),
+        ("voice", "〔🪪〕・ᴄɪᴛᴛᴀᴅɪɴɪ-0", "stats"),
+        ("voice", "〔🟢〕・ꜱᴇʀᴠᴇʀ-ᴏɴʟɪɴᴇ", "stats"),
     ]),
     ("⫷༺ ⚔️ 𝐁𝐄𝐍𝐕𝐄𝐍𝐔𝐓𝐎 & 𝐈𝐍𝐅𝐎 ༻⫸", "public_read", [
-        ("text", "〔👋〕・ʙᴇɴᴠᴇɴᴜᴛᴏ"),
-        ("text", "〔🚪〕・ᴀᴅᴅɪᴏ"),
-        ("text", "〔✅〕・ᴠᴇʀɪꜰɪᴄᴀ"),
-        ("text", "〔📜〕・ꜱᴛᴏʀɪᴀ-ᴅᴇʟʟᴀ-ᴄɪᴛᴛᴀ̀"),
-        ("text", "〔🗺️〕・ᴍᴀᴘᴘᴀ-ᴇ-ᴘᴜɴᴛɪ-ɢᴘꜱ"),
-        ("text", "〔🎮〕・ᴄᴏᴍᴇ-ᴇɴᴛʀᴀʀᴇ-ᴘꜱ4-ᴘꜱ5-ᴘᴄ"),
-        ("text", "〔🎧〕・ᴄᴏʟʟᴇɢᴀ-ᴠᴏᴄᴇ-ᴏᴘᴇɴᴀᴜᴅɪᴏ"),
-        ("text", "〔💎〕・ᴠɪᴘ-ᴇ-ꜱᴜᴘᴘᴏʀᴛ-ᴘᴀᴄᴋ"),
-        ("text", "〔🔗〕・ʟɪɴᴋ-ɪɴᴠɪᴛᴏ"),
-        ("text", "〔🟢〕・ꜱᴛᴀᴛᴏ-ꜱᴇʀᴠᴇʀ"),
+        ("text", "〔👋〕・ʙᴇɴᴠᴇɴᴜᴛᴏ", "public_read"),
+        ("text", "〔🚪〕・ᴀᴅᴅɪᴏ", "public_read"),
+        ("text", "〔✅〕・ᴠᴇʀɪꜰɪᴄᴀ", "verifica_ch"),
+        ("text", "〔📜〕・ꜱᴛᴏʀɪᴀ-ᴅᴇʟʟᴀ-ᴄɪᴛᴛᴀ̀", "public_read"),
+        ("text", "〔🗺️〕・ᴍᴀᴘᴘᴀ-ᴇ-ᴘᴜɴᴛɪ-ɢᴘꜱ", "public_read"),
+        ("text", "〔🎮〕・ᴄᴏᴍᴇ-ᴇɴᴛʀᴀʀᴇ-ᴘꜱ4-ᴘꜱ5-ᴘᴄ", "public_read"),
+        ("text", "〔🎧〕・ᴄᴏʟʟᴇɢᴀ-ᴠᴏᴄᴇ-ᴏᴘᴇɴᴀᴜᴅɪᴏ", "public_read"),
+        ("text", "〔💎〕・ᴠɪᴘ-ᴇ-ꜱᴜᴘᴘᴏʀᴛ-ᴘᴀᴄᴋ", "public_read"),
+        ("text", "〔🔗〕・ʟɪɴᴋ-ɪɴᴠɪᴛᴏ", "public_read"),
+        ("text", "〔🟢〕・ꜱᴛᴀᴛᴏ-ꜱᴇʀᴠᴇʀ", "public_read"),
     ]),
     ("⫷༺ 📜 𝐑𝐄𝐆𝐎𝐋𝐀𝐌𝐄𝐍𝐓𝐈 𝐔𝐅𝐅𝐈𝐂𝐈𝐀𝐋𝐈 ༻⫸", "public_read", [
-        ("text", "〔📕〕・ʀᴇɢᴏʟᴀᴍᴇɴᴛᴏ-ꜱᴇʀᴠᴇʀ"),
-        ("text", "〔📘〕・ʀᴇɢᴏʟᴀᴍᴇɴᴛᴏ-ᴅɪꜱᴄᴏʀᴅ"),
-        ("text", "〔📗〕・ʀᴇɢᴏʟᴀᴍᴇɴᴛᴏ-ꜰᴀᴢɪᴏɴɪ"),
-        ("text", "〔📙〕・ʀᴇɢᴏʟᴀᴍᴇɴᴛᴏ-ᴄʀɪᴍɪɴᴇ"),
-        ("text", "〔⚖️〕・ᴄᴏᴅɪᴄᴇ-ᴘᴇɴᴀʟᴇ-ᴍʀᴘᴅ"),
-        ("text", "〔🚗〕・ᴄᴏᴅɪᴄᴇ-ᴅᴇʟʟᴀ-ꜱᴛʀᴀᴅᴀ-ᴅᴍᴠ"),
-        ("text", "〔🔫〕・ʀᴇɢᴏʟᴀᴍᴇɴᴛᴏ-ᴘᴏʀᴛᴏ-ᴅᴀʀᴍɪ"),
-        ("text", "〔🏠〕・ʀᴇɢᴏʟᴀᴍᴇɴᴛᴏ-ɪᴍᴍᴏʙɪʟɪ-ᴇ-ᴀᴢɪᴇɴᴅᴇ"),
+        ("text", "〔📕〕・ʀᴇɢᴏʟᴀᴍᴇɴᴛᴏ-ꜱᴇʀᴠᴇʀ", "public_read"),
+        ("text", "〔📘〕・ʀᴇɢᴏʟᴀᴍᴇɴᴛᴏ-ᴅɪꜱᴄᴏʀᴅ", "public_read"),
+        ("text", "〔📗〕・ʀᴇɢᴏʟᴀᴍᴇɴᴛᴏ-ꜰᴀᴢɪᴏɴɪ", "public_read"),
+        ("text", "〔📙〕・ʀᴇɢᴏʟᴀᴍᴇɴᴛᴏ-ᴄʀɪᴍɪɴᴇ", "public_read"),
+        ("text", "〔⚖️〕・ᴄᴏᴅɪᴄᴇ-ᴘᴇɴᴀʟᴇ-ᴍʀᴘᴅ", "public_read"),
+        ("text", "〔🚗〕・ᴄᴏᴅɪᴄᴇ-ᴅᴇʟʟᴀ-ꜱᴛʀᴀᴅᴀ-ᴅᴍᴠ", "public_read"),
+        ("text", "〔🔫〕・ʀᴇɢᴏʟᴀᴍᴇɴᴛᴏ-ᴘᴏʀᴛᴏ-ᴅᴀʀᴍɪ", "public_read"),
+        ("text", "〔🏠〕・ʀᴇɢᴏʟᴀᴍᴇɴᴛᴏ-ɪᴍᴍᴏʙɪʟɪ-ᴇ-ᴀᴢɪᴇɴᴅᴇ", "public_read"),
     ]),
-    ("⫷༺ 🛂 𝐀𝐑𝐄𝐀 𝐖𝐇𝐈𝐓𝐄𝐋𝐈𝐒𝐓 & 𝐓𝐈𝐂𝐊𝐄𝐓 ༻⫸", "public_chat", [
-        ("text", "〔📝〕・ꜰᴀɪ-ᴡʜɪᴛᴇʟɪꜱᴛ"),
-        ("text", "〔📩〕・ᴇꜱɪᴛᴏ-ᴡʜɪᴛᴇʟɪꜱᴛ"),
-        ("text", "〔❓〕・ᴅᴏᴍᴀɴᴅᴇ-ᴡʜɪᴛᴇʟɪꜱᴛ"),
-        ("text", "〔🎫〕・ᴛɪᴄᴋᴇᴛ-ɢᴇɴᴇʀᴀʟᴇ"),
-        ("text", "〔💎〕・ᴛɪᴄᴋᴇᴛ-ᴅᴏɴᴀᴢɪᴏɴɪ"),
-        ("text", "〔⭐〕・ᴛɪᴄᴋᴇᴛ-ɢʀᴀᴅᴏ-ᴀʟᴛᴏ"),
-        ("text", "〔🏛️〕・ᴛɪᴄᴋᴇᴛ-ꜰᴀᴢɪᴏɴᴇ"),
-        ("text", "〔🏢〕・ᴛɪᴄᴋᴇᴛ-ᴀᴘᴇʀᴛᴜʀᴀ-ᴀᴢɪᴇɴᴅᴀ"),
-        ("text", "〔🐛〕・ꜱᴇɢɴᴀʟᴀ-ʙᴜɢ"),
-        ("text", "〔⚖️〕・ʀɪᴄʜɪᴇꜱᴛᴀ-ᴜɴʙᴀɴ"),
-        ("text", "〔☠️〕・ʀɪᴄʜɪᴇꜱᴛᴀ-ᴘᴇʀᴍᴀᴅᴇᴀᴛʜ"),
+    ("⫷༺ 🛂 𝐀𝐑𝐄𝐀 𝐖𝐇𝐈𝐓𝐄𝐋𝐈𝐒𝐓 & 𝐓𝐈𝐂𝐊𝐄𝐓 ༻⫸", "verificato_chat", [
+        ("text", "〔📝〕・ꜰᴀɪ-ᴡʜɪᴛᴇʟɪꜱᴛ", "verificato_chat"),
+        ("text", "〔📩〕・ᴇꜱɪᴛᴏ-ᴡʜɪᴛᴇʟɪꜱᴛ", "verificato_read"),
+        ("text", "〔❓〕・ᴅᴏᴍᴀɴᴅᴇ-ᴡʜɪᴛᴇʟɪꜱᴛ", "verificato_chat"),
+        ("text", "〔🎫〕・ᴛɪᴄᴋᴇᴛ-ɢᴇɴᴇʀᴀʟᴇ", "verificato_chat"),
+        ("text", "〔💎〕・ᴛɪᴄᴋᴇᴛ-ᴅᴏɴᴀᴢɪᴏɴɪ", "verificato_chat"),
+        ("text", "〔⭐〕・ᴛɪᴄᴋᴇᴛ-ɢʀᴀᴅᴏ-ᴀʟᴛᴏ", "verificato_chat"),
+        ("text", "〔🏛️〕・ᴛɪᴄᴋᴇᴛ-ꜰᴀᴢɪᴏɴᴇ", "cittadino_chat"),
+        ("text", "〔🏢〕・ᴛɪᴄᴋᴇᴛ-ᴀᴘᴇʀᴛᴜʀᴀ-ᴀᴢɪᴇɴᴅᴀ", "cittadino_chat"),
+        ("text", "〔🐛〕・ꜱᴇɢɴᴀʟᴀ-ʙᴜɢ", "verificato_chat"),
+        ("text", "〔⚖️〕・ʀɪᴄʜɪᴇꜱᴛᴀ-ᴜɴʙᴀɴ", "verificato_chat"),
+        ("text", "〔☠️〕・ʀɪᴄʜɪᴇꜱᴛᴀ-ᴘᴇʀᴍᴀᴅᴇᴀᴛʜ", "cittadino_chat"),
     ]),
-    ("⫷༺ 💬 𝐂𝐎𝐌𝐌𝐔𝐍𝐈𝐓𝐘 𝐎𝐎𝐂 & 𝐌𝐄𝐃𝐈𝐀 ༻⫸", "public_chat", [
-        ("text", "〔📢〕・ᴀɴɴᴜɴᴄɪ-ꜱᴇʀᴠᴇʀ"),
-        ("text", "〔💬〕・ᴄʜᴀᴛ-ᴏᴏᴄ"),
-        ("text", "〔💡〕・ꜱᴜɢɢᴇʀɪᴍᴇɴᴛɪ-ꜱᴇʀᴠᴇʀ"),
-        ("text", "〔📸〕・ᴍᴇᴅɪᴀ-ᴄʟɪᴘ-ʀᴘ"),
-        ("text", "〔🎥〕・ᴄʟɪᴘ-ᴇ-ᴛɪᴋᴛᴏᴋ"),
-        ("text", "〔🎁〕・ɢɪᴠᴇᴀᴡᴀʏ-ᴇ-ᴇᴠᴇɴᴛɪ"),
-        ("text", "〔🤝〕・ᴘᴀʀᴛɴᴇʀꜱʜɪᴘ"),
-        ("text", "〔🤖〕・ᴄᴏᴍᴀɴᴅɪ-ʙᴏᴛ"),
+    ("⫷༺ 💬 𝐂𝐎𝐌𝐌𝐔𝐍𝐈𝐓𝐘 𝐎𝐎𝐂 & 𝐌𝐄𝐃𝐈𝐀 ༻⫸", "verificato_chat", [
+        ("text", "〔📢〕・ᴀɴɴᴜɴᴄɪ-ꜱᴇʀᴠᴇʀ", "verificato_read"),
+        ("text", "〔💬〕・ᴄʜᴀᴛ-ᴏᴏᴄ", "verificato_chat"),
+        ("text", "〔💡〕・ꜱᴜɢɢᴇʀɪᴍᴇɴᴛɪ-ꜱᴇʀᴠᴇʀ", "verificato_chat"),
+        ("text", "〔📸〕・ᴍᴇᴅɪᴀ-ᴄʟɪᴘ-ʀᴘ", "verificato_chat"),
+        ("text", "〔🎥〕・ᴄʟɪᴘ-ᴇ-ᴛɪᴋᴛᴏᴋ", "verificato_chat"),
+        ("text", "〔🎁〕・ɢɪᴠᴇᴀᴡᴀʏ-ᴇ-ᴇᴠᴇɴᴛɪ", "verificato_read"),
+        ("text", "〔🤝〕・ᴘᴀʀᴛɴᴇʀꜱʜɪᴘ", "verificato_read"),
+        ("text", "〔🤖〕・ᴄᴏᴍᴀɴᴅɪ-ʙᴏᴛ", "verificato_chat"),
     ]),
-    ("⫷༺ 🌆 𝐀𝐑𝐄𝐀 𝐈𝐍-𝐂𝐇𝐀𝐑𝐀𝐂𝐓𝐄𝐑 (𝐈𝐂) ༻⫸", "public_chat", [
-        ("text", "〔📱〕・ʏᴇʟʟᴏᴡ-ᴘᴀɢᴇꜱ-ᴀɴɴᴜɴᴄɪ"),
-        ("text", "〔📰〕・ᴍɪɴᴇ-ʀᴏʟᴇᴘʟᴀʏ-ɴᴇᴡꜱ"),
-        ("text", "〔🏛️〕・ᴄᴏᴍᴜɴɪᴄᴀᴛɪ-ɢᴏᴠᴇʀɴᴏ"),
-        ("text", "〔⚖️〕・ᴛʀɪʙᴜɴᴀʟᴇ-ᴇ-ꜱᴇɴᴛᴇɴᴢᴇ"),
-        ("text", "〔🚗〕・ᴀᴜᴛᴏꜱᴀʟᴏɴᴇ-ᴜꜱᴀᴛᴏ"),
-        ("text", "〔🏠〕・ᴀɢᴇɴᴢɪᴀ-ɪᴍᴍᴏʙɪʟɪᴀʀᴇ"),
-        ("text", "〔💼〕・ᴄᴇɴᴛʀᴏ-ɪᴍᴘɪᴇɢᴏ"),
-        ("text", "〔🏢〕・ᴀʟʙᴏ-ᴀᴢɪᴇɴᴅᴇ"),
-        ("text", "〔🌑〕・ᴅᴀʀᴋ-ᴡᴇʙ-ɪᴄ"),
+    ("⫷༺ 🌆 𝐀𝐑𝐄𝐀 𝐈𝐍-𝐂𝐇𝐀𝐑𝐀𝐂𝐓𝐄𝐑 (𝐈𝐂) ༻⫸", "cittadino_chat", [
+        ("text", "〔📱〕・ʏᴇʟʟᴏᴡ-ᴘᴀɢᴇꜱ-ᴀɴɴᴜɴᴄɪ", "cittadino_chat"),
+        ("text", "〔📰〕・ᴍɪɴᴇ-ʀᴏʟᴇᴘʟᴀʏ-ɴᴇᴡꜱ", "cittadino_read"),
+        ("text", "〔🏛️〕・ᴄᴏᴍᴜɴɪᴄᴀᴛɪ-ɢᴏᴠᴇʀɴᴏ", "gov_write"),
+        ("text", "〔⚖️〕・ᴛʀɪʙᴜɴᴀʟᴇ-ᴇ-ꜱᴇɴᴛᴇɴᴢᴇ", "giudice_write"),
+        ("text", "〔🚗〕・ᴀᴜᴛᴏꜱᴀʟᴏɴᴇ-ᴜꜱᴀᴛᴏ", "cittadino_chat"),
+        ("text", "〔🏠〕・ᴀɢᴇɴᴢɪᴀ-ɪᴍᴍᴏʙɪʟɪᴀʀᴇ", "cittadino_chat"),
+        ("text", "〔💼〕・ᴄᴇɴᴛʀᴏ-ɪᴍᴘɪᴇɢᴏ", "cittadino_chat"),
+        ("text", "〔🏢〕・ᴀʟʙᴏ-ᴀᴢɪᴇɴᴅᴇ", "cittadino_read"),
+        ("text", "〔🌑〕・ᴅᴀʀᴋ-ᴡᴇʙ-ɪᴄ", "cittadino_chat"),
     ]),
-    ("⫷༺ 🏢 𝐀𝐙𝐈𝐄𝐍𝐃𝐄 & 𝐀𝐓𝐓𝐈𝐕𝐈𝐓𝐀̀ 𝐂𝐎𝐌𝐌𝐄𝐑𝐂𝐈𝐀𝐋𝐈 ༻⫸", "aziende", [
-        ("text", "〔🏎️〕・ᴍʀ-ᴍᴏᴛᴏʀꜱ-ʟɪꜱᴛɪɴᴏ"),
-        ("text", "〔🔧〕・ᴍʀ-ᴍᴏᴛᴏʀꜱ-ᴏꜰꜰɪᴄɪɴᴀ"),
-        ("text", "〔🍔〕・ʙᴜʀɢᴇʀ-ꜱʜᴏᴛ-ᴍᴇɴᴜ"),
-        ("text", "〔🥂〕・ᴇᴄʟɪᴘꜱᴇ-ᴄʟᴜʙ-ᴇᴠᴇɴᴛɪ"),
-        ("text", "〔🚕〕・ʏᴇʟʟᴏᴡ-ᴄᴀʙ-ᴛᴀxɪ"),
-        ("voice", "〔🏎️〕・ᴜꜰꜰɪᴄɪᴏ-ᴍʀ-ᴍᴏᴛᴏʀꜱ"),
-        ("voice", "〔🍔〕・ᴄᴜᴄɪɴᴀ-ʙᴜʀɢᴇʀ-ꜱʜᴏᴛ"),
-        ("voice", "〔🥂〕・ᴠɪᴘ-ᴇᴄʟɪᴘꜱᴇ-ᴄʟᴜʙ"),
+    ("⫷༺ 🏢 𝐀𝐙𝐈𝐄𝐍𝐃𝐄 & 𝐀𝐓𝐓𝐈𝐕𝐈𝐓𝐀̀ 𝐂𝐎𝐌𝐌𝐄𝐑𝐂𝐈𝐀𝐋𝐈 ༻⫸", "cittadino_read", [
+        ("text", "〔🏎️〕・ᴍʀ-ᴍᴏᴛᴏʀꜱ-ʟɪꜱᴛɪɴᴏ", "motors_write"),
+        ("text", "〔🔧〕・ᴍʀ-ᴍᴏᴛᴏʀꜱ-ᴏꜰꜰɪᴄɪɴᴀ", "motors_write"),
+        ("text", "〔🍔〕・ʙᴜʀɢᴇʀ-ꜱʜᴏᴛ-ᴍᴇɴᴜ", "burger_write"),
+        ("text", "〔🥂〕・ᴇᴄʟɪᴘꜱᴇ-ᴄʟᴜʙ-ᴇᴠᴇɴᴛɪ", "club_write"),
+        ("text", "〔🚕〕・ʏᴇʟʟᴏᴡ-ᴄᴀʙ-ᴛᴀxɪ", "taxi_write"),
+        ("voice", "〔🏎️〕・ᴜꜰꜰɪᴄɪᴏ-ᴍʀ-ᴍᴏᴛᴏʀꜱ", "motors_only"),
+        ("voice", "〔🍔〕・ᴄᴜᴄɪɴᴀ-ʙᴜʀɢᴇʀ-ꜱʜᴏᴛ", "burger_only"),
+        ("voice", "〔🥂〕・ᴠɪᴘ-ᴇᴄʟɪᴘꜱᴇ-ᴄʟᴜʙ", "club_only"),
     ]),
     ("⫷༺ 🚔 𝐌𝐑𝐏𝐃 - 𝐏𝐎𝐋𝐈𝐂𝐄 𝐃𝐄𝐏𝐀𝐑𝐓𝐌𝐄𝐍𝐓 ༻⫸", "mrpd", [
-        ("text", "〔📋〕・ʙᴀɴᴅɪ-ᴍʀᴘᴅ-ᴀᴘᴇʀᴛɪ"),
-        ("text", "〔⏱️〕・ʀᴇɢɪꜱᴛʀᴏ-ᴛᴜʀɴɪ-ᴍʀᴘᴅ"),
-        ("text", "〔🚨〕・ʀɪᴄᴇʀᴄᴀᴛɪ-ᴡᴀɴᴛᴇᴅ"),
-        ("text", "〔💻〕・ᴏʀɪɢᴇɴ-ᴄᴀᴅ-ᴍʀᴘᴅ"),
-        ("text", "〔📄〕・ᴠᴇʀʙᴀʟɪ-ᴇ-ᴍᴜʟᴛᴇ"),
-        ("text", "〔📦〕・ᴅᴇᴘᴏꜱɪᴛᴏ-ꜱᴇQᴜᴇꜱᴛʀɪ"),
-        ("text", "〔📡〕・ᴄᴏᴍᴜɴɪᴄᴀᴢɪᴏɴɪ-ᴍʀᴘᴅ"),
-        ("voice", "〔🔊〕・ᴄᴇɴᴛʀᴀʟᴇ-ᴏᴘᴇʀᴀᴛɪᴠᴀ-911"),
-        ("voice", "〔🚓〕・ᴘᴀᴛᴛᴜɢʟɪᴀ-ᴀʟᴘʜᴀ"),
-        ("voice", "〔🚓〕・ᴘᴀᴛᴛᴜɢʟɪᴀ-ʙʀᴀᴠᴏ"),
-        ("voice", "〔🚓〕・ᴘᴀᴛᴛᴜɢʟɪᴀ-ᴄʜᴀʀʟɪᴇ"),
-        ("voice", "〔🛡️〕・ꜱᴡᴀᴛ-ᴛᴀᴄᴛɪᴄᴀʟ"),
-        ("voice", "〔🏛️〕・ᴜꜰꜰɪᴄɪᴏ-ᴄʜɪᴇꜰ-ᴏꜰ-ᴘᴏʟɪᴄᴇ"),
+        ("text", "〔📋〕・ʙᴀɴᴅɪ-ᴍʀᴘᴅ-ᴀᴘᴇʀᴛɪ", "bandi_public"),
+        ("text", "〔⏱️〕・ʀᴇɢɪꜱᴛʀᴏ-ᴛᴜʀɴɪ-ᴍʀᴘᴅ", "mrpd"),
+        ("text", "〔🚨〕・ʀɪᴄᴇʀᴄᴀᴛɪ-ᴡᴀɴᴛᴇᴅ", "mrpd"),
+        ("text", "〔💻〕・ᴏʀɪɢᴇɴ-ᴄᴀᴅ-ᴍʀᴘᴅ", "mrpd"),
+        ("text", "〔📄〕・ᴠᴇʀʙᴀʟɪ-ᴇ-ᴍᴜʟᴛᴇ", "mrpd"),
+        ("text", "〔📦〕・ᴅᴇᴘᴏꜱɪᴛᴏ-ꜱᴇQᴜᴇꜱᴛʀɪ", "mrpd_cmd"),
+        ("text", "〔📡〕・ᴄᴏᴍᴜɴɪᴄᴀᴢɪᴏɴɪ-ᴍʀᴘᴅ", "mrpd"),
+        ("voice", "〔🔊〕・ᴄᴇɴᴛʀᴀʟᴇ-ᴏᴘᴇʀᴀᴛɪᴠᴀ-911", "mrpd"),
+        ("voice", "〔🚓〕・ᴘᴀᴛᴛᴜɢʟɪᴀ-ᴀʟᴘʜᴀ", "mrpd"),
+        ("voice", "〔🚓〕・ᴘᴀᴛᴛᴜɢʟɪᴀ-ʙʀᴀᴠᴏ", "mrpd"),
+        ("voice", "〔🚓〕・ᴘᴀᴛᴛᴜɢʟɪᴀ-ᴄʜᴀʀʟɪᴇ", "mrpd"),
+        ("voice", "〔🛡️〕・ꜱᴡᴀᴛ-ᴛᴀᴄᴛɪᴄᴀʟ", "mrpd"),
+        ("voice", "〔🏛️〕・ᴜꜰꜰɪᴄɪᴏ-ᴄʜɪᴇꜰ-ᴏꜰ-ᴘᴏʟɪᴄᴇ", "mrpd_cmd"),
     ]),
     ("⫷༺ 🕵️ 𝐃𝐄𝐓𝐄𝐂𝐓𝐈𝐕𝐄 𝐁𝐔𝐑𝐄𝐀𝐔 / 𝐅𝐈𝐁 ༻⫸", "fib", [
-        ("text", "〔📂〕・ꜰᴀꜱᴄɪᴄᴏʟɪ-ɪɴᴅᴀɢɪɴɪ"),
-        ("text", "〔🔍〕・ʀɪᴄᴇʀᴄᴀᴛɪ-ꜰᴇᴅᴇʀᴀʟɪ"),
-        ("text", "〔📸〕・ᴘʀᴏᴠᴇ-ᴇ-ɪɴᴛᴇʀᴄᴇᴛᴛᴀᴢɪᴏɴɪ"),
-        ("voice", "〔🕵️〕・ꜱᴀʟᴀ-ᴏᴘᴇʀᴀᴛɪᴠᴀ-ꜰɪʙ"),
-        ("voice", "〔🕶️〕・ɪɴᴛᴇʀʀᴏɢᴀᴛᴏʀɪ-ꜰɪʙ"),
+        ("text", "〔📂〕・ꜰᴀꜱᴄɪᴄᴏʟɪ-ɪɴᴅᴀɢɪɴɪ", "fib"),
+        ("text", "〔🔍〕・ʀɪᴄᴇʀᴄᴀᴛɪ-ꜰᴇᴅᴇʀᴀʟɪ", "fib"),
+        ("text", "〔📸〕・ᴘʀᴏᴠᴇ-ᴇ-ɪɴᴛᴇʀᴄᴇᴛᴛᴀᴢɪᴏɴɪ", "fib"),
+        ("voice", "〔🕵️〕・ꜱᴀʟᴀ-ᴏᴘᴇʀᴀᴛɪᴠᴀ-ꜰɪʙ", "fib"),
+        ("voice", "〔🕶️〕・ɪɴᴛᴇʀʀᴏɢᴀᴛᴏʀɪ-ꜰɪʙ", "fib"),
     ]),
     ("⫷༺ 🚑 𝐌𝐑𝐄𝐌𝐒 - 𝐄𝐌𝐄𝐑𝐆𝐄𝐍𝐂𝐘 𝐌𝐄𝐃𝐈𝐂𝐀𝐋 ༻⫸", "mrems", [
-        ("text", "〔📋〕・ʙᴀɴᴅɪ-ᴍʀᴇᴍꜱ-ᴀᴘᴇʀᴛɪ"),
-        ("text", "〔⏱️〕・ʀᴇɢɪꜱᴛʀᴏ-ᴛᴜʀɴɪ-ᴍʀᴇᴍꜱ"),
-        ("text", "〔🏥〕・ʀᴇꜰᴇʀᴛɪ-ᴍᴇᴅɪᴄɪ-911"),
-        ("text", "〔💊〕・ᴄᴇʀᴛɪꜰɪᴄᴀᴛɪ-ᴘᴏʀᴛᴏ-ᴅᴀʀᴍɪ"),
-        ("voice", "〔🚑〕・ᴄᴇɴᴛʀᴀʟᴇ-ᴍʀᴇᴍꜱ-911"),
-        ("voice", "〔🩺〕・ᴜɴɪᴛᴀ̀-ᴀᴍʙᴜʟᴀɴᴢᴀ-1"),
-        ("voice", "〔🚁〕・ᴇʟɪꜱᴏᴄᴄᴏʀꜱᴏ-ᴍᴇᴅᴇᴠᴀᴄ"),
+        ("text", "〔📋〕・ʙᴀɴᴅɪ-ᴍʀᴇᴍꜱ-ᴀᴘᴇʀᴛɪ", "bandi_public"),
+        ("text", "〔⏱️〕・ʀᴇɢɪꜱᴛʀᴏ-ᴛᴜʀɴɪ-ᴍʀᴇᴍꜱ", "mrems"),
+        ("text", "〔🏥〕・ʀᴇꜰᴇʀᴛɪ-ᴍᴇᴅɪᴄɪ-911", "mrems"),
+        ("text", "〔💊〕・ᴄᴇʀᴛɪꜰɪᴄᴀᴛɪ-ᴘᴏʀᴛᴏ-ᴅᴀʀᴍɪ", "mrems"),
+        ("voice", "〔🚑〕・ᴄᴇɴᴛʀᴀʟᴇ-ᴍʀᴇᴍꜱ-911", "mrems"),
+        ("voice", "〔🩺〕・ᴜɴɪᴛᴀ̀-ᴀᴍʙᴜʟᴀɴᴢᴀ-1", "mrems"),
+        ("voice", "〔🚁〕・ᴇʟɪꜱᴏᴄᴄᴏʀꜱᴏ-ᴍᴇᴅᴇᴠᴀᴄ", "mrems"),
     ]),
     ("⫷༺ 🚒 𝐌𝐑𝐅𝐃 - 𝐅𝐈𝐑𝐄 𝐃𝐄𝐏𝐀𝐑𝐓𝐌𝐄𝐍𝐓 ༻⫸", "mrfd", [
-        ("text", "〔📋〕・ʙᴀɴᴅɪ-ᴍʀꜰᴅ-ᴀᴘᴇʀᴛɪ"),
-        ("text", "〔⏱️〕・ʀᴇɢɪꜱᴛʀᴏ-ᴛᴜʀɴɪ-ᴍʀꜰᴅ"),
-        ("text", "〔🧯〕・ʀᴀᴘᴘᴏʀᴛɪ-ɪɴᴛᴇʀᴠᴇɴᴛᴏ"),
-        ("text", "〔🔥〕・ᴀʟʟᴇʀᴛᴇ-ɪɴᴄᴇɴᴅɪᴏ-115"),
-        ("voice", "〔🚒〕・ᴄᴀꜱᴇʀᴍᴀ-ᴍʀꜰᴅ-115"),
-        ("voice", "〔🪓〕・ꜱQᴜᴀᴅʀᴀ-ꜱᴏᴄᴄᴏʀꜱᴏ-1"),
+        ("text", "〔📋〕・ʙᴀɴᴅɪ-ᴍʀꜰᴅ-ᴀᴘᴇʀᴛɪ", "bandi_public"),
+        ("text", "〔⏱️〕・ʀᴇɢɪꜱᴛʀᴏ-ᴛᴜʀɴɪ-ᴍʀꜰᴅ", "mrfd"),
+        ("text", "〔🧯〕・ʀᴀᴘᴘᴏʀᴛɪ-ɪɴᴛᴇʀᴠᴇɴᴛᴏ", "mrfd"),
+        ("text", "〔🔥〕・ᴀʟʟᴇʀᴛᴇ-ɪɴᴄᴇɴᴅɪᴏ-115", "mrfd"),
+        ("voice", "〔🚒〕・ᴄᴀꜱᴇʀᴍᴀ-ᴍʀꜰᴅ-115", "mrfd"),
+        ("voice", "〔🪓〕・ꜱQᴜᴀᴅʀᴀ-ꜱᴏᴄᴄᴏʀꜱᴏ-1", "mrfd"),
     ]),
-    ("⫷༺ 🎙️ 𝐒𝐀𝐋𝐄 𝐑𝐏 𝐂𝐈𝐓𝐓𝐀𝐃𝐈𝐍𝐄 ༻⫸", "public_chat", [
-        ("voice", "〔🏙️〕・ᴘɪᴀᴢᴢᴀ-ᴄᴇɴᴛʀᴀʟᴇ-ʀᴘ"),
-        ("voice", "〔⚖️〕・ᴀᴜʟᴀ-ᴛʀɪʙᴜɴᴀʟᴇ"),
-        ("voice", "〔🍔〕・ʙᴜʀɢᴇʀ-ꜱʜᴏᴛ-ꜱᴀʟᴀ"),
-        ("voice", "〔🥂〕・ᴇᴄʟɪᴘꜱᴇ-ᴄʟᴜʙ-ᴘɪꜱᴛᴀ"),
-        ("voice", "〔🎲〕・ꜱᴀʟᴀ-ʀᴘ-ʟɪʙᴇʀᴀ-1"),
-        ("voice", "〔🎲〕・ꜱᴀʟᴀ-ʀᴘ-ʟɪʙᴇʀᴀ-2"),
+    ("⫷༺ 🎙️ 𝐒𝐀𝐋𝐄 𝐑𝐏 𝐂𝐈𝐓𝐓𝐀𝐃𝐈𝐍𝐄 ༻⫸", "cittadino_chat", [
+        ("voice", "〔🏙️〕・ᴘɪᴀᴢᴢᴀ-ᴄᴇɴᴛʀᴀʟᴇ-ʀᴘ", "cittadino_chat"),
+        ("voice", "〔⚖️〕・ᴀᴜʟᴀ-ᴛʀɪʙᴜɴᴀʟᴇ", "cittadino_chat"),
+        ("voice", "〔🍔〕・ʙᴜʀɢᴇʀ-ꜱʜᴏᴛ-ꜱᴀʟᴀ", "cittadino_chat"),
+        ("voice", "〔🥂〕・ᴇᴄʟɪᴘꜱᴇ-ᴄʟᴜʙ-ᴘɪꜱᴛᴀ", "cittadino_chat"),
+        ("voice", "〔🎲〕・ꜱᴀʟᴀ-ʀᴘ-ʟɪʙᴇʀᴀ-1", "cittadino_chat"),
+        ("voice", "〔🎲〕・ꜱᴀʟᴀ-ʀᴘ-ʟɪʙᴇʀᴀ-2", "cittadino_chat"),
     ]),
-    ("⫷༺ 🎧 𝐀𝐒𝐒𝐈𝐒𝐓𝐄𝐍𝐙𝐀 & 𝐒𝐔𝐏𝐏𝐎𝐑𝐓𝐎 ༻⫸", "public_chat", [
-        ("voice", "〔⏳〕・ᴀᴛᴛᴇꜱᴀ-ᴀꜱꜱɪꜱᴛᴇɴᴢᴀ"),
-        ("voice", "〔💎〕・ᴀᴛᴛᴇꜱᴀ-ᴅᴏɴᴀᴢɪᴏɴɪ"),
-        ("voice", "〔🛂〕・ᴀᴛᴛᴇꜱᴀ-ᴡʜɪᴛᴇʟɪꜱᴛ"),
-        ("voice", "〔☕〕・ᴀꜱꜱɪꜱᴛᴇɴᴢᴀ-1"),
-        ("voice", "〔☕〕・ᴀꜱꜱɪꜱᴛᴇɴᴢᴀ-2"),
-        ("voice", "〔☕〕・ᴀꜱꜱɪꜱᴛᴇɴᴢᴀ-3"),
+    ("⫷༺ 🎧 𝐀𝐒𝐒𝐈𝐒𝐓𝐄𝐍𝐙𝐀 & 𝐒𝐔𝐏𝐏𝐎𝐑𝐓𝐎 ༻⫸", "verificato_chat", [
+        ("voice", "〔⏳〕・ᴀᴛᴛᴇꜱᴀ-ᴀꜱꜱɪꜱᴛᴇɴᴢᴀ", "verificato_chat"),
+        ("voice", "〔💎〕・ᴀᴛᴛᴇꜱᴀ-ᴅᴏɴᴀᴢɪᴏɴɪ", "verificato_chat"),
+        ("voice", "〔🛂〕・ᴀᴛᴛᴇꜱᴀ-ᴡʜɪᴛᴇʟɪꜱᴛ", "verificato_chat"),
+        ("voice", "〔☕〕・ᴀꜱꜱɪꜱᴛᴇɴᴢᴀ-1", "staff_voice_support"),
+        ("voice", "〔☕〕・ᴀꜱꜱɪꜱᴛᴇɴᴢᴀ-2", "staff_voice_support"),
+        ("voice", "〔☕〕・ᴀꜱꜱɪꜱᴛᴇɴᴢᴀ-3", "staff_voice_support"),
     ]),
     ("⫷༺ 🛡️ 𝐀𝐑𝐄𝐀 𝐑𝐈𝐒𝐄𝐑𝐕𝐀𝐓𝐀 𝐒𝐓𝐀𝐅𝐅 ༻⫸", "staff", [
-        ("text", "〔👑〕・ᴄʜᴀᴛ-ᴅɪʀᴇᴢɪᴏɴᴇ"),
-        ("text", "〔💬〕・ᴄʜᴀᴛ-ꜱᴛᴀꜰꜰ"),
-        ("text", "〔📋〕・ɢᴇꜱᴛɪᴏɴᴇ-ᴛᴜʀɴɪ-ꜱᴛᴀꜰꜰ"),
-        ("text", "〔⚠️〕・ᴡᴀʀɴ-ᴇ-ʙᴀɴ-ᴀᴄ"),
-        ("text", "〔🔍〕・ᴄᴏɴᴛʀᴏʟʟᴏ-ᴘɢ-ᴇ-ʙᴀɴᴄᴀ"),
-        ("text", "〔📑〕・ᴇꜱɪᴛᴏ-ᴀꜱꜱɪꜱᴛᴇɴᴢᴇ"),
-        ("text", "〔⭐〕・ꜰᴇᴇᴅʙᴀᴄᴋ-ᴀꜱꜱɪꜱᴛᴇɴᴢᴇ"),
-        ("text", "〔🛠️〕・ꜱᴠɪʟᴜᴘᴘᴏ-ᴇ-ᴜᴘᴅᴀᴛᴇ"),
-        ("text", "〔📁〕・ʟᴏɢ-ꜱɪꜱᴛᴇᴍᴀ"),
-        ("voice", "〔🎮〕・ꜱᴛᴀꜰꜰ-ɪɴ-ʀᴘ"),
-        ("voice", "〔🎙️〕・ꜱᴀʟᴀ-ʀɪᴜɴɪᴏɴɪ-ꜱᴛᴀꜰꜰ"),
-        ("voice", "〔👑〕・ᴜꜰꜰɪᴄɪᴏ-ᴄʀᴇᴀᴛᴏʀ"),
+        ("text", "〔👑〕・ᴄʜᴀᴛ-ᴅɪʀᴇᴢɪᴏɴᴇ", "direzione"),
+        ("text", "〔💬〕・ᴄʜᴀᴛ-ꜱᴛᴀꜰꜰ", "staff"),
+        ("text", "〔📋〕・ɢᴇꜱᴛɪᴏɴᴇ-ᴛᴜʀɴɪ-ꜱᴛᴀꜰꜰ", "staff"),
+        ("text", "〔⚠️〕・ᴡᴀʀɴ-ᴇ-ʙᴀɴ-ᴀᴄ", "staff"),
+        ("text", "〔🔍〕・ᴄᴏɴᴛʀᴏʟʟᴏ-ᴘɢ-ᴇ-ʙᴀɴᴄᴀ", "direzione"),
+        ("text", "〔📑〕・ᴇꜱɪᴛᴏ-ᴀꜱꜱɪꜱᴛᴇɴᴢᴇ", "staff"),
+        ("text", "〔⭐〕・ꜰᴇᴇᴅʙᴀᴄᴋ-ᴀꜱꜱɪꜱᴛᴇɴᴢᴇ", "staff"),
+        ("text", "〔🛠️〕・ꜱᴠɪʟᴜᴘᴘᴏ-ᴇ-ᴜᴘᴅᴀᴛᴇ", "staff"),
+        ("text", "〔📁〕・ʟᴏɢ-ꜱɪꜱᴛᴇᴍᴀ", "direzione"),
+        ("voice", "〔🎮〕・ꜱᴛᴀꜰꜰ-ɪɴ-ʀᴘ", "staff"),
+        ("voice", "〔🎙️〕・ꜱᴀʟᴀ-ʀɪᴜɴɪᴏɴɪ-ꜱᴛᴀꜰꜰ", "staff"),
+        ("voice", "〔👑〕・ᴜꜰꜰɪᴄɪᴏ-ᴄʀᴇᴀᴛᴏʀ", "direzione"),
     ]),
 ]
 
+def costruisci_permessi(guild, r, profilo):
+    everyone = guild.default_role
+    ver = r["verificato"]
+    cit = r["cittadino"]
+    staff = r["staff_team"]
+
+    read_only = discord.PermissionOverwrite(view_channel=True, send_messages=False, read_message_history=True)
+    full_chat = discord.PermissionOverwrite(view_channel=True, send_messages=True, read_message_history=True, connect=True, speak=True, attach_files=True, embed_links=True)
+    hidden = discord.PermissionOverwrite(view_channel=False)
+
+    if profilo == "stats":
+        return {everyone: discord.PermissionOverwrite(view_channel=True, connect=False)}
+    elif profilo == "public_read":
+        return {everyone: read_only, staff: full_chat}
+    elif profilo == "verifica_ch":
+        return {everyone: discord.PermissionOverwrite(view_channel=True, send_messages=True, read_message_history=True), staff: full_chat}
+    elif profilo == "verificato_read":
+        return {everyone: hidden, ver: read_only, staff: full_chat}
+    elif profilo == "verificato_chat":
+        return {everyone: hidden, ver: full_chat, staff: full_chat}
+    elif profilo == "cittadino_read":
+        return {everyone: hidden, cit: read_only, staff: full_chat}
+    elif profilo == "cittadino_chat":
+        return {everyone: hidden, cit: full_chat, staff: full_chat}
+    elif profilo == "bandi_public":
+        return {everyone: hidden, cit: read_only, staff: full_chat}
+    elif profilo == "gov_write":
+        return {everyone: hidden, cit: read_only, r["governatore"]: full_chat, staff: full_chat}
+    elif profilo == "giudice_write":
+        return {everyone: hidden, cit: read_only, r["giudice"]: full_chat, r["governatore"]: full_chat, staff: full_chat}
+    elif profilo == "motors_write":
+        return {everyone: hidden, cit: read_only, r["motors"]: full_chat, r["dir_motors"]: full_chat, staff: full_chat}
+    elif profilo == "motors_only":
+        return {everyone: hidden, r["motors"]: full_chat, r["dir_motors"]: full_chat, staff: full_chat}
+    elif profilo == "burger_write":
+        return {everyone: hidden, cit: read_only, r["burger"]: full_chat, r["dir_burger"]: full_chat, staff: full_chat}
+    elif profilo == "burger_only":
+        return {everyone: hidden, r["burger"]: full_chat, r["dir_burger"]: full_chat, staff: full_chat}
+    elif profilo == "club_write":
+        return {everyone: hidden, cit: read_only, r["club"]: full_chat, r["dir_club"]: full_chat, staff: full_chat}
+    elif profilo == "club_only":
+        return {everyone: hidden, r["club"]: full_chat, r["dir_club"]: full_chat, staff: full_chat}
+    elif profilo == "taxi_write":
+        return {everyone: hidden, cit: read_only, r["taxi"]: full_chat, staff: full_chat}
+    elif profilo == "mrpd":
+        return {everyone: hidden, r["mrpd"]: full_chat, r["cmd_mrpd"]: full_chat, r["chief_mrpd"]: full_chat, staff: full_chat}
+    elif profilo == "mrpd_cmd":
+        return {everyone: hidden, r["cmd_mrpd"]: full_chat, r["chief_mrpd"]: full_chat, staff: full_chat}
+    elif profilo == "fib":
+        return {everyone: hidden, r["fib"]: full_chat, r["dir_fib"]: full_chat, staff: full_chat}
+    elif profilo == "mrems":
+        return {everyone: hidden, r["mrems"]: full_chat, r["chief_mrems"]: full_chat, staff: full_chat}
+    elif profilo == "mrfd":
+        return {everyone: hidden, r["mrfd"]: full_chat, r["chief_mrfd"]: full_chat, staff: full_chat}
+    elif profilo == "staff_voice_support":
+        return {everyone: hidden, ver: discord.PermissionOverwrite(view_channel=True, connect=False, speak=True), staff: full_chat}
+    elif profilo == "staff":
+        return {everyone: hidden, staff: full_chat}
+    elif profilo == "direzione":
+        return {
+            everyone: hidden,
+            r["creator"]: full_chat,
+            r["cocreator"]: full_chat,
+            r["owner"]: full_chat,
+            r["deputy_owner"]: full_chat,
+            r["head_staff"]: full_chat
+        }
+    return {everyone: read_only}
+
 # =====================================================================
-# TASK AGGIORNAMENTO STATISTICHE (STESSO IDENTICO FORMATO 〔emoji〕・ɴᴏᴍᴇ)
+# TASK AGGIORNAMENTO STATISTICHE
 # =====================================================================
 @tasks.loop(minutes=5)
 async def aggiorna_statistiche():
@@ -277,7 +347,7 @@ async def on_ready():
 @commands.has_permissions(administrator=True)
 async def setup_mr(ctx):
     guild = ctx.guild
-    await ctx.send("⚙️ **Avvio creazione struttura completa Mine Roleplay...** (Attendi circa 35 secondi)")
+    await ctx.send("⚙️ **Avvio creazione server Mine Roleplay con tutti i permessi granulari...**")
 
     for ch in list(guild.channels):
         if ch.id != ctx.channel.id:
@@ -315,75 +385,17 @@ async def setup_mr(ctx):
         ruoli_creati[key] = ruolo
         await asyncio.sleep(0.3)
 
-    everyone = guild.default_role
-    staff_r = ruoli_creati["staff_team"]
-    mrpd_r = ruoli_creati["mrpd"]
-    fib_r = ruoli_creati["fib"]
-    mrems_r = ruoli_creati["mrems"]
-    mrfd_r = ruoli_creati["mrfd"]
-
-    for cat_nome, accesso, canali in STRUTTURA_SERVER:
-        overwrites = {}
-        if accesso == "stats":
-            overwrites = {
-                everyone: discord.PermissionOverwrite(view_channel=True, connect=False)
-            }
-        elif accesso == "public_read":
-            overwrites = {
-                everyone: discord.PermissionOverwrite(view_channel=True, send_messages=False, read_message_history=True),
-                staff_r: discord.PermissionOverwrite(view_channel=True, send_messages=True)
-            }
-        elif accesso == "public_chat":
-            overwrites = {
-                everyone: discord.PermissionOverwrite(view_channel=True, send_messages=True, connect=True, speak=True)
-            }
-        elif accesso == "aziende":
-            overwrites = {
-                everyone: discord.PermissionOverwrite(view_channel=True, send_messages=True, connect=True, speak=True)
-            }
-        elif accesso == "staff":
-            overwrites = {
-                everyone: discord.PermissionOverwrite(view_channel=False),
-                staff_r: discord.PermissionOverwrite(view_channel=True, send_messages=True, connect=True, speak=True)
-            }
-        elif accesso == "mrpd":
-            overwrites = {
-                everyone: discord.PermissionOverwrite(view_channel=False),
-                staff_r: discord.PermissionOverwrite(view_channel=True, send_messages=True, connect=True, speak=True),
-                mrpd_r: discord.PermissionOverwrite(view_channel=True, send_messages=True, connect=True, speak=True),
-                ruoli_creati["cmd_mrpd"]: discord.PermissionOverwrite(view_channel=True, send_messages=True, connect=True, speak=True),
-                ruoli_creati["chief_mrpd"]: discord.PermissionOverwrite(view_channel=True, send_messages=True, connect=True, speak=True)
-            }
-        elif accesso == "fib":
-            overwrites = {
-                everyone: discord.PermissionOverwrite(view_channel=False),
-                staff_r: discord.PermissionOverwrite(view_channel=True, send_messages=True, connect=True, speak=True),
-                fib_r: discord.PermissionOverwrite(view_channel=True, send_messages=True, connect=True, speak=True),
-                ruoli_creati["dir_fib"]: discord.PermissionOverwrite(view_channel=True, send_messages=True, connect=True, speak=True)
-            }
-        elif accesso == "mrems":
-            overwrites = {
-                everyone: discord.PermissionOverwrite(view_channel=False),
-                staff_r: discord.PermissionOverwrite(view_channel=True, send_messages=True, connect=True, speak=True),
-                mrems_r: discord.PermissionOverwrite(view_channel=True, send_messages=True, connect=True, speak=True),
-                ruoli_creati["chief_mrems"]: discord.PermissionOverwrite(view_channel=True, send_messages=True, connect=True, speak=True)
-            }
-        elif accesso == "mrfd":
-            overwrites = {
-                everyone: discord.PermissionOverwrite(view_channel=False),
-                staff_r: discord.PermissionOverwrite(view_channel=True, send_messages=True, connect=True, speak=True),
-                mrfd_r: discord.PermissionOverwrite(view_channel=True, send_messages=True, connect=True, speak=True),
-                ruoli_creati["chief_mrfd"]: discord.PermissionOverwrite(view_channel=True, send_messages=True, connect=True, speak=True)
-            }
-
-        categoria = await guild.create_category(name=cat_nome, overwrites=overwrites)
+    for cat_nome, cat_perm, canali in STRUTTURA_SERVER:
+        cat_ow = costruisci_permessi(guild, ruoli_creati, cat_perm)
+        categoria = await guild.create_category(name=cat_nome, overwrites=cat_ow)
         await asyncio.sleep(0.35)
 
-        for tipo, ch_nome in canali:
+        for tipo, ch_nome, ch_perm in canali:
+            ch_ow = costruisci_permessi(guild, ruoli_creati, ch_perm)
             if tipo == "text":
-                await guild.create_text_channel(name=ch_nome, category=categoria)
+                await guild.create_text_channel(name=ch_nome, category=categoria, overwrites=ch_ow)
             else:
-                await guild.create_voice_channel(name=ch_nome, category=categoria)
+                await guild.create_voice_channel(name=ch_nome, category=categoria, overwrites=ch_ow)
             await asyncio.sleep(0.35)
 
     try:
@@ -393,10 +405,10 @@ async def setup_mr(ctx):
 
     staff_chat = discord.utils.find(lambda c: "ᴄʜᴀᴛ-ꜱᴛᴀꜰꜰ" in c.name, guild.text_channels)
     if staff_chat:
-        await staff_chat.send("✅ **Struttura completa di Mine Roleplay generata con successo!** Usa `!backup_mr` per esportare il file JSON di sicurezza.")
+        await staff_chat.send("✅ **Server Mine Roleplay completato con tutti i ruoli, canali e permessi granulari settati!**")
 
 # =====================================================================
-# COMANDO 2: !backup_mr
+# COMANDO 2: !backup_mr (SALVA ANCHE I PERMESSI DI OGNI CANALE E CATEGORIA)
 # =====================================================================
 @bot.command(name="backup_mr")
 @commands.has_permissions(administrator=True)
@@ -418,16 +430,30 @@ async def backup_mr(ctx):
                 "permissions": r.permissions.value
             })
 
+    def serialize_ow(overwrites):
+        res = []
+        for target, ow in overwrites.items():
+            if isinstance(target, discord.Role):
+                allow, deny = ow.pair()
+                res.append({
+                    "role_name": target.name,
+                    "allow": allow.value,
+                    "deny": deny.value
+                })
+        return res
+
     for cat in guild.categories:
         cat_obj = {
             "name": cat.name,
+            "overwrites": serialize_ow(cat.overwrites),
             "channels": []
         }
         for ch in cat.channels:
             cat_obj["channels"].append({
                 "name": ch.name,
                 "type": "voice" if isinstance(ch, discord.VoiceChannel) else "text",
-                "topic": getattr(ch, "topic", None)
+                "topic": getattr(ch, "topic", None),
+                "overwrites": serialize_ow(ch.overwrites)
             })
         data["categories"].append(cat_obj)
 
@@ -435,7 +461,7 @@ async def backup_mr(ctx):
         json.dump(data, f, ensure_ascii=False, indent=2)
 
     await ctx.send(
-        f"💾 **Backup completo di `{guild.name}` salvato!**\n"
+        f"💾 **Backup completo di `{guild.name}` (con tutti i permessi) salvato!**\n"
         f"• Ruoli salvati: **{len(data['roles'])}**\n"
         f"• Categorie salvate: **{len(data['categories'])}**",
         file=discord.File(BACKUP_FILE)
@@ -448,14 +474,14 @@ async def backup_mr(ctx):
 @commands.has_permissions(administrator=True)
 async def ripristina_mr(ctx):
     if not os.path.exists(BACKUP_FILE):
-        await ctx.send("❌ Nessun file `backup_mine_roleplay.json` trovato! Caricalo nella cartella del bot o usa `!setup_mr`.")
+        await ctx.send("❌ Nessun file `backup_mine_roleplay.json` trovato!")
         return
 
     with open(BACKUP_FILE, "r", encoding="utf-8") as f:
         data = json.load(f)
 
     guild = ctx.guild
-    await ctx.send(f"🔄 **Ripristino di `{data['server_name']}` in corso...**")
+    await ctx.send(f"🔄 **Ripristino completo di `{data['server_name']}` (ruoli, canali e permessi) in corso...**")
 
     for ch in list(guild.channels):
         if ch.id != ctx.channel.id:
@@ -473,24 +499,38 @@ async def ripristina_mr(ctx):
             except Exception:
                 pass
 
+    roles_by_name = {"@everyone": guild.default_role}
     for r_data in reversed(data["roles"]):
-        await guild.create_role(
+        nr = await guild.create_role(
             name=r_data["name"],
             colour=discord.Colour(r_data["color"]),
             hoist=r_data["hoist"],
             mentionable=r_data["mentionable"],
             permissions=discord.Permissions(r_data["permissions"])
         )
+        roles_by_name[nr.name] = nr
         await asyncio.sleep(0.3)
 
+    def build_ow(ow_list):
+        ow_dict = {}
+        for item in ow_list:
+            role_obj = roles_by_name.get(item["role_name"])
+            if role_obj:
+                ow_dict[role_obj] = discord.PermissionOverwrite.from_pair(
+                    discord.Permissions(item["allow"]),
+                    discord.Permissions(item["deny"])
+                )
+        return ow_dict
+
     for cat_data in data["categories"]:
-        cat = await guild.create_category(name=cat_data["name"])
+        cat = await guild.create_category(name=cat_data["name"], overwrites=build_ow(cat_data.get("overwrites", [])))
         await asyncio.sleep(0.35)
         for ch_data in cat_data["channels"]:
+            ch_ow = build_ow(ch_data.get("overwrites", []))
             if ch_data["type"] == "voice":
-                await guild.create_voice_channel(name=ch_data["name"], category=cat)
+                await guild.create_voice_channel(name=ch_data["name"], category=cat, overwrites=ch_ow)
             else:
-                await guild.create_text_channel(name=ch_data["name"], category=cat, topic=ch_data.get("topic"))
+                await guild.create_text_channel(name=ch_data["name"], category=cat, topic=ch_data.get("topic"), overwrites=ch_ow)
             await asyncio.sleep(0.35)
 
     try:
