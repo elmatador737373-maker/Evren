@@ -1,543 +1,730 @@
 import os
 import json
-import asyncio
-from threading import Thread
-from flask import Flask
+import math
+import threading
+import urllib.request
+from collections import defaultdict
+
+import aiohttp
 import discord
 from discord.ext import commands, tasks
+from flask import Flask, request, jsonify, render_template_string
 
 # =====================================================================
-# MINE ROLEPLAY - DISCORD SERVER ARCHITECT & BACKUP BOT (PERMESSI FULL)
-# Permessi automatici granulari su Ruoli, Categorie e Singoli Canali
+# CONFIGURAZIONE AMBIENTE (RENDER)
 # =====================================================================
+DISCORD_TOKEN = os.getenv("DISCORD_TOKEN", "")
+SUPABASE_URL = os.getenv("SUPABASE_URL", "").rstrip("/")
+SUPABASE_KEY = os.getenv("SUPABASE_KEY", "")
+PORT = int(os.getenv("PORT", 8080))
 
-TOKEN = os.getenv("DISCORD_TOKEN")
-BACKUP_FILE = "backup_mine_roleplay.json"
+VOICE_CAT_NAME = "⫷༺ 🔊 𝐕𝐎𝐂𝐄 𝐏𝐑𝐎𝐒𝐒𝐈𝐌𝐈𝐓𝐀̀ 𝐃𝐈𝐍𝐀𝐌𝐈𝐂𝐀 ༻⫸"
+LOBBY_NAME = "〔🔊〕・ʟᴏʙʙʏ-ᴠᴏᴄᴀʟᴇ-ᴘʀᴏꜱꜱɪᴍɪᴛᴀ̀"
+TEMP_PREFIX = "〔🎙️〕・ᴘʀᴏꜱꜱɪᴍɪᴛᴀ̀-"
 
+# =====================================================================
+# SERVER WEB FLASK: UPTIMEROBOT + MINIMAPPA / MAPPA ESPANDIBILE GPS
+# =====================================================================
 app = Flask(__name__)
 
+GPS_HTML_TEMPLATE = """
+<!DOCTYPE html>
+<html lang="it">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<title>Mine Roleplay — Tactical GPS & Minimappa</title>
+<style>
+  :root {
+    --bg: #090b10;
+    --panel: rgba(16, 20, 30, 0.90);
+    --border: rgba(0, 229, 255, 0.30);
+    --accent: #00e5ff;
+    --red: #ff1744;
+    --blue: #2979ff;
+    --orange: #ff9100;
+    --text: #eef2f7;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; }
+  body { background: var(--bg); color: var(--text); height: 100dvh; overflow: hidden; display: flex; flex-direction: column; }
+
+  #login-overlay {
+    position: fixed; inset: 0; background: radial-gradient(circle at center, #131926 0%, #07090d 100%);
+    display: flex; align-items: center; justify-content: center; z-index: 100; padding: 20px;
+  }
+  .login-card {
+    background: var(--panel); backdrop-filter: blur(14px); border: 1px solid var(--border);
+    border-radius: 18px; padding: 28px; width: 100%; max-width: 380px; text-align: center;
+    box-shadow: 0 20px 50px rgba(0,0,0,0.75);
+  }
+  .login-card h1 { font-size: 1.35rem; letter-spacing: 1px; color: var(--accent); margin-bottom: 6px; }
+  .login-card p { font-size: 0.85rem; color: #94a3b8; margin-bottom: 18px; }
+  .login-card input {
+    width: 100%; padding: 13px 15px; border-radius: 10px; border: 1px solid #334155;
+    background: #0f172a; color: #fff; font-size: 1rem; margin-bottom: 14px; outline: none;
+  }
+  .login-card input:focus { border-color: var(--accent); }
+  .btn-primary {
+    width: 100%; padding: 13px; border: none; border-radius: 10px;
+    background: linear-gradient(135deg, #00b8d4, #00e5ff); color: #05080f;
+    font-weight: 800; font-size: 0.95rem; cursor: pointer; letter-spacing: 0.5px;
+  }
+
+  header {
+    display: flex; justify-content: space-between; align-items: center;
+    padding: 10px 16px; background: var(--panel); border-bottom: 1px solid var(--border);
+    z-index: 20;
+  }
+  .brand { font-weight: 800; font-size: 0.95rem; color: var(--accent); display: flex; align-items: center; gap: 8px; }
+  .badge-duty {
+    padding: 4px 10px; border-radius: 999px; font-size: 0.72rem; font-weight: 800;
+    background: #1e293b; color: #94a3b8; border: 1px solid #334155;
+  }
+  .badge-duty.MRPD { background: rgba(41,121,255,0.2); color: #60a5fa; border-color: #2979ff; }
+  .badge-duty.MREMS { background: rgba(255,23,68,0.2); color: #f87171; border-color: #ff1744; }
+  .badge-duty.MRFD { background: rgba(255,145,0,0.2); color: #fbbf24; border-color: #ff9100; }
+
+  #stage {
+    flex: 1; position: relative; display: flex; align-items: center; justify-content: center;
+    background: #07090e;
+  }
+  #map-wrapper {
+    position: relative; width: 315px; height: 315px; border-radius: 24px;
+    border: 2px solid var(--accent); overflow: hidden;
+    box-shadow: 0 0 35px rgba(0, 229, 255, 0.22);
+    transition: all 0.3s cubic-bezier(0.22, 1, 0.36, 1);
+  }
+  #map-wrapper.expanded {
+    width: 100%; height: 100%; border-radius: 0; border: none; box-shadow: none;
+  }
+  canvas { width: 100%; height: 100%; display: block; background: #0c1017; }
+
+  .controls-top-right {
+    position: absolute; top: 14px; right: 14px; display: flex; flex-direction: column; gap: 8px; z-index: 15;
+  }
+  .ctrl-btn {
+    background: var(--panel); backdrop-filter: blur(10px); color: #fff;
+    border: 1px solid var(--border); border-radius: 10px; padding: 9px 12px;
+    font-size: 0.8rem; font-weight: 700; cursor: pointer; display: flex; align-items: center; gap: 6px;
+  }
+  .ctrl-btn:active { transform: scale(0.96); }
+
+  .hud-bottom {
+    position: absolute; bottom: 14px; left: 14px; right: 14px;
+    background: var(--panel); backdrop-filter: blur(12px); border: 1px solid var(--border);
+    border-radius: 14px; padding: 10px 14px; display: flex; justify-content: space-between;
+    align-items: center; gap: 10px; z-index: 15; flex-wrap: wrap;
+  }
+  select {
+    background: #0f172a; color: #fff; border: 1px solid #334155; border-radius: 8px;
+    padding: 7px 10px; font-size: 0.82rem; outline: none;
+  }
+  .coords { font-family: monospace; font-size: 0.82rem; color: #94a3b8; }
+</style>
+</head>
+<body>
+
+<div id="login-overlay">
+  <div class="login-card">
+    <h1>MINE ROLEPLAY GPS</h1>
+    <p>Inserisci il tuo Nickname Minecraft (es. <b>Elmatador</b> o <b>.Elmatador</b>) per avviare la minimappa live.</p>
+    <input type="text" id="mc-input" placeholder="Nickname Minecraft..." autocomplete="off">
+    <button class="btn-primary" onclick="connectGPS()">AVVIA MINIMAPPA LIVE</button>
+  </div>
+</div>
+
+<header>
+  <div class="brand">🛰️ MINE ROLEPLAY <span style="color:#fff;font-weight:400;">GPS</span></div>
+  <div id="duty-badge" class="badge-duty">CITTADINO (PRIVATO)</div>
+</header>
+
+<div id="stage">
+  <div id="map-wrapper">
+    <canvas id="radarCanvas"></canvas>
+
+    <div class="controls-top-right">
+      <button class="ctrl-btn" id="expand-btn" onclick="toggleExpand()">⛶ ESPANDI MAPPA</button>
+      <button class="ctrl-btn" onclick="changeZoom(1.25)">➕ ZOOM IN</button>
+      <button class="ctrl-btn" onclick="changeZoom(0.8)">➖ ZOOM OUT</button>
+      <button class="ctrl-btn" onclick="logoutGPS()">🔄 CAMBIA NICK</button>
+    </div>
+
+    <div class="hud-bottom">
+      <div>
+        <div style="font-size:0.72rem;color:#94a3b8;">DESTINAZIONE GPS</div>
+        <select id="poi-select" onchange="setDestination()">
+          <option value="">Nessuna destinazione</option>
+          <option value="0,0">🏙️ Piazza Centrale / Municipio</option>
+          <option value="80,-60">🚔 Centrale MRPD</option>
+          <option value="-90,-50">🚑 Ospedale MREMS 911</option>
+          <option value="95,75">🚒 Caserma MRFD</option>
+          <option value="-75,80">🏦 Banca Nazionale</option>
+          <option value="30,110">⛽ Benzinaio & MR Motors</option>
+        </select>
+      </div>
+      <div class="coords" id="coords-label">X: 0 | Z: 0</div>
+    </div>
+  </div>
+</div>
+
+<script>
+  let myMcName = localStorage.getItem("mr_mc_name") || "";
+  let isExpanded = false;
+  let zoom = 1.8;
+  let me = null;
+  let units = [];
+  let dest = null;
+  let pollTimer = null;
+
+  const POIS = [
+    { name: "MUNICIPIO", x: 0, z: 0, color: "#00e5ff" },
+    { name: "MRPD", x: 80, z: -60, color: "#2979ff" },
+    { name: "MREMS 911", x: -90, z: -50, color: "#ff1744" },
+    { name: "MRFD", x: 95, z: 75, color: "#ff9100" },
+    { name: "BANCA", x: -75, z: 80, color: "#ffd600" },
+    { name: "MR MOTORS", x: 30, z: 110, color: "#00e676" }
+  ];
+
+  if (myMcName) {
+    document.getElementById("mc-input").value = myMcName;
+  }
+
+  function connectGPS() {
+    const val = document.getElementById("mc-input").value.trim();
+    if (!val) return;
+    myMcName = val;
+    localStorage.setItem("mr_mc_name", val);
+    document.getElementById("login-overlay").style.display = "none";
+    fetchRadar();
+    if (pollTimer) clearInterval(pollTimer);
+    pollTimer = setInterval(fetchRadar, 1800);
+  }
+
+  function logoutGPS() {
+    document.getElementById("login-overlay").style.display = "flex";
+  }
+
+  function toggleExpand() {
+    isExpanded = !isExpanded;
+    const wrap = document.getElementById("map-wrapper");
+    const btn = document.getElementById("expand-btn");
+    if (isExpanded) {
+      wrap.classList.add("expanded");
+      btn.innerHTML = "🗗 RIDUCI MINIMAPPA";
+      zoom = 1.2;
+    } else {
+      wrap.classList.remove("expanded");
+      btn.innerHTML = "⛶ ESPANDI MAPPA";
+      zoom = 1.8;
+    }
+    resizeCanvas();
+  }
+
+  function changeZoom(factor) {
+    zoom = Math.max(0.4, Math.min(5.0, zoom * factor));
+  }
+
+  function setDestination() {
+    const val = document.getElementById("poi-select").value;
+    if (!val) { dest = null; return; }
+    const [x, z] = val.split(",").map(Number);
+    dest = { x, z };
+  }
+
+  async function fetchRadar() {
+    try {
+      const res = await fetch(`/api/gps_data?mc_name=${encodeURIComponent(myMcName)}`);
+      const data = await res.json();
+      if (!data.me) return;
+      me = data.me;
+      units = data.units || [];
+
+      document.getElementById("coords-label").innerText =
+        `X: ${Math.round(me.x)} | Z: ${Math.round(me.z)}`;
+
+      const badge = document.getElementById("duty-badge");
+      if (me.servizio) {
+        badge.className = `badge-duty ${me.servizio}`;
+        badge.innerText = `IN SERVIZIO: ${me.servizio} (${units.length} UNITA')`;
+      } else {
+        badge.className = "badge-duty";
+        badge.innerText = "CITTADINO (PRIVATO)";
+      }
+    } catch (e) {}
+  }
+
+  const canvas = document.getElementById("radarCanvas");
+  const ctx = canvas.getContext("2d");
+
+  function resizeCanvas() {
+    const rect = canvas.parentElement.getBoundingClientRect();
+    canvas.width = rect.width * window.devicePixelRatio;
+    canvas.height = rect.height * window.devicePixelRatio;
+  }
+  window.addEventListener("resize", resizeCanvas);
+  resizeCanvas();
+
+  function draw() {
+    const w = canvas.width;
+    const h = canvas.height;
+    ctx.clearRect(0, 0, w, h);
+
+    const cx = w / 2;
+    const cy = h / 2;
+    const px = me ? me.x : 0;
+    const pz = me ? me.z : 0;
+    const yawRad = me ? ((me.yaw + 180) * Math.PI / 180) : 0;
+
+    ctx.save();
+    ctx.translate(cx, cy);
+    if (!isExpanded && me) {
+      ctx.rotate(-yawRad);
+    }
+
+    const blockStep = 40 * zoom * window.devicePixelRatio;
+    const offsetX = (-px * zoom * window.devicePixelRatio) % blockStep;
+    const offsetY = (-pz * zoom * window.devicePixelRatio) % blockStep;
+
+    ctx.strokeStyle = "#1b2433";
+    ctx.lineWidth = 6 * zoom;
+    for (let gx = offsetX - w; gx < w * 2; gx += blockStep) {
+      ctx.beginPath(); ctx.moveTo(gx, -h * 2); ctx.lineTo(gx, h * 2); ctx.stroke();
+    }
+    for (let gy = offsetY - h; gy < h * 2; gy += blockStep) {
+      ctx.beginPath(); ctx.moveTo(-w * 2, gy); ctx.lineTo(w * 2, gy); ctx.stroke();
+    }
+
+    if (dest && me) {
+      const dx = (dest.x - px) * zoom * window.devicePixelRatio;
+      const dz = (dest.z - pz) * zoom * window.devicePixelRatio;
+      ctx.strokeStyle = "#ffd600";
+      ctx.lineWidth = 4;
+      ctx.setLineDash([10, 8]);
+      ctx.beginPath(); ctx.moveTo(0, 0); ctx.lineTo(dx, dz); ctx.stroke();
+      ctx.setLineDash([]);
+
+      ctx.fillStyle = "#ffd600";
+      ctx.beginPath(); ctx.arc(dx, dz, 7 * window.devicePixelRatio, 0, Math.PI * 2); ctx.fill();
+    }
+
+    POIS.forEach(poi => {
+      const sx = (poi.x - px) * zoom * window.devicePixelRatio;
+      const sz = (poi.z - pz) * zoom * window.devicePixelRatio;
+      ctx.fillStyle = poi.color;
+      ctx.beginPath(); ctx.arc(sx, sz, 5 * window.devicePixelRatio, 0, Math.PI * 2); ctx.fill();
+      if (isExpanded) {
+        ctx.fillStyle = "#cbd5e1";
+        ctx.font = `bold ${11 * window.devicePixelRatio}px sans-serif`;
+        ctx.fillText(poi.name, sx + 8, sz + 4);
+      }
+    });
+
+    units.forEach(u => {
+      if (me && u.mc_name.toLowerCase() === me.mc_name.toLowerCase()) return;
+      const ux = (u.x - px) * zoom * window.devicePixelRatio;
+      const uz = (u.z - pz) * zoom * window.devicePixelRatio;
+      let col = "#2979ff";
+      if (u.servizio === "MREMS") col = "#ff1744";
+      else if (u.servizio === "MRFD") col = "#ff9100";
+
+      ctx.fillStyle = col;
+      ctx.beginPath(); ctx.arc(ux, uz, 7 * window.devicePixelRatio, 0, Math.PI * 2); ctx.fill();
+      ctx.strokeStyle = "#ffffff";
+      ctx.lineWidth = 2;
+      ctx.stroke();
+
+      ctx.fillStyle = "#ffffff";
+      ctx.font = `bold ${11 * window.devicePixelRatio}px sans-serif`;
+      ctx.fillText(`[${u.servizio}] ${u.nome_ic || u.mc_name}`, ux + 10, uz + 4);
+    });
+
+    ctx.restore();
+
+    ctx.save();
+    ctx.translate(cx, cy);
+    if (isExpanded && me) {
+      ctx.rotate(yawRad);
+    }
+    ctx.fillStyle = "#00e5ff";
+    ctx.beginPath();
+    ctx.moveTo(0, -11 * window.devicePixelRatio);
+    ctx.lineTo(8 * window.devicePixelRatio, 9 * window.devicePixelRatio);
+    ctx.lineTo(0, 4 * window.devicePixelRatio);
+    ctx.lineTo(-8 * window.devicePixelRatio, 9 * window.devicePixelRatio);
+    ctx.closePath();
+    ctx.fill();
+    ctx.restore();
+
+    requestAnimationFrame(draw);
+  }
+  draw();
+</script>
+</body>
+</html>
+"""
+
 @app.route("/")
+@app.route("/health")
 def health():
-    return "Mine Roleplay Architect Bot Online", 200
+    return jsonify({"status": "online", "service": "Mine Roleplay Core & GPS"}), 200
 
-def run_web():
-    port = int(os.environ.get("PORT", 8080))
-    app.run(host="0.0.0.0", port=port)
+@app.route("/gps")
+def gps_page():
+    return render_template_string(GPS_HTML_TEMPLATE)
 
-intents = discord.Intents.all()
-bot = commands.Bot(command_prefix="!", intents=intents)
+@app.route("/api/gps_data")
+def api_gps_data():
+    mc_name = request.args.get("mc_name", "").strip()
+    if not mc_name or not SUPABASE_URL or not SUPABASE_KEY:
+        return jsonify({"me": None, "units": []})
 
-# =====================================================================
-# GERARCHIA RUOLI COMPLETA (DALL'ALTO VERSO IL BASSO)
-# =====================================================================
-RUOLI_TEMPLATE = [
-    ("creator", "👑・𝐂𝐫𝐞𝐚𝐭𝐨𝐫 𝐎𝐟 𝐌𝐢𝐧𝐞 𝐑𝐨𝐥𝐞𝐩𝐥𝐚𝐲 ®", 0xFF0033, True, True, True),
-    ("cocreator", "🔱・𝐂𝐨-𝐂𝐫𝐞𝐚𝐭𝐨𝐫 𝐎𝐟 𝐌𝐢𝐧𝐞 𝐑𝐨𝐥𝐞𝐩𝐥𝐚𝐲 ®", 0x00E5FF, True, True, True),
-    ("bot_mr", "🤖・𝐌𝐢𝐧𝐞 𝐑𝐨𝐥𝐞𝐩𝐥𝐚𝐲 𝐁𝐨𝐭 ®", 0x00B8D4, True, True, True),
-    ("bot_off", "⚙️・𝐎𝐟𝐟𝐢𝐜𝐢𝐚𝐥 𝐁𝐨𝐭 ®", 0x546E7A, True, False, False),
-    ("key_perm", "🔑・𝐀𝐜𝐜𝐞𝐬𝐬𝐨 𝐒𝐢𝐬𝐭𝐞𝐦𝐚", 0xFFD600, False, True, True),
+    req = urllib.request.Request(
+        f"{SUPABASE_URL}/rest/v1/mr_voice_sync?select=*",
+        headers={"apikey": SUPABASE_KEY, "Authorization": f"Bearer {SUPABASE_KEY}"}
+    )
+    try:
+        with urllib.request.urlopen(req, timeout=4) as resp:
+            rows = json.loads(resp.read().decode("utf-8"))
+    except Exception:
+        return jsonify({"me": None, "units": []})
 
-    ("sep_dir", "⫷・═══ 𝐃𝐈𝐑𝐄𝐙𝐈𝐎𝐍𝐄 & 𝐌𝐀𝐍𝐀𝐆𝐄𝐌𝐄𝐍𝐓 ═══・⫸", 0x2B2D31, True, False, False),
-    ("owner", "🦅・𝐎𝐰𝐧𝐞𝐫 ®", 0xD50000, True, True, True),
-    ("deputy_owner", "🦁・𝐃𝐞𝐩𝐮𝐭𝐲 𝐎𝐰𝐧𝐞𝐫 ®", 0xFF1744, True, True, True),
-    ("head_dev", "🧠・𝐇𝐞𝐚𝐝 𝐃𝐞𝐯𝐞𝐥𝐨𝐩𝐞𝐫 ®", 0xAA00FF, True, True, True),
-    ("head_staff", "⚜️・𝐇𝐞𝐚𝐝 𝐎𝐟 𝐒𝐭𝐚𝐟𝐟 ®", 0xFF9100, True, False, True),
-    ("head_admin", "🛡️・𝐇𝐞𝐚𝐝 𝐀𝐝𝐦𝐢𝐧 ®", 0xFF3D00, True, False, True),
-    ("senior_admin", "🐆・𝐒𝐞𝐧𝐢𝐨𝐫 𝐀𝐝𝐦𝐢𝐧 ®", 0xF50057, True, False, True),
-    ("admin", "🧿・𝐀𝐝𝐦𝐢𝐧 ®", 0x2979FF, True, False, True),
-    ("trial_admin", "🚀・𝐓𝐫𝐢𝐚𝐥 𝐀𝐝𝐦𝐢𝐧 ®", 0x00B0FF, True, False, True),
+    me = next((r for r in rows if r.get("mc_name", "").lower() == mc_name.lower()), None)
+    if not me:
+        return jsonify({"me": None, "units": []})
 
-    ("sep_mod", "⫷・═══ 𝐀𝐌𝐌𝐈𝐍𝐈𝐒𝐓𝐑𝐀𝐙𝐈𝐎𝐍𝐄 & 𝐒𝐓𝐀𝐅𝐅 ═══・⫸", 0x2B2D31, True, False, False),
-    ("head_mod", "🎖️・𝐇𝐞𝐚𝐝 𝐌𝐨𝐝 ®", 0x00C853, True, False, True),
-    ("senior_mod", "⚡・𝐒𝐞𝐧𝐢𝐨𝐫 𝐌𝐨𝐝 ®", 0x00E676, True, False, True),
-    ("mod", "🔰・𝐌𝐨𝐝𝐞𝐫𝐚𝐭𝐨𝐫 ®", 0x69F0AE, True, False, True),
-    ("helper", "🎧・𝐇𝐞𝐥𝐩𝐞𝐫 / 𝐒𝐮𝐩𝐩𝐨𝐫𝐭 ®", 0x1DE9B6, True, False, True),
-    ("dev", "💻・𝐃𝐞𝐯𝐞𝐥𝐨𝐩𝐞𝐫 ®", 0x7C4DFF, True, False, True),
-    ("gest_ticket", "🎫・𝐆𝐞𝐬𝐭𝐨𝐫𝐞 𝐓𝐢𝐜𝐤𝐞𝐭", 0xFFEA00, False, False, True),
-    ("gest_perma", "☠️・𝐆𝐞𝐬𝐭𝐨𝐫𝐞 𝐏𝐞𝐫𝐦𝐚𝐃𝐞𝐚𝐭𝐡", 0xB71C1C, False, False, True),
-    ("whitelister", "📋・𝐖𝐡𝐢𝐭𝐞𝐥𝐢𝐬𝐭𝐞𝐫", 0x00BFA5, False, False, True),
-    ("staff_on", "🟢・𝐒𝐭𝐚𝐟𝐟 𝐈𝐧 𝐒𝐞𝐫𝐯𝐢𝐳𝐢𝐨 ®", 0x00E676, True, False, True),
-    ("staff_off", "🔴・𝐒𝐭𝐚𝐟𝐟 𝐅𝐮𝐨𝐫𝐢 𝐒𝐞𝐫𝐯𝐢𝐳𝐢𝐨 ®", 0xFF5252, False, False, True),
-    ("staff_team", "💎・𝐒𝐭𝐚𝐟𝐟 𝐎𝐟 𝐌𝐢𝐧𝐞 𝐑𝐨𝐥𝐞𝐩𝐥𝐚𝐲 ®", 0x00E5FF, True, False, True),
+    # Privacy totale: i cittadini vedono solo se stessi; FDO/EMS/VVF in servizio vedono i colleghi
+    if me.get("servizio") in ("MRPD", "MREMS", "MRFD"):
+        units = [r for r in rows if r.get("servizio") in ("MRPD", "MREMS", "MRFD")]
+    else:
+        units = []
 
-    ("sep_sanz", "⫷・════ 𝐒𝐀𝐍𝐙𝐈𝐎𝐍𝐈 & 𝐀𝐕𝐕𝐈𝐒𝐈 ════・⫸", 0x2B2D31, False, False, False),
-    ("sanz_1", "1️⃣・𝐒𝐚𝐧𝐳𝐢𝐨𝐧𝐞 𝟏", 0xFFF176, False, False, False),
-    ("sanz_2", "2️⃣・𝐒𝐚𝐧𝐳𝐢𝐨𝐧𝐞 𝟐", 0xFFB74D, False, False, False),
-    ("sanz_3", "3️⃣・𝐒𝐚𝐧𝐳𝐢𝐨𝐧𝐞 𝟑 (𝐔𝐥𝐭𝐢𝐦𝐨 𝐀𝐯𝐯𝐢𝐬𝐨)", 0xE57373, False, False, False),
+    return jsonify({"me": me, "units": units})
 
-    ("sep_gov", "⫷・═══ 𝐈𝐒𝐓𝐈𝐓𝐔𝐙𝐈𝐎𝐍𝐈 & 𝐅𝐀𝐙𝐈𝐎𝐍𝐈 𝐔𝐒𝐀 ═══・⫸", 0x2B2D31, True, False, False),
-    ("governatore", "🏛️・𝐆𝐨𝐯𝐞𝐫𝐧𝐚𝐭𝐨𝐫𝐞 𝐌𝐢𝐧𝐞 𝐑𝐨𝐥𝐞𝐩𝐥𝐚𝐲", 0xFFD700, True, False, False),
-    ("giudice", "⚖️・𝐆𝐢𝐮𝐝𝐢𝐜𝐞 / 𝐏𝐫𝐨𝐜𝐮𝐫𝐚𝐭𝐨𝐫𝐞", 0xFFE082, True, False, False),
-    ("chief_mrpd", "⭐・𝐂𝐡𝐢𝐞𝐟 𝐎𝐟 𝐏𝐨𝐥𝐢𝐜𝐞 (𝐌𝐑𝐏𝐃)", 0x1565C0, True, False, False),
-    ("cmd_mrpd", "🚓・𝐀𝐥𝐭𝐨 𝐂𝐨𝐦𝐚𝐧𝐝𝐨 𝐌𝐑𝐏𝐃", 0x1976D2, True, False, False),
-    ("mrpd", "🚔・𝐀𝐠𝐞𝐧𝐭𝐞 𝐌𝐑𝐏𝐃", 0x42A5F5, True, False, False),
-    ("dir_fib", "🕵️・𝐃𝐢𝐫𝐞𝐭𝐭𝐨𝐫𝐞 𝐃𝐞𝐭𝐞𝐜𝐭𝐢𝐯𝐞 / 𝐅𝐈𝐁", 0x263238, True, False, False),
-    ("fib", "🕶️・𝐀𝐠𝐞𝐧𝐭𝐞 𝐃𝐞𝐭𝐞𝐜𝐭𝐢𝐯𝐞 / 𝐅𝐈𝐁", 0x455A64, True, False, False),
-    ("chief_mrems", "🩺・𝐂𝐡𝐢𝐞𝐟 𝐎𝐟 𝐄𝐌𝐒 (𝐌𝐑𝐄𝐌𝐒)", 0xC62828, True, False, False),
-    ("mrems", "🚑・𝐏𝐚𝐫𝐚𝐦𝐞𝐝𝐢𝐜𝐨 𝐌𝐑𝐄𝐌𝐒 𝟗𝟏𝟏", 0xEF5350, True, False, False),
-    ("chief_mrfd", "🚒・𝐅𝐢𝐫𝐞 𝐂𝐡𝐢𝐞𝐟 (𝐌𝐑𝐅𝐃)", 0xD84315, True, False, False),
-    ("mrfd", "🧯・𝐕𝐢𝐠𝐢𝐥𝐞 𝐝𝐞𝐥 𝐅𝐮𝐨𝐜𝐨 𝐌𝐑𝐅𝐃", 0xFF7043, True, False, False),
-
-    ("sep_aziende", "⫷・════ 𝐀𝐙𝐈𝐄𝐍𝐃𝐄 & 𝐀𝐓𝐓𝐈𝐕𝐈𝐓𝐀̀ ════・⫸", 0x2B2D31, True, False, False),
-    ("dir_motors", "🏎️・𝐃𝐢𝐫𝐞𝐭𝐭𝐨𝐫𝐞 𝐌𝐑 𝐌𝐨𝐭𝐨𝐫𝐬", 0xE65100, True, False, False),
-    ("motors", "🔧・𝐌𝐞𝐜𝐜𝐚𝐧𝐢𝐜𝐨 / 𝐌𝐑 𝐌𝐨𝐭𝐨𝐫𝐬", 0xFFA726, True, False, False),
-    ("dir_burger", "🍔・𝐃𝐢𝐫𝐞𝐭𝐭𝐨𝐫𝐞 𝐁𝐮𝐫𝐠𝐞𝐫 𝐒𝐡𝐨𝐭", 0xF9A825, True, False, False),
-    ("burger", "🍟・𝐃𝐢𝐩𝐞𝐧𝐝𝐞𝐧𝐭𝐞 𝐁𝐮𝐫𝐠𝐞𝐫 𝐒𝐡𝐨𝐭", 0xFFF176, True, False, False),
-    ("dir_club", "🌴・𝐃𝐢𝐫𝐞𝐭𝐭𝐨𝐫𝐞 𝐄𝐜𝐥𝐢𝐩𝐬𝐞 𝐂𝐥𝐮𝐛", 0x8E24AA, True, False, False),
-    ("club", "🥂・𝐒𝐭𝐚𝐟𝐟 𝐄𝐜𝐥𝐢𝐩𝐬𝐞 𝐂𝐥𝐮𝐛", 0xCE93D8, True, False, False),
-    ("taxi", "🚕・𝐓𝐚𝐬𝐬𝐢𝐬𝐭𝐚 𝐘𝐞𝐥𝐥𝐨𝐰 𝐂𝐚𝐛", 0xFDD835, True, False, False),
-
-    ("sep_civ", "⫷・════ 𝐂𝐈𝐓𝐓𝐀𝐃𝐈𝐍𝐀𝐍𝐙𝐀 & 𝐒𝐓𝐀𝐓𝐎 ════・⫸", 0x2B2D31, True, False, False),
-    ("vip", "💎・𝐒𝐮𝐩𝐩𝐨𝐫𝐭𝐞𝐫 𝐕𝐈𝐏", 0xE040FB, True, False, False),
-    ("cittadino", "🪪・𝐂𝐢𝐭𝐭𝐚𝐝𝐢𝐧𝐨 𝐌𝐢𝐧𝐞 𝐑𝐨𝐥𝐞𝐩𝐥𝐚𝐲", 0x00E5FF, True, False, False),
-    ("attesa_wl", "⏳・𝐀𝐭𝐭𝐞𝐬𝐚 𝐖𝐡𝐢𝐭𝐞𝐋𝐢𝐬𝐭", 0xFFB300, False, False, False),
-    ("no_wl", "❌・𝐍𝐨 𝐖𝐡𝐢𝐭𝐞𝐋𝐢𝐬𝐭", 0xE53935, False, False, False),
-    ("verificato", "✅・𝐕𝐞𝐫𝐢𝐟𝐢𝐜𝐚𝐭𝐨", 0x43A047, False, False, False),
-    ("non_verificato", "🔒・𝐍𝐨𝐧 𝐕𝐞𝐫𝐢𝐟𝐢𝐜𝐚𝐭𝐨", 0x757575, False, False, False),
-]
+def run_flask():
+    app.run(host="0.0.0.0", port=PORT, debug=False, use_reloader=False)
 
 # =====================================================================
-# STRUTTURA CATEGORIE E CANALI CON PERMESSO SPECIFICO PER OGNI CANALE
-# Formato canale: (tipo, nome, permesso_canale)
+# BOT DISCORD: VOCE PROSSIMITA' DINAMICA + SICUREZZA 2FA/OTP + CAD
 # =====================================================================
-STRUTTURA_SERVER = [
-    ("⫷༺ 📊 𝐒𝐓𝐀𝐓𝐈𝐒𝐓𝐈𝐂𝐇𝐄 𝐌𝐈𝐍𝐄 𝐑𝐎𝐋𝐄𝐏𝐋𝐀𝐘 ༻⫸", "stats", [
-        ("voice", "〔📊〕・ᴍᴇᴍʙʀɪ-ᴛᴏᴛᴀʟɪ-0", "stats"),
-        ("voice", "〔🛡️〕・ꜱᴛᴀꜰꜰ-ᴛᴏᴛᴀʟɪ-0", "stats"),
-        ("voice", "〔🪪〕・ᴄɪᴛᴛᴀᴅɪɴɪ-0", "stats"),
-        ("voice", "〔🟢〕・ꜱᴇʀᴠᴇʀ-ᴏɴʟɪɴᴇ", "stats"),
-    ]),
-    ("⫷༺ ⚔️ 𝐁𝐄𝐍𝐕𝐄𝐍𝐔𝐓𝐎 & 𝐈𝐍𝐅𝐎 ༻⫸", "public_read", [
-        ("text", "〔👋〕・ʙᴇɴᴠᴇɴᴜᴛᴏ", "public_read"),
-        ("text", "〔🚪〕・ᴀᴅᴅɪᴏ", "public_read"),
-        ("text", "〔✅〕・ᴠᴇʀɪꜰɪᴄᴀ", "verifica_ch"),
-        ("text", "〔📜〕・ꜱᴛᴏʀɪᴀ-ᴅᴇʟʟᴀ-ᴄɪᴛᴛᴀ̀", "public_read"),
-        ("text", "〔🗺️〕・ᴍᴀᴘᴘᴀ-ᴇ-ᴘᴜɴᴛɪ-ɢᴘꜱ", "public_read"),
-        ("text", "〔🎮〕・ᴄᴏᴍᴇ-ᴇɴᴛʀᴀʀᴇ-ᴘꜱ4-ᴘꜱ5-ᴘᴄ", "public_read"),
-        ("text", "〔🎧〕・ᴄᴏʟʟᴇɢᴀ-ᴠᴏᴄᴇ-ᴏᴘᴇɴᴀᴜᴅɪᴏ", "public_read"),
-        ("text", "〔💎〕・ᴠɪᴘ-ᴇ-ꜱᴜᴘᴘᴏʀᴛ-ᴘᴀᴄᴋ", "public_read"),
-        ("text", "〔🔗〕・ʟɪɴᴋ-ɪɴᴠɪᴛᴏ", "public_read"),
-        ("text", "〔🟢〕・ꜱᴛᴀᴛᴏ-ꜱᴇʀᴠᴇʀ", "public_read"),
-    ]),
-    ("⫷༺ 📜 𝐑𝐄𝐆𝐎𝐋𝐀𝐌𝐄𝐍𝐓𝐈 𝐔𝐅𝐅𝐈𝐂𝐈𝐀𝐋𝐈 ༻⫸", "public_read", [
-        ("text", "〔📕〕・ʀᴇɢᴏʟᴀᴍᴇɴᴛᴏ-ꜱᴇʀᴠᴇʀ", "public_read"),
-        ("text", "〔📘〕・ʀᴇɢᴏʟᴀᴍᴇɴᴛᴏ-ᴅɪꜱᴄᴏʀᴅ", "public_read"),
-        ("text", "〔📗〕・ʀᴇɢᴏʟᴀᴍᴇɴᴛᴏ-ꜰᴀᴢɪᴏɴɪ", "public_read"),
-        ("text", "〔📙〕・ʀᴇɢᴏʟᴀᴍᴇɴᴛᴏ-ᴄʀɪᴍɪɴᴇ", "public_read"),
-        ("text", "〔⚖️〕・ᴄᴏᴅɪᴄᴇ-ᴘᴇɴᴀʟᴇ-ᴍʀᴘᴅ", "public_read"),
-        ("text", "〔🚗〕・ᴄᴏᴅɪᴄᴇ-ᴅᴇʟʟᴀ-ꜱᴛʀᴀᴅᴀ-ᴅᴍᴠ", "public_read"),
-        ("text", "〔🔫〕・ʀᴇɢᴏʟᴀᴍᴇɴᴛᴏ-ᴘᴏʀᴛᴏ-ᴅᴀʀᴍɪ", "public_read"),
-        ("text", "〔🏠〕・ʀᴇɢᴏʟᴀᴍᴇɴᴛᴏ-ɪᴍᴍᴏʙɪʟɪ-ᴇ-ᴀᴢɪᴇɴᴅᴇ", "public_read"),
-    ]),
-    ("⫷༺ 🛂 𝐀𝐑𝐄𝐀 𝐖𝐇𝐈𝐓𝐄𝐋𝐈𝐒𝐓 & 𝐓𝐈𝐂𝐊𝐄𝐓 ༻⫸", "verificato_chat", [
-        ("text", "〔📝〕・ꜰᴀɪ-ᴡʜɪᴛᴇʟɪꜱᴛ", "verificato_chat"),
-        ("text", "〔📩〕・ᴇꜱɪᴛᴏ-ᴡʜɪᴛᴇʟɪꜱᴛ", "verificato_read"),
-        ("text", "〔❓〕・ᴅᴏᴍᴀɴᴅᴇ-ᴡʜɪᴛᴇʟɪꜱᴛ", "verificato_chat"),
-        ("text", "〔🎫〕・ᴛɪᴄᴋᴇᴛ-ɢᴇɴᴇʀᴀʟᴇ", "verificato_chat"),
-        ("text", "〔💎〕・ᴛɪᴄᴋᴇᴛ-ᴅᴏɴᴀᴢɪᴏɴɪ", "verificato_chat"),
-        ("text", "〔⭐〕・ᴛɪᴄᴋᴇᴛ-ɢʀᴀᴅᴏ-ᴀʟᴛᴏ", "verificato_chat"),
-        ("text", "〔🏛️〕・ᴛɪᴄᴋᴇᴛ-ꜰᴀᴢɪᴏɴᴇ", "cittadino_chat"),
-        ("text", "〔🏢〕・ᴛɪᴄᴋᴇᴛ-ᴀᴘᴇʀᴛᴜʀᴀ-ᴀᴢɪᴇɴᴅᴀ", "cittadino_chat"),
-        ("text", "〔🐛〕・ꜱᴇɢɴᴀʟᴀ-ʙᴜɢ", "verificato_chat"),
-        ("text", "〔⚖️〕・ʀɪᴄʜɪᴇꜱᴛᴀ-ᴜɴʙᴀɴ", "verificato_chat"),
-        ("text", "〔☠️〕・ʀɪᴄʜɪᴇꜱᴛᴀ-ᴘᴇʀᴍᴀᴅᴇᴀᴛʜ", "cittadino_chat"),
-    ]),
-    ("⫷༺ 💬 𝐂𝐎𝐌𝐌𝐔𝐍𝐈𝐓𝐘 𝐎𝐎𝐂 & 𝐌𝐄𝐃𝐈𝐀 ༻⫸", "verificato_chat", [
-        ("text", "〔📢〕・ᴀɴɴᴜɴᴄɪ-ꜱᴇʀᴠᴇʀ", "verificato_read"),
-        ("text", "〔💬〕・ᴄʜᴀᴛ-ᴏᴏᴄ", "verificato_chat"),
-        ("text", "〔💡〕・ꜱᴜɢɢᴇʀɪᴍᴇɴᴛɪ-ꜱᴇʀᴠᴇʀ", "verificato_chat"),
-        ("text", "〔📸〕・ᴍᴇᴅɪᴀ-ᴄʟɪᴘ-ʀᴘ", "verificato_chat"),
-        ("text", "〔🎥〕・ᴄʟɪᴘ-ᴇ-ᴛɪᴋᴛᴏᴋ", "verificato_chat"),
-        ("text", "〔🎁〕・ɢɪᴠᴇᴀᴡᴀʏ-ᴇ-ᴇᴠᴇɴᴛɪ", "verificato_read"),
-        ("text", "〔🤝〕・ᴘᴀʀᴛɴᴇʀꜱʜɪᴘ", "verificato_read"),
-        ("text", "〔🤖〕・ᴄᴏᴍᴀɴᴅɪ-ʙᴏᴛ", "verificato_chat"),
-    ]),
-    ("⫷༺ 🌆 𝐀𝐑𝐄𝐀 𝐈𝐍-𝐂𝐇𝐀𝐑𝐀𝐂𝐓𝐄𝐑 (𝐈𝐂) ༻⫸", "cittadino_chat", [
-        ("text", "〔📱〕・ʏᴇʟʟᴏᴡ-ᴘᴀɢᴇꜱ-ᴀɴɴᴜɴᴄɪ", "cittadino_chat"),
-        ("text", "〔📰〕・ᴍɪɴᴇ-ʀᴏʟᴇᴘʟᴀʏ-ɴᴇᴡꜱ", "cittadino_read"),
-        ("text", "〔🏛️〕・ᴄᴏᴍᴜɴɪᴄᴀᴛɪ-ɢᴏᴠᴇʀɴᴏ", "gov_write"),
-        ("text", "〔⚖️〕・ᴛʀɪʙᴜɴᴀʟᴇ-ᴇ-ꜱᴇɴᴛᴇɴᴢᴇ", "giudice_write"),
-        ("text", "〔🚗〕・ᴀᴜᴛᴏꜱᴀʟᴏɴᴇ-ᴜꜱᴀᴛᴏ", "cittadino_chat"),
-        ("text", "〔🏠〕・ᴀɢᴇɴᴢɪᴀ-ɪᴍᴍᴏʙɪʟɪᴀʀᴇ", "cittadino_chat"),
-        ("text", "〔💼〕・ᴄᴇɴᴛʀᴏ-ɪᴍᴘɪᴇɢᴏ", "cittadino_chat"),
-        ("text", "〔🏢〕・ᴀʟʙᴏ-ᴀᴢɪᴇɴᴅᴇ", "cittadino_read"),
-        ("text", "〔🌑〕・ᴅᴀʀᴋ-ᴡᴇʙ-ɪᴄ", "cittadino_chat"),
-    ]),
-    ("⫷༺ 🏢 𝐀𝐙𝐈𝐄𝐍𝐃𝐄 & 𝐀𝐓𝐓𝐈𝐕𝐈𝐓𝐀̀ 𝐂𝐎𝐌𝐌𝐄𝐑𝐂𝐈𝐀𝐋𝐈 ༻⫸", "cittadino_read", [
-        ("text", "〔🏎️〕・ᴍʀ-ᴍᴏᴛᴏʀꜱ-ʟɪꜱᴛɪɴᴏ", "motors_write"),
-        ("text", "〔🔧〕・ᴍʀ-ᴍᴏᴛᴏʀꜱ-ᴏꜰꜰɪᴄɪɴᴀ", "motors_write"),
-        ("text", "〔🍔〕・ʙᴜʀɢᴇʀ-ꜱʜᴏᴛ-ᴍᴇɴᴜ", "burger_write"),
-        ("text", "〔🥂〕・ᴇᴄʟɪᴘꜱᴇ-ᴄʟᴜʙ-ᴇᴠᴇɴᴛɪ", "club_write"),
-        ("text", "〔🚕〕・ʏᴇʟʟᴏᴡ-ᴄᴀʙ-ᴛᴀxɪ", "taxi_write"),
-        ("voice", "〔🏎️〕・ᴜꜰꜰɪᴄɪᴏ-ᴍʀ-ᴍᴏᴛᴏʀꜱ", "motors_only"),
-        ("voice", "〔🍔〕・ᴄᴜᴄɪɴᴀ-ʙᴜʀɢᴇʀ-ꜱʜᴏᴛ", "burger_only"),
-        ("voice", "〔🥂〕・ᴠɪᴘ-ᴇᴄʟɪᴘꜱᴇ-ᴄʟᴜʙ", "club_only"),
-    ]),
-    ("⫷༺ 🚔 𝐌𝐑𝐏𝐃 - 𝐏𝐎𝐋𝐈𝐂𝐄 𝐃𝐄𝐏𝐀𝐑𝐓𝐌𝐄𝐍𝐓 ༻⫸", "mrpd", [
-        ("text", "〔📋〕・ʙᴀɴᴅɪ-ᴍʀᴘᴅ-ᴀᴘᴇʀᴛɪ", "bandi_public"),
-        ("text", "〔⏱️〕・ʀᴇɢɪꜱᴛʀᴏ-ᴛᴜʀɴɪ-ᴍʀᴘᴅ", "mrpd"),
-        ("text", "〔🚨〕・ʀɪᴄᴇʀᴄᴀᴛɪ-ᴡᴀɴᴛᴇᴅ", "mrpd"),
-        ("text", "〔💻〕・ᴏʀɪɢᴇɴ-ᴄᴀᴅ-ᴍʀᴘᴅ", "mrpd"),
-        ("text", "〔📄〕・ᴠᴇʀʙᴀʟɪ-ᴇ-ᴍᴜʟᴛᴇ", "mrpd"),
-        ("text", "〔📦〕・ᴅᴇᴘᴏꜱɪᴛᴏ-ꜱᴇQᴜᴇꜱᴛʀɪ", "mrpd_cmd"),
-        ("text", "〔📡〕・ᴄᴏᴍᴜɴɪᴄᴀᴢɪᴏɴɪ-ᴍʀᴘᴅ", "mrpd"),
-        ("voice", "〔🔊〕・ᴄᴇɴᴛʀᴀʟᴇ-ᴏᴘᴇʀᴀᴛɪᴠᴀ-911", "mrpd"),
-        ("voice", "〔🚓〕・ᴘᴀᴛᴛᴜɢʟɪᴀ-ᴀʟᴘʜᴀ", "mrpd"),
-        ("voice", "〔🚓〕・ᴘᴀᴛᴛᴜɢʟɪᴀ-ʙʀᴀᴠᴏ", "mrpd"),
-        ("voice", "〔🚓〕・ᴘᴀᴛᴛᴜɢʟɪᴀ-ᴄʜᴀʀʟɪᴇ", "mrpd"),
-        ("voice", "〔🛡️〕・ꜱᴡᴀᴛ-ᴛᴀᴄᴛɪᴄᴀʟ", "mrpd"),
-        ("voice", "〔🏛️〕・ᴜꜰꜰɪᴄɪᴏ-ᴄʜɪᴇꜰ-ᴏꜰ-ᴘᴏʟɪᴄᴇ", "mrpd_cmd"),
-    ]),
-    ("⫷༺ 🕵️ 𝐃𝐄𝐓𝐄𝐂𝐓𝐈𝐕𝐄 𝐁𝐔𝐑𝐄𝐀𝐔 / 𝐅𝐈𝐁 ༻⫸", "fib", [
-        ("text", "〔📂〕・ꜰᴀꜱᴄɪᴄᴏʟɪ-ɪɴᴅᴀɢɪɴɪ", "fib"),
-        ("text", "〔🔍〕・ʀɪᴄᴇʀᴄᴀᴛɪ-ꜰᴇᴅᴇʀᴀʟɪ", "fib"),
-        ("text", "〔📸〕・ᴘʀᴏᴠᴇ-ᴇ-ɪɴᴛᴇʀᴄᴇᴛᴛᴀᴢɪᴏɴɪ", "fib"),
-        ("voice", "〔🕵️〕・ꜱᴀʟᴀ-ᴏᴘᴇʀᴀᴛɪᴠᴀ-ꜰɪʙ", "fib"),
-        ("voice", "〔🕶️〕・ɪɴᴛᴇʀʀᴏɢᴀᴛᴏʀɪ-ꜰɪʙ", "fib"),
-    ]),
-    ("⫷༺ 🚑 𝐌𝐑𝐄𝐌𝐒 - 𝐄𝐌𝐄𝐑𝐆𝐄𝐍𝐂𝐘 𝐌𝐄𝐃𝐈𝐂𝐀𝐋 ༻⫸", "mrems", [
-        ("text", "〔📋〕・ʙᴀɴᴅɪ-ᴍʀᴇᴍꜱ-ᴀᴘᴇʀᴛɪ", "bandi_public"),
-        ("text", "〔⏱️〕・ʀᴇɢɪꜱᴛʀᴏ-ᴛᴜʀɴɪ-ᴍʀᴇᴍꜱ", "mrems"),
-        ("text", "〔🏥〕・ʀᴇꜰᴇʀᴛɪ-ᴍᴇᴅɪᴄɪ-911", "mrems"),
-        ("text", "〔💊〕・ᴄᴇʀᴛɪꜰɪᴄᴀᴛɪ-ᴘᴏʀᴛᴏ-ᴅᴀʀᴍɪ", "mrems"),
-        ("voice", "〔🚑〕・ᴄᴇɴᴛʀᴀʟᴇ-ᴍʀᴇᴍꜱ-911", "mrems"),
-        ("voice", "〔🩺〕・ᴜɴɪᴛᴀ̀-ᴀᴍʙᴜʟᴀɴᴢᴀ-1", "mrems"),
-        ("voice", "〔🚁〕・ᴇʟɪꜱᴏᴄᴄᴏʀꜱᴏ-ᴍᴇᴅᴇᴠᴀᴄ", "mrems"),
-    ]),
-    ("⫷༺ 🚒 𝐌𝐑𝐅𝐃 - 𝐅𝐈𝐑𝐄 𝐃𝐄𝐏𝐀𝐑𝐓𝐌𝐄𝐍𝐓 ༻⫸", "mrfd", [
-        ("text", "〔📋〕・ʙᴀɴᴅɪ-ᴍʀꜰᴅ-ᴀᴘᴇʀᴛɪ", "bandi_public"),
-        ("text", "〔⏱️〕・ʀᴇɢɪꜱᴛʀᴏ-ᴛᴜʀɴɪ-ᴍʀꜰᴅ", "mrfd"),
-        ("text", "〔🧯〕・ʀᴀᴘᴘᴏʀᴛɪ-ɪɴᴛᴇʀᴠᴇɴᴛᴏ", "mrfd"),
-        ("text", "〔🔥〕・ᴀʟʟᴇʀᴛᴇ-ɪɴᴄᴇɴᴅɪᴏ-115", "mrfd"),
-        ("voice", "〔🚒〕・ᴄᴀꜱᴇʀᴍᴀ-ᴍʀꜰᴅ-115", "mrfd"),
-        ("voice", "〔🪓〕・ꜱQᴜᴀᴅʀᴀ-ꜱᴏᴄᴄᴏʀꜱᴏ-1", "mrfd"),
-    ]),
-    ("⫷༺ 🎙️ 𝐒𝐀𝐋𝐄 𝐑𝐏 𝐂𝐈𝐓𝐓𝐀𝐃𝐈𝐍𝐄 ༻⫸", "cittadino_chat", [
-        ("voice", "〔🏙️〕・ᴘɪᴀᴢᴢᴀ-ᴄᴇɴᴛʀᴀʟᴇ-ʀᴘ", "cittadino_chat"),
-        ("voice", "〔⚖️〕・ᴀᴜʟᴀ-ᴛʀɪʙᴜɴᴀʟᴇ", "cittadino_chat"),
-        ("voice", "〔🍔〕・ʙᴜʀɢᴇʀ-ꜱʜᴏᴛ-ꜱᴀʟᴀ", "cittadino_chat"),
-        ("voice", "〔🥂〕・ᴇᴄʟɪᴘꜱᴇ-ᴄʟᴜʙ-ᴘɪꜱᴛᴀ", "cittadino_chat"),
-        ("voice", "〔🎲〕・ꜱᴀʟᴀ-ʀᴘ-ʟɪʙᴇʀᴀ-1", "cittadino_chat"),
-        ("voice", "〔🎲〕・ꜱᴀʟᴀ-ʀᴘ-ʟɪʙᴇʀᴀ-2", "cittadino_chat"),
-    ]),
-    ("⫷༺ 🎧 𝐀𝐒𝐒𝐈𝐒𝐓𝐄𝐍𝐙𝐀 & 𝐒𝐔𝐏𝐏𝐎𝐑𝐓𝐎 ༻⫸", "verificato_chat", [
-        ("voice", "〔⏳〕・ᴀᴛᴛᴇꜱᴀ-ᴀꜱꜱɪꜱᴛᴇɴᴢᴀ", "verificato_chat"),
-        ("voice", "〔💎〕・ᴀᴛᴛᴇꜱᴀ-ᴅᴏɴᴀᴢɪᴏɴɪ", "verificato_chat"),
-        ("voice", "〔🛂〕・ᴀᴛᴛᴇꜱᴀ-ᴡʜɪᴛᴇʟɪꜱᴛ", "verificato_chat"),
-        ("voice", "〔☕〕・ᴀꜱꜱɪꜱᴛᴇɴᴢᴀ-1", "staff_voice_support"),
-        ("voice", "〔☕〕・ᴀꜱꜱɪꜱᴛᴇɴᴢᴀ-2", "staff_voice_support"),
-        ("voice", "〔☕〕・ᴀꜱꜱɪꜱᴛᴇɴᴢᴀ-3", "staff_voice_support"),
-    ]),
-    ("⫷༺ 🛡️ 𝐀𝐑𝐄𝐀 𝐑𝐈𝐒𝐄𝐑𝐕𝐀𝐓𝐀 𝐒𝐓𝐀𝐅𝐅 ༻⫸", "staff", [
-        ("text", "〔👑〕・ᴄʜᴀᴛ-ᴅɪʀᴇᴢɪᴏɴᴇ", "direzione"),
-        ("text", "〔💬〕・ᴄʜᴀᴛ-ꜱᴛᴀꜰꜰ", "staff"),
-        ("text", "〔📋〕・ɢᴇꜱᴛɪᴏɴᴇ-ᴛᴜʀɴɪ-ꜱᴛᴀꜰꜰ", "staff"),
-        ("text", "〔⚠️〕・ᴡᴀʀɴ-ᴇ-ʙᴀɴ-ᴀᴄ", "staff"),
-        ("text", "〔🔍〕・ᴄᴏɴᴛʀᴏʟʟᴏ-ᴘɢ-ᴇ-ʙᴀɴᴄᴀ", "direzione"),
-        ("text", "〔📑〕・ᴇꜱɪᴛᴏ-ᴀꜱꜱɪꜱᴛᴇɴᴢᴇ", "staff"),
-        ("text", "〔⭐〕・ꜰᴇᴇᴅʙᴀᴄᴋ-ᴀꜱꜱɪꜱᴛᴇɴᴢᴇ", "staff"),
-        ("text", "〔🛠️〕・ꜱᴠɪʟᴜᴘᴘᴏ-ᴇ-ᴜᴘᴅᴀᴛᴇ", "staff"),
-        ("text", "〔📁〕・ʟᴏɢ-ꜱɪꜱᴛᴇᴍᴀ", "direzione"),
-        ("voice", "〔🎮〕・ꜱᴛᴀꜰꜰ-ɪɴ-ʀᴘ", "staff"),
-        ("voice", "〔🎙️〕・ꜱᴀʟᴀ-ʀɪᴜɴɪᴏɴɪ-ꜱᴛᴀꜰꜰ", "staff"),
-        ("voice", "〔👑〕・ᴜꜰꜰɪᴄɪᴏ-ᴄʀᴇᴀᴛᴏʀ", "direzione"),
-    ]),
-]
+intents = discord.Intents.default()
+intents.message_content = True
+intents.members = True
+intents.voice_states = True
 
-def costruisci_permessi(guild, r, profilo):
-    everyone = guild.default_role
-    ver = r["verificato"]
-    cit = r["cittadino"]
-    staff = r["staff_team"]
+bot = commands.Bot(command_prefix="!", intents=intents, help_command=None)
 
-    read_only = discord.PermissionOverwrite(view_channel=True, send_messages=False, read_message_history=True)
-    full_chat = discord.PermissionOverwrite(view_channel=True, send_messages=True, read_message_history=True, connect=True, speak=True, attach_files=True, embed_links=True)
-    hidden = discord.PermissionOverwrite(view_channel=False)
+def sb_headers(upsert: bool = False):
+    h = {
+        "apikey": SUPABASE_KEY,
+        "Authorization": f"Bearer {SUPABASE_KEY}",
+        "Content-Type": "application/json"
+    }
+    if upsert:
+        h["Prefer"] = "resolution=merge-duplicates"
+    return h
 
-    if profilo == "stats":
-        return {everyone: discord.PermissionOverwrite(view_channel=True, connect=False)}
-    elif profilo == "public_read":
-        return {everyone: read_only, staff: full_chat}
-    elif profilo == "verifica_ch":
-        return {everyone: discord.PermissionOverwrite(view_channel=True, send_messages=True, read_message_history=True), staff: full_chat}
-    elif profilo == "verificato_read":
-        return {everyone: hidden, ver: read_only, staff: full_chat}
-    elif profilo == "verificato_chat":
-        return {everyone: hidden, ver: full_chat, staff: full_chat}
-    elif profilo == "cittadino_read":
-        return {everyone: hidden, cit: read_only, staff: full_chat}
-    elif profilo == "cittadino_chat":
-        return {everyone: hidden, cit: full_chat, staff: full_chat}
-    elif profilo == "bandi_public":
-        return {everyone: hidden, cit: read_only, staff: full_chat}
-    elif profilo == "gov_write":
-        return {everyone: hidden, cit: read_only, r["governatore"]: full_chat, staff: full_chat}
-    elif profilo == "giudice_write":
-        return {everyone: hidden, cit: read_only, r["giudice"]: full_chat, r["governatore"]: full_chat, staff: full_chat}
-    elif profilo == "motors_write":
-        return {everyone: hidden, cit: read_only, r["motors"]: full_chat, r["dir_motors"]: full_chat, staff: full_chat}
-    elif profilo == "motors_only":
-        return {everyone: hidden, r["motors"]: full_chat, r["dir_motors"]: full_chat, staff: full_chat}
-    elif profilo == "burger_write":
-        return {everyone: hidden, cit: read_only, r["burger"]: full_chat, r["dir_burger"]: full_chat, staff: full_chat}
-    elif profilo == "burger_only":
-        return {everyone: hidden, r["burger"]: full_chat, r["dir_burger"]: full_chat, staff: full_chat}
-    elif profilo == "club_write":
-        return {everyone: hidden, cit: read_only, r["club"]: full_chat, r["dir_club"]: full_chat, staff: full_chat}
-    elif profilo == "club_only":
-        return {everyone: hidden, r["club"]: full_chat, r["dir_club"]: full_chat, staff: full_chat}
-    elif profilo == "taxi_write":
-        return {everyone: hidden, cit: read_only, r["taxi"]: full_chat, staff: full_chat}
-    elif profilo == "mrpd":
-        return {everyone: hidden, r["mrpd"]: full_chat, r["cmd_mrpd"]: full_chat, r["chief_mrpd"]: full_chat, staff: full_chat}
-    elif profilo == "mrpd_cmd":
-        return {everyone: hidden, r["cmd_mrpd"]: full_chat, r["chief_mrpd"]: full_chat, staff: full_chat}
-    elif profilo == "fib":
-        return {everyone: hidden, r["fib"]: full_chat, r["dir_fib"]: full_chat, staff: full_chat}
-    elif profilo == "mrems":
-        return {everyone: hidden, r["mrems"]: full_chat, r["chief_mrems"]: full_chat, staff: full_chat}
-    elif profilo == "mrfd":
-        return {everyone: hidden, r["mrfd"]: full_chat, r["chief_mrfd"]: full_chat, staff: full_chat}
-    elif profilo == "staff_voice_support":
-        return {everyone: hidden, ver: discord.PermissionOverwrite(view_channel=True, connect=False, speak=True), staff: full_chat}
-    elif profilo == "staff":
-        return {everyone: hidden, staff: full_chat}
-    elif profilo == "direzione":
-        return {
-            everyone: hidden,
-            r["creator"]: full_chat,
-            r["cocreator"]: full_chat,
-            r["owner"]: full_chat,
-            r["deputy_owner"]: full_chat,
-            r["head_staff"]: full_chat
-        }
-    return {everyone: read_only}
+# --- PULSANTI APPROVAZIONE 2FA IN DM ---
+class AuthApprovalView(discord.ui.View):
+    def __init__(self, mc_name: str, pending_ip: str):
+        super().__init__(timeout=180)
+        self.mc_name = mc_name
+        self.pending_ip = pending_ip
 
-# =====================================================================
-# TASK AGGIORNAMENTO STATISTICHE
-# =====================================================================
-@tasks.loop(minutes=5)
-async def aggiorna_statistiche():
+    async def update_supabase(self, payload: dict):
+        async with aiohttp.ClientSession() as session:
+            await session.post(
+                f"{SUPABASE_URL}/rest/v1/mr_auth_links?mc_name=ilike.{self.mc_name}",
+                headers=sb_headers(upsert=True),
+                json=payload
+            )
+
+    @discord.ui.button(label="✅ AUTORIZZA ACCESSO", style=discord.ButtonStyle.success)
+    async def approve(self, interaction: discord.Interaction, button: discord.ui.Button):
+        await self.update_supabase({
+            "mc_name": self.mc_name,
+            "authorized_ip": self.pending_ip,
+            "pending_ip": "",
+            "status": "approved"
+        })
+        await interaction.response.edit_message(
+            content=f"✅ **Accesso autorizzato per `{self.mc_name}`!** Puoi giocare su Mine Roleplay.",
+            view=None
+        )
+
+    @discord.ui.button(label="❌ BLOCCA INTRUSO", style=discord.ButtonStyle.danger)
+    async def deny(self, interaction: discord.Interaction, button: discord.ui.Button):
+        await self.update_supabase({
+            "mc_name": self.mc_name,
+            "pending_ip": "",
+            "status": "denied"
+        })
+        await interaction.response.edit_message(
+            content=f"🚨 **Tentativo di accesso bloccato per `{self.mc_name}`!** Il giocatore è stato espulso dal server.",
+            view=None
+        )
+
+# --- COMANDI DISCORD ---
+@bot.command(name="collega")
+async def collega_mc(ctx, codice: str):
+    """Collega l'account Minecraft tramite il codice OTP a 6 cifre mostrato in gioco."""
+    if not SUPABASE_URL or not SUPABASE_KEY:
+        await ctx.send("❌ Database Supabase non configurato.")
+        return
+
+    async with aiohttp.ClientSession() as session:
+        async with session.get(
+            f"{SUPABASE_URL}/rest/v1/mr_auth_links?link_code=eq.{codice.strip()}&status=eq.unlinked&select=*",
+            headers=sb_headers()
+        ) as resp:
+            if resp.status != 200:
+                await ctx.send("❌ Errore di connessione al database.")
+                return
+            rows = await resp.json()
+
+        if not rows:
+            await ctx.send("❌ Codice non valido o scaduto! Entra sul server Minecraft per leggere il tuo codice a 6 cifre.")
+            return
+
+        row = rows[0]
+        mc_name = row["mc_name"]
+        pending_ip = row.get("pending_ip", "")
+
+        await session.post(
+            f"{SUPABASE_URL}/rest/v1/mr_auth_links?mc_name=ilike.{mc_name}",
+            headers=sb_headers(upsert=True),
+            json={
+                "mc_name": mc_name,
+                "discord_id": ctx.author.id,
+                "authorized_ip": pending_ip,
+                "pending_ip": "",
+                "link_code": "",
+                "status": "approved"
+            }
+        )
+
+    await ctx.send(
+        f"✅ {ctx.author.mention}, account Minecraft **`{mc_name}`** collegato e sbloccato! Ora sei dentro **Mine Roleplay**."
+    )
+
+@bot.command(name="mio_id")
+async def mio_id(ctx):
+    await ctx.send(
+        f"🪪 {ctx.author.mention}, il tuo ID Discord è **`{ctx.author.id}`**.\n"
+        f"Scrivi su Minecraft: **`/collegadiscord {ctx.author.id}`** ed entra in **{LOBBY_NAME}** per la chat vocale di prossimità!"
+    )
+
+@bot.command(name="cittadino")
+async def info_cittadino(ctx, *, query: str):
+    """Consulta l'anagrafica IC di un cittadino da Supabase."""
+    async with aiohttp.ClientSession() as session:
+        async with session.get(
+            f"{SUPABASE_URL}/rest/v1/mr_cittadini?or=(mc_name.ilike.*{query}*,nome_ic.ilike.*{query}*)&select=*",
+            headers=sb_headers()
+        ) as resp:
+            rows = await resp.json() if resp.status == 200 else []
+
+    if not rows:
+        await ctx.send(f"🔍 Nessun cittadino trovato per **`{query}`**.")
+        return
+
+    c = rows[0]
+    embed = discord.Embed(title=f"🪪 USA STATE ID — {c.get('nome_ic', 'N/D')}", color=0x00E5FF)
+    embed.add_field(name="Account MC", value=f"`{c.get('mc_name')}`", inline=True)
+    embed.add_field(name="Età / Sesso", value=f"{c.get('eta', 25)} anni ({c.get('sesso', 'Uomo')})", inline=True)
+    embed.add_field(name="Provenienza", value=c.get("origine", "Los Santos"), inline=True)
+    embed.add_field(name="Fazione / Lavoro", value=f"{c.get('fazione', 'Nessuna')} ({c.get('lavoro', 'Disoccupato')})", inline=True)
+    embed.add_field(name="Patente / Porto d'Armi", value=f"Patente: {'✅' if c.get('patente_auto') else '❌'} | Armi: {'✅' if c.get('porto_armi') else '❌'}", inline=True)
+    await ctx.send(embed=embed)
+
+@bot.command(name="ricercati")
+async def lista_ricercati(ctx):
+    """Mostra i ricercati attivi sul terminale MRPD CAD."""
+    async with aiohttp.ClientSession() as session:
+        async with session.get(
+            f"{SUPABASE_URL}/rest/v1/mr_cad_reati?tipo=eq.RICERCATO&attivo=eq.true&select=*",
+            headers=sb_headers()
+        ) as resp:
+            rows = await resp.json() if resp.status == 200 else []
+
+    if not rows:
+        await ctx.send("🚓 **MRPD CAD:** Nessun soggetto ricercato attivo in città al momento.")
+        return
+
+    embed = discord.Embed(title="🚨 MRPD CAD — BOLLETTINO RICERCATI ATTIVI", color=0xFF1744)
+    for r in rows[:10]:
+        embed.add_field(
+            name=f"👤 {r.get('cittadino_nome_ic')} ({r.get('cittadino_mc')})",
+            value=f"**Reato:** {r.get('reato')} | **Agente:** {r.get('agente_nome')}",
+            inline=False
+        )
+    await ctx.send(embed=embed)
+
+# --- TASK 1: INVIO RICHIESTE 2FA IN DM ---
+@tasks.loop(seconds=2.5)
+async def check_auth_requests():
+    if not SUPABASE_URL or not SUPABASE_KEY:
+        return
+    try:
+        async with aiohttp.ClientSession() as session:
+            async with session.get(
+                f"{SUPABASE_URL}/rest/v1/mr_auth_links?status=eq.waiting_dm&select=*",
+                headers=sb_headers()
+            ) as resp:
+                if resp.status != 200:
+                    return
+                rows = await resp.json()
+
+            for row in rows:
+                mc_name = row["mc_name"]
+                discord_id = row.get("discord_id")
+                if not discord_id:
+                    continue
+                pending_ip = row.get("pending_ip", "Sconosciuto")
+
+                await session.post(
+                    f"{SUPABASE_URL}/rest/v1/mr_auth_links?mc_name=ilike.{mc_name}",
+                    headers=sb_headers(upsert=True),
+                    json={"mc_name": mc_name, "status": "notified"}
+                )
+
+                user = bot.get_user(int(discord_id)) or await bot.fetch_user(int(discord_id))
+                if user:
+                    try:
+                        await user.send(
+                            f"🔐 **Richiesta di Accesso su Mine Roleplay**\n"
+                            f"Qualcuno sta entrando con il tuo nickname **`{mc_name}`**.\n"
+                            f"Sei tu? Premi il pulsante qui sotto per autorizzare l'ingresso:",
+                            view=AuthApprovalView(mc_name, pending_ip)
+                        )
+                    except discord.Forbidden:
+                        pass
+    except Exception:
+        pass
+
+# --- TASK 2: MOTORE VOCALE DINAMICO DI PROSSIMITA' ---
+@tasks.loop(seconds=2.5)
+async def proximity_voice_engine():
+    if not SUPABASE_URL or not SUPABASE_KEY:
+        return
+
+    try:
+        async with aiohttp.ClientSession() as session:
+            async with session.get(f"{SUPABASE_URL}/rest/v1/mr_voice_sync?select=*", headers=sb_headers()) as resp:
+                if resp.status != 200:
+                    return
+                rows = await resp.json()
+    except Exception:
+        return
+
+    players = [r for r in rows if r.get("discord_id") and int(r["discord_id"]) > 0]
+
+    adj = defaultdict(set)
+    for i in range(len(players)):
+        p1 = players[i]
+        id1 = int(p1["discord_id"])
+        for j in range(i + 1, len(players)):
+            p2 = players[j]
+            id2 = int(p2["discord_id"])
+
+            same_call = p1.get("call_partner") and (
+                p1["call_partner"] == p2["mc_name"] or p2.get("call_partner") == p1["mc_name"]
+            )
+            same_radio = p1.get("radio_freq") and p1["radio_freq"] == p2.get("radio_freq")
+            same_world = p1.get("world") == p2.get("world")
+
+            in_range = False
+            if same_world:
+                dist = math.sqrt(
+                    (p1["x"] - p2["x"]) ** 2 +
+                    (p1["y"] - p2["y"]) ** 2 +
+                    (p1["z"] - p2["z"]) ** 2
+                )
+                max_r = max(p1.get("voice_range", 18), p2.get("voice_range", 18))
+                if dist <= max_r:
+                    in_range = True
+
+            if same_call or same_radio or in_range:
+                adj[id1].add(id2)
+                adj[id2].add(id1)
+
+    visited = set()
+    clusters = []
+    for p in players:
+        uid = int(p["discord_id"])
+        if uid not in visited:
+            comp = []
+            stack = [uid]
+            visited.add(uid)
+            while stack:
+                curr = stack.pop()
+                comp.append(curr)
+                for nxt in adj[curr]:
+                    if nxt not in visited:
+                        visited.add(nxt)
+                        stack.append(nxt)
+            clusters.append(comp)
+
     for guild in bot.guilds:
-        membri = guild.member_count
-        staff_role = discord.utils.find(lambda r: "Staff Of Mine Roleplay" in r.name, guild.roles)
-        cit_role = discord.utils.find(lambda r: "Cittadino Mine Roleplay" in r.name, guild.roles)
+        cat = discord.utils.get(guild.categories, name=VOICE_CAT_NAME)
+        if not cat:
+            cat = await guild.create_category(VOICE_CAT_NAME)
 
-        n_staff = len(staff_role.members) if staff_role else 0
-        n_cit = len(cit_role.members) if cit_role else 0
+        lobby = discord.utils.get(cat.voice_channels, name=LOBBY_NAME)
+        if not lobby:
+            lobby = await guild.create_voice_channel(LOBBY_NAME, category=cat)
 
-        for vc in guild.voice_channels:
-            if vc.name.startswith("〔📊〕・"):
-                await vc.edit(name=f"〔📊〕・ᴍᴇᴍʙʀɪ-ᴛᴏᴛᴀʟɪ-{membri}")
-            elif vc.name.startswith("〔🛡️〕・"):
-                await vc.edit(name=f"〔🛡️〕・ꜱᴛᴀꜰꜰ-ᴛᴏᴛᴀʟɪ-{n_staff}")
-            elif vc.name.startswith("〔🪪〕・"):
-                await vc.edit(name=f"〔🪪〕・ᴄɪᴛᴛᴀᴅɪɴɪ-{n_cit}")
+        active_members = {}
+        for vc in cat.voice_channels:
+            for m in vc.members:
+                active_members[m.id] = m
+
+        temp_channels = [vc for vc in cat.voice_channels if vc.name.startswith(TEMP_PREFIX)]
+
+        for cluster in clusters:
+            connected = [active_members[uid] for uid in cluster if uid in active_members]
+            if len(connected) >= 2:
+                target_vc = None
+                for m in connected:
+                    if m.voice and m.voice.channel and m.voice.channel.name.startswith(TEMP_PREFIX):
+                        target_vc = m.voice.channel
+                        break
+
+                if not target_vc:
+                    num = len(temp_channels) + 1
+                    target_vc = await guild.create_voice_channel(f"{TEMP_PREFIX}{num}", category=cat)
+                    temp_channels.append(target_vc)
+
+                for m in connected:
+                    if m.voice and m.voice.channel != target_vc:
+                        try:
+                            await m.move_to(target_vc)
+                        except Exception:
+                            pass
+            elif len(connected) == 1:
+                m = connected[0]
+                if m.voice and m.voice.channel != lobby:
+                    try:
+                        await m.move_to(lobby)
+                    except Exception:
+                        pass
+
+        # Elimina subito tutte le stanze vocali temporanee rimaste vuote
+        for vc in list(cat.voice_channels):
+            if vc.name.startswith(TEMP_PREFIX) and len(vc.members) == 0:
+                try:
+                    await vc.delete()
+                except Exception:
+                    pass
 
 @bot.event
 async def on_ready():
-    print(f"✅ Bot connesso come {bot.user} | Pronto per Mine Roleplay!")
-    if not aggiorna_statistiche.is_running():
-        aggiorna_statistiche.start()
-
-# =====================================================================
-# COMANDO 1: !setup_mr
-# =====================================================================
-@bot.command(name="setup_mr")
-@commands.has_permissions(administrator=True)
-async def setup_mr(ctx):
-    guild = ctx.guild
-    await ctx.send("⚙️ **Avvio creazione server Mine Roleplay con tutti i permessi granulari...**")
-
-    for ch in list(guild.channels):
-        if ch.id != ctx.channel.id:
-            try:
-                await ch.delete()
-                await asyncio.sleep(0.35)
-            except Exception:
-                pass
-
-    for r in list(guild.roles):
-        if not r.is_default() and not r.managed and r < guild.me.top_role:
-            try:
-                await r.delete()
-                await asyncio.sleep(0.25)
-            except Exception:
-                pass
-
-    ruoli_creati = {}
-    for key, nome, colore, hoist, is_admin, is_staff in reversed(RUOLI_TEMPLATE):
-        perms = discord.Permissions.none()
-        if is_admin:
-            perms = discord.Permissions.all()
-        elif is_staff:
-            perms = discord.Permissions(
-                view_channel=True, send_messages=True, manage_messages=True,
-                kick_members=True, mute_members=True, move_members=True,
-                connect=True, speak=True, read_message_history=True
-            )
-        ruolo = await guild.create_role(
-            name=nome,
-            colour=discord.Colour(colore),
-            hoist=hoist,
-            permissions=perms
-        )
-        ruoli_creati[key] = ruolo
-        await asyncio.sleep(0.3)
-
-    for cat_nome, cat_perm, canali in STRUTTURA_SERVER:
-        cat_ow = costruisci_permessi(guild, ruoli_creati, cat_perm)
-        categoria = await guild.create_category(name=cat_nome, overwrites=cat_ow)
-        await asyncio.sleep(0.35)
-
-        for tipo, ch_nome, ch_perm in canali:
-            ch_ow = costruisci_permessi(guild, ruoli_creati, ch_perm)
-            if tipo == "text":
-                await guild.create_text_channel(name=ch_nome, category=categoria, overwrites=ch_ow)
-            else:
-                await guild.create_voice_channel(name=ch_nome, category=categoria, overwrites=ch_ow)
-            await asyncio.sleep(0.35)
-
-    try:
-        await ctx.channel.delete()
-    except Exception:
-        pass
-
-    staff_chat = discord.utils.find(lambda c: "ᴄʜᴀᴛ-ꜱᴛᴀꜰꜰ" in c.name, guild.text_channels)
-    if staff_chat:
-        await staff_chat.send("✅ **Server Mine Roleplay completato con tutti i ruoli, canali e permessi granulari settati!**")
-
-# =====================================================================
-# COMANDO 2: !backup_mr (SALVA ANCHE I PERMESSI DI OGNI CANALE E CATEGORIA)
-# =====================================================================
-@bot.command(name="backup_mr")
-@commands.has_permissions(administrator=True)
-async def backup_mr(ctx):
-    guild = ctx.guild
-    data = {
-        "server_name": guild.name,
-        "roles": [],
-        "categories": []
-    }
-
-    for r in reversed(guild.roles):
-        if not r.is_default() and not r.managed:
-            data["roles"].append({
-                "name": r.name,
-                "color": r.colour.value,
-                "hoist": r.hoist,
-                "mentionable": r.mentionable,
-                "permissions": r.permissions.value
-            })
-
-    def serialize_ow(overwrites):
-        res = []
-        for target, ow in overwrites.items():
-            if isinstance(target, discord.Role):
-                allow, deny = ow.pair()
-                res.append({
-                    "role_name": target.name,
-                    "allow": allow.value,
-                    "deny": deny.value
-                })
-        return res
-
-    for cat in guild.categories:
-        cat_obj = {
-            "name": cat.name,
-            "overwrites": serialize_ow(cat.overwrites),
-            "channels": []
-        }
-        for ch in cat.channels:
-            cat_obj["channels"].append({
-                "name": ch.name,
-                "type": "voice" if isinstance(ch, discord.VoiceChannel) else "text",
-                "topic": getattr(ch, "topic", None),
-                "overwrites": serialize_ow(ch.overwrites)
-            })
-        data["categories"].append(cat_obj)
-
-    with open(BACKUP_FILE, "w", encoding="utf-8") as f:
-        json.dump(data, f, ensure_ascii=False, indent=2)
-
-    await ctx.send(
-        f"💾 **Backup completo di `{guild.name}` (con tutti i permessi) salvato!**\n"
-        f"• Ruoli salvati: **{len(data['roles'])}**\n"
-        f"• Categorie salvate: **{len(data['categories'])}**",
-        file=discord.File(BACKUP_FILE)
-    )
-
-# =====================================================================
-# COMANDO 3: !ripristina_mr
-# =====================================================================
-@bot.command(name="ripristina_mr")
-@commands.has_permissions(administrator=True)
-async def ripristina_mr(ctx):
-    if not os.path.exists(BACKUP_FILE):
-        await ctx.send("❌ Nessun file `backup_mine_roleplay.json` trovato!")
-        return
-
-    with open(BACKUP_FILE, "r", encoding="utf-8") as f:
-        data = json.load(f)
-
-    guild = ctx.guild
-    await ctx.send(f"🔄 **Ripristino completo di `{data['server_name']}` (ruoli, canali e permessi) in corso...**")
-
-    for ch in list(guild.channels):
-        if ch.id != ctx.channel.id:
-            try:
-                await ch.delete()
-                await asyncio.sleep(0.35)
-            except Exception:
-                pass
-
-    for r in list(guild.roles):
-        if not r.is_default() and not r.managed and r < guild.me.top_role:
-            try:
-                await r.delete()
-                await asyncio.sleep(0.25)
-            except Exception:
-                pass
-
-    roles_by_name = {"@everyone": guild.default_role}
-    for r_data in reversed(data["roles"]):
-        nr = await guild.create_role(
-            name=r_data["name"],
-            colour=discord.Colour(r_data["color"]),
-            hoist=r_data["hoist"],
-            mentionable=r_data["mentionable"],
-            permissions=discord.Permissions(r_data["permissions"])
-        )
-        roles_by_name[nr.name] = nr
-        await asyncio.sleep(0.3)
-
-    def build_ow(ow_list):
-        ow_dict = {}
-        for item in ow_list:
-            role_obj = roles_by_name.get(item["role_name"])
-            if role_obj:
-                ow_dict[role_obj] = discord.PermissionOverwrite.from_pair(
-                    discord.Permissions(item["allow"]),
-                    discord.Permissions(item["deny"])
-                )
-        return ow_dict
-
-    for cat_data in data["categories"]:
-        cat = await guild.create_category(name=cat_data["name"], overwrites=build_ow(cat_data.get("overwrites", [])))
-        await asyncio.sleep(0.35)
-        for ch_data in cat_data["channels"]:
-            ch_ow = build_ow(ch_data.get("overwrites", []))
-            if ch_data["type"] == "voice":
-                await guild.create_voice_channel(name=ch_data["name"], category=cat, overwrites=ch_ow)
-            else:
-                await guild.create_text_channel(name=ch_data["name"], category=cat, topic=ch_data.get("topic"), overwrites=ch_ow)
-            await asyncio.sleep(0.35)
-
-    try:
-        await ctx.channel.delete()
-    except Exception:
-        pass
+    print(f"Bot connesso come {bot.user} | Mine Roleplay Core attivo!")
+    if not check_auth_requests.is_running():
+        check_auth_requests.start()
+    if not proximity_voice_engine.is_running():
+        proximity_voice_engine.start()
 
 if __name__ == "__main__":
-    Thread(target=run_web, daemon=True).start()
-    bot.run(TOKEN)
+    flask_thread = threading.Thread(target=run_flask, daemon=True)
+    flask_thread.start()
+    bot.run(DISCORD_TOKEN)
