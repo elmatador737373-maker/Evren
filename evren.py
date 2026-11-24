@@ -725,7 +725,7 @@ class SimultaneousChoiceView(discord.ui.View):
 
 
 # ==============================================================================
-# ENGINE 4: CASINÒ & CARTE (BLACKJACK, SETTE E MEZZO, DADI, HIGH-LOW, CAVALLI, SLOT)
+# ENGINE 4: CASINÒ & CARTE (BLACKJACK, SETTE E MEZZO, DADI, HIGH-LOW, CAVALLI, SLOT, RUOTA, MONETA, BOMBA)
 # ==============================================================================
 class CasinoDuelView(discord.ui.View):
     def __init__(self, game_id: str, p1: discord.User, p2: Optional[discord.User]):
@@ -739,7 +739,7 @@ class CasinoDuelView(discord.ui.View):
         self.done = {1: False, 2: False}
         self.current_card = random.randint(2, 12)
 
-        g_name, _, _, _, engine, _ = GAMES_BY_ID[game_id]
+        engine = GAMES_BY_ID[game_id][4]
         if engine in ("blackjack_engine", "sette_mezzo_engine"):
             self.scores[1] = self.draw_card()
             self.scores[2] = self.draw_card()
@@ -760,8 +760,7 @@ class CasinoDuelView(discord.ui.View):
                 b.callback = self.make_bomb_cb(i)
                 self.add_item(b)
         else:
-            # Dadi / Slot / Cavalli / Ruota instant duel
-            self.add_action("Gioca Turno", "🎲", discord.ButtonStyle.success)
+            self.add_action("Lancia / Gira", "🎲", discord.ButtonStyle.success)
 
     def draw_card(self) -> float:
         engine = GAMES_BY_ID[self.game_id][4]
@@ -785,9 +784,17 @@ class CasinoDuelView(discord.ui.View):
             if idx in self.bombs:
                 btn.label = "💥"
                 btn.style = discord.ButtonStyle.danger
-                loser = self.turn
-                winner = 2 if loser == 1 else 1
-                return await finalize_game(interaction, self.game_id, self.mode, self.p1, self.p2, winner, "💥 **BOOM!** È stata pescata una carta bomba!", self)
+                winner = 2 if self.turn == 1 else 1
+                return await finalize_game(
+                    interaction,
+                    self.game_id,
+                    self.mode,
+                    self.p1,
+                    self.p2,
+                    winner,
+                    f"💥 **{interaction.user.display_name}** ha pescato la bomba!",
+                    self
+                )
 
             pts = random.choice([10, 15, 20, 25])
             self.scores[self.turn] += pts
@@ -797,27 +804,48 @@ class CasinoDuelView(discord.ui.View):
             if self.mode == "PvE":
                 avail = [i for i, c in enumerate(self.children) if not c.disabled]
                 if avail:
-                    b_idx = random.choice(avail)
-                    b_btn = self.children[b_idx]
-                    b_btn.disabled = True
-                    if b_idx in self.bombs:
-                        b_btn.label = "💥"
-                        b_btn.style = discord.ButtonStyle.danger
-                        return await finalize_game(interaction, self.game_id, "PvE", self.p1, None, 1, "🤖 Il Bot IA ha pescato la **BOMBA**! Hai vinto!", self)
+                    bi = random.choice(avail)
+                    bb = self.children[bi]
+                    bb.disabled = True
+                    if bi in self.bombs:
+                        bb.label = "💥"
+                        bb.style = discord.ButtonStyle.danger
+                        return await finalize_game(
+                            interaction,
+                            self.game_id,
+                            "PvE",
+                            self.p1,
+                            None,
+                            1,
+                            "🤖 Il Bot IA ha pescato la **BOMBA**! Hai vinto!",
+                            self
+                        )
                     b_pts = random.choice([10, 15, 20])
                     self.scores[2] += b_pts
-                    b_btn.label = f"+{b_pts}"
-                    b_btn.style = discord.ButtonStyle.primary
+                    bb.label = f"+{b_pts}"
+                    bb.style = discord.ButtonStyle.primary
 
             rem = [c for c in self.children if not c.disabled]
             if len(rem) <= 2:
                 w = 1 if self.scores[1] > self.scores[2] else (2 if self.scores[2] > self.scores[1] else 0)
-                return await finalize_game(interaction, self.game_id, self.mode, self.p1, self.p2, w, f"Punteggi finali: **{int(self.scores[1])}** vs **{int(self.scores[2])}**", self)
+                return await finalize_game(
+                    interaction,
+                    self.game_id,
+                    self.mode,
+                    self.p1,
+                    self.p2,
+                    w,
+                    f"Punteggi finali: **{int(self.scores[1])}** vs **{int(self.scores[2])}**",
+                    self
+                )
 
             if self.mode == "PvP":
                 self.turn = 2 if self.turn == 1 else 1
             curr = self.p1 if self.turn == 1 else self.p2
-            embed = make_embed("🧨 PESCA LA BOMBA", f"Punti: **{int(self.scores[1])}** vs **{int(self.scores[2])}**\nTocca a {curr.mention}!")
+            embed = make_embed(
+                "🧨 PESCA LA BOMBA",
+                f"Punti: **{int(self.scores[1])}** vs **{int(self.scores[2])}**\nTocca a {curr.mention}!"
+            )
             await interaction.response.edit_message(embed=embed, view=self)
         return cb
 
@@ -835,58 +863,150 @@ class CasinoDuelView(discord.ui.View):
                     self.scores[self.turn] += self.draw_card()
                     if self.scores[self.turn] > limit:
                         winner = 2 if self.turn == 1 else 1
-                        return await finalize_game(interaction, self.game_id, self.mode, self.p1, self.p2, winner, f"💥 **SBALLATO!** Punteggio: `{self.scores[self.turn]}` (limite `{limit}`).", self)
+                        return await finalize_game(
+                            interaction,
+                            self.game_id,
+                            self.mode,
+                            self.p1,
+                            self.p2,
+                            winner,
+                            f"💥 **{interaction.user.display_name}** ha sballato con `{self.scores[self.turn]}` (limite `{limit}`).",
+                            self
+                        )
                 else:
                     self.done[self.turn] = True
 
                 if self.mode == "PvE" and self.done[1]:
-                    # Turno dinamico Bot IA
                     while self.scores[2] < (limit - random.choice([2.5, 3.5, 4.0])):
                         self.scores[2] += self.draw_card()
                     if self.scores[2] > limit:
-                        return await finalize_game(interaction, self.game_id, "PvE", self.p1, None, 1, f"🤖 Il Bot IA ha sballato con `{self.scores[2]}`! Tu avevi `{self.scores[1]}`.", self)
+                        return await finalize_game(
+                            interaction,
+                            self.game_id,
+                            "PvE",
+                            self.p1,
+                            None,
+                            1,
+                            f"🤖 Il Bot IA ha sballato con `{self.scores[2]}`! Tu avevi `{self.scores[1]}`.",
+                            self
+                        )
                     w = 1 if self.scores[1] > self.scores[2] else (2 if self.scores[2] > self.scores[1] else 0)
-                    return await finalize_game(interaction, self.game_id, "PvE", self.p1, None, w, f"Tu: `{self.scores[1]}` • 🤖 Bot IA: `{self.scores[2]}`", self)
+                    return await finalize_game(
+                        interaction,
+                        self.game_id,
+                        "PvE",
+                        self.p1,
+                        None,
+                        w,
+                        f"Tu: `{self.scores[1]}` • 🤖 Bot IA: `{self.scores[2]}`",
+                        self
+                    )
 
                 if self.mode == "PvP":
                     if self.done[1] and self.done[2]:
                         w = 1 if self.scores[1] > self.scores[2] else (2 if self.scores[2] > self.scores[1] else 0)
-                        return await finalize_game(interaction, self.game_id, "PvP", self.p1, self.p2, w, f"{self.p1.display_name}: `{self.scores[1]}` • {self.p2.display_name}: `{self.scores[2]}`", self)
-                    if not self.done[2 if self.turn == 1 else 1]:
-                        self.turn = 2 if self.turn == 1 else 1
+                        return await finalize_game(
+                            interaction,
+                            self.game_id,
+                            "PvP",
+                            self.p1,
+                            self.p2,
+                            w,
+                            f"{self.p1.display_name}: `{self.scores[1]}` • {self.p2.display_name}: `{self.scores[2]}`",
+                            self
+                        )
+                    other = 2 if self.turn == 1 else 1
+                    if not self.done[other]:
+                        self.turn = other
 
                 curr = self.p1 if self.turn == 1 else self.p2
-                embed = make_embed(f"{g_emoji} {g_name.upper()}", f"{self.p1.display_name}: `{self.scores[1]}`\nTurno di {curr.mention}!")
+                p2_label = self.p2.display_name if self.p2 else "Bot IA"
+                embed = make_embed(
+                    f"{g_emoji} {g_name.upper()} • {self.mode}",
+                    f"• **{self.p1.display_name}:** `{self.scores[1]}`\n"
+                    f"• **{p2_label}:** `{self.scores[2] if self.mode == 'PvP' else '?'}`\n\n"
+                    f"Tocca a {curr.mention}!"
+                )
                 return await interaction.response.edit_message(embed=embed, view=self)
 
-            # Altri giochi casinò (Dadi, Slot, Cavalli, Ruota, High-Low, Coin Streak)
-            s1 = random.randint(15, 100)
-            s2 = random.randint(15, 100)
+            # High-Low (Carta Alta o Bassa)
             if engine == "highlow_engine" and action != "Incassa":
                 nxt = random.randint(1, 13)
                 ok = (action == "Più Alta" and nxt >= self.current_card) or (action == "Più Bassa" and nxt <= self.current_card)
                 if not ok:
-                    return await finalize_game(interaction, self.game_id, self.mode, self.p1, self.p2, 2, f"❌ Uscito **{nxt}** (era **{self.current_card}**). Hai perso!", self)
+                    winner = 2 if self.turn == 1 else 1
+                    return await finalize_game(
+                        interaction,
+                        self.game_id,
+                        self.mode,
+                        self.p1,
+                        self.p2,
+                        winner,
+                        f"❌ Uscito **{nxt}** (era **{self.current_card}**). **{interaction.user.display_name}** perde!",
+                        self
+                    )
                 self.current_card = nxt
-                self.scores[1] += 20
-                embed = make_embed("📈 CARTA ALTA O BASSA", f"Nuova carta: **{self.current_card}**\nPunti accumulati: `{int(self.scores[1])}`")
+                self.scores[self.turn] += 20
+                curr = self.p1 if self.turn == 1 else self.p2
+                embed = make_embed(
+                    "📈 CARTA ALTA O BASSA",
+                    f"Nuova carta: **{self.current_card}**\nPunti {curr.mention}: `{int(self.scores[self.turn])}`"
+                )
                 return await interaction.response.edit_message(embed=embed, view=self)
 
+            # Rischia o Incassa (Coin Streak)
             if engine == "push_luck_engine" and action != "Incassa Punti":
                 if random.random() < 0.45:
-                    return await finalize_game(interaction, self.game_id, self.mode, self.p1, self.p2, 2, "💀 **CROCE!** Hai perso tutto il montepremi accumulato!", self)
-                self.scores[1] *= 2
-                embed = make_embed("🪙 RISCHIA O INCASSA", f"✨ **TESTA!** Montepremi attuale: `{int(self.scores[1])} pt`")
+                    winner = 2 if self.turn == 1 else 1
+                    return await finalize_game(
+                        interaction,
+                        self.game_id,
+                        self.mode,
+                        self.p1,
+                        self.p2,
+                        winner,
+                        f"💀 **CROCE!** {interaction.user.display_name} perde tutto!",
+                        self
+                    )
+                self.scores[self.turn] *= 2
+                curr = self.p1 if self.turn == 1 else self.p2
+                embed = make_embed(
+                    "🪙 RISCHIA O INCASSA",
+                    f"✨ **TESTA!** Montepremi {curr.mention}: `{int(self.scores[self.turn])} pt`"
+                )
                 return await interaction.response.edit_message(embed=embed, view=self)
 
-            if self.scores[1] > 10:
-                s1 = int(self.scores[1])
+            # Turno singolo PvP/PvE per Dadi, Slot, Cavalli, Ruota o Incasso
+            if self.scores[self.turn] <= 10:
+                self.scores[self.turn] = float(random.randint(15, 100))
+
+            if self.mode == "PvP" and self.turn == 1:
+                self.turn = 2
+                self.current_card = random.randint(2, 12)
+                embed = make_embed(
+                    f"{g_emoji} {g_name.upper()} • PVP",
+                    f"✅ **{self.p1.display_name}** ha totalizzato `{int(self.scores[1])} pt`!\n\nOra tocca a {self.p2.mention}!"
+                )
+                return await interaction.response.edit_message(embed=embed, view=self)
+
+            if self.mode == "PvE":
+                self.scores[2] = float(random.randint(15, 100))
+
+            s1, s2 = int(self.scores[1]), int(self.scores[2])
             w = 1 if s1 > s2 else (2 if s2 > s1 else 0)
             p2_n = self.p2.display_name if self.p2 else "🤖 Bot IA"
-            await finalize_game(interaction, self.game_id, self.mode, self.p1, self.p2, w, f"🎲 **{self.p1.display_name}:** `{s1}` pts\n🎲 **{p2_n}:** `{s2}` pts", self)
+            await finalize_game(
+                interaction,
+                self.game_id,
+                self.mode,
+                self.p1,
+                self.p2,
+                w,
+                f"🎲 **{self.p1.display_name}:** `{s1}` pts\n🎲 **{p2_n}:** `{s2}` pts",
+                self
+            )
 
         return cb
-
 
 # ==============================================================================
 # ENGINE 5: QUIZ, MATEMATICA, BANDIERE, INTRUSO, BINARIO, LOGICA (MULTI-CHOICE)
@@ -1363,32 +1483,53 @@ async def launch_minigame(
 
 
 # ==============================================================================
+# ==============================================================================
 # SFIDA PVP ACCETTAZIONE
 # ==============================================================================
 class PvPChallengeView(discord.ui.View):
     def __init__(self, game_id: str, challenger: discord.User, opponent: discord.User):
-        super().__init__(timeout=60)
+        super().__init__(timeout=90)
         self.game_id = game_id
         self.challenger = challenger
         self.opponent = opponent
+        self.resolved = False
+
+    async def on_timeout(self):
+        if self.resolved:
+            return
+        for item in self.children:
+            item.disabled = True
 
     @discord.ui.button(label="Accetta Sfida", emoji="⚔️", style=discord.ButtonStyle.success)
     async def accept(self, interaction: discord.Interaction, button: discord.ui.Button):
         if interaction.user.id != self.opponent.id:
-            return await interaction.response.send_message("❌ Solo l'utente sfidato può accettare!", ephemeral=True)
+            return await interaction.response.send_message(
+                f"❌ Solo {self.opponent.mention} può accettare questa sfida!",
+                ephemeral=True
+            )
+        if self.resolved:
+            return await interaction.response.send_message("⚠️ Questa sfida è già stata gestita.", ephemeral=True)
+
+        self.resolved = True
+        self.stop()
+        await interaction.response.defer()
         await launch_minigame(interaction, self.game_id, self.challenger, self.opponent)
 
     @discord.ui.button(label="Rifiuta", emoji="✖️", style=discord.ButtonStyle.danger)
     async def decline(self, interaction: discord.Interaction, button: discord.ui.Button):
         if interaction.user.id not in (self.challenger.id, self.opponent.id):
             return await interaction.response.send_message("❌ Non fai parte di questa sfida.", ephemeral=True)
+        if self.resolved:
+            return await interaction.response.send_message("⚠️ Questa sfida è già stata gestita.", ephemeral=True)
+
+        self.resolved = True
+        self.stop()
         for item in self.children:
             item.disabled = True
         await interaction.response.edit_message(
             embed=make_embed("SFIDA ANNULLATA", f"{interaction.user.mention} ha annullato o rifiutato la sfida.", LOSE_COLOR),
             view=self
         )
-
 
 # ==============================================================================
 # BROWSER CATEGORIE & SELETTORE GIOCHI (54 MINIGAME)
