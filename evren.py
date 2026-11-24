@@ -1606,37 +1606,52 @@ async def cmd_pannello(interaction: discord.Interaction):
     await interaction.response.send_message(embed=embed, view=PersistentHubView())
 
 
-@bot.tree.command(name="gioca", description="Apri il catalogo dei 54 minigame o sfida direttamente un player in PvP")
+@bot.tree.command(name="gioca", description="Scegli uno dei 54 minigame (PvE o PvP) con ricerca rapida")
 @app_commands.describe(
-    avversario="Lascia vuoto per giocare PvE contro il Bot IA, oppure tagga un player per PvP",
-    gioco="Nome o ID rapido del minigame (opzionale)"
+    gioco="Cerca tra tutti i 54 minigame disponibili",
+    avversario="Lascia vuoto per giocare PvE contro il Bot IA, oppure tagga un player per PvP"
 )
 async def cmd_gioca(
     interaction: discord.Interaction,
-    avversario: Optional[discord.Member] = None,
-    gioco: Optional[str] = None
+    gioco: Optional[str] = None,
+    avversario: Optional[discord.Member] = None
 ):
     if avversario:
         if avversario.bot or avversario.id == interaction.user.id:
-            return await interaction.response.send_message("❌ Non puoi sfidare te stesso o un bot Discord! Per PvE lascia vuoto `avversario`.", ephemeral=True)
+            return await interaction.response.send_message(
+                "❌ Non puoi sfidare te stesso o un bot Discord! Per PvE lascia vuoto `avversario`.",
+                ephemeral=True
+            )
 
     if gioco:
         key = gioco.lower().strip()
         matched_id = None
-        for gid, data in GAMES_BY_ID.items():
-            if key == gid or key in data[0].lower():
-                matched_id = gid
-                break
-        if matched_id:
-            if avversario:
-                g_name, _, g_emoji, g_pts, _, g_desc = GAMES_BY_ID[matched_id]
-                view = PvPChallengeView(matched_id, interaction.user, avversario)
-                embed = make_embed(
-                    f"⚔️ SFIDA PVP • {g_name.upper()}",
-                    f"{interaction.user.mention} sfida {avversario.mention} a **{g_emoji} {g_name}**!\n*{g_desc}*\n\n💰 **Posta:** `{g_pts} punti`"
-                )
-                return await interaction.response.send_message(embed=embed, view=view)
-            return await launch_minigame(interaction, matched_id, interaction.user, None)
+
+        if key in GAMES_BY_ID:
+            matched_id = key
+        else:
+            for gid, data in GAMES_BY_ID.items():
+                if key == data[0].lower() or key in gid or key in data[0].lower():
+                    matched_id = gid
+                    break
+
+        if not matched_id:
+            return await interaction.response.send_message(
+                f"❌ Minigame `{gioco}` non trovato! Selezionalo dall'autocomplete oppure usa `/gioca` senza parametri.",
+                ephemeral=True
+            )
+
+        if avversario:
+            g_name, _, g_emoji, g_pts, _, g_desc = GAMES_BY_ID[matched_id]
+            view = PvPChallengeView(matched_id, interaction.user, avversario)
+            embed = make_embed(
+                f"⚔️ SFIDA PVP • {g_name.upper()}",
+                f"{interaction.user.mention} sfida {avversario.mention} a **{g_emoji} {g_name}**!\n"
+                f"*{g_desc}*\n\n💰 **Posta in palio:** `{g_pts} punti`"
+            )
+            return await interaction.response.send_message(embed=embed, view=view)
+
+        return await launch_minigame(interaction, matched_id, interaction.user, None)
 
     view = GameBrowserView("Strategia", avversario)
     mode_lbl = f"PvP vs {avversario.mention}" if avversario else "PvE vs 🤖 Bot IA Dinamico"
@@ -1649,13 +1664,35 @@ async def cmd_gioca(
 
 @cmd_gioca.autocomplete("gioco")
 async def gioco_autocomplete(interaction: discord.Interaction, current: str) -> List[app_commands.Choice[str]]:
-    q = current.lower()
-    matches = [
-        app_commands.Choice(name=f"{g[3]} {g[1]} ({g[2]})", value=g[0])
-        for g in GAMES_CATALOG
-        if q in g[0] or q in g[1].lower() or q in g[2].lower()
-    ]
-    return matches[:25]
+    q = current.lower().strip()
+
+    if not q:
+        # Mostra i primi 25 in ordine alfabetico quando il campo è vuoto; digitando filtra tutti i 54
+        sorted_games = sorted(GAMES_CATALOG, key=lambda g: g[1])
+        return [
+            app_commands.Choice(
+                name=f"{g[3]} {g[1]} • {g[2]} (+{g[4]} pt)"[:100],
+                value=g[0]
+            )
+            for g in sorted_games[:25]
+        ]
+
+    exact_or_prefix = []
+    partial_matches = []
+
+    for g in GAMES_CATALOG:
+        gid, gname, gcat, gemoji, gpts, _, gdesc = g
+        haystack = f"{gid} {gname} {gcat} {gdesc}".lower()
+        choice = app_commands.Choice(
+            name=f"{gemoji} {gname} • {gcat} (+{gpts} pt)"[:100],
+            value=gid
+        )
+        if gname.lower().startswith(q) or gid.startswith(q):
+            exact_or_prefix.append(choice)
+        elif q in haystack:
+            partial_matches.append(choice)
+
+    return (exact_or_prefix + partial_matches)[:25]
 
 
 @bot.tree.command(name="classifica", description="Visualizza la classifica punti globale con pagine sfogliabili")
