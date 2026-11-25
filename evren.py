@@ -1862,7 +1862,7 @@ async def cmd_lista_giochi(interaction: discord.Interaction):
 # ==============================================================================
 # COMANDI STAFF PUNTI (SOLO RUOLO STAFF_ROLE_ID)
 # ==============================================================================
-STAFF_ROLE_ID = int(os.getenv("STAFF_ROLE_ID", "0"))
+STAFF_ROLE_ID = int(os.getenv("STAFF_ROLE_ID", "1567537096367804547"))
 
 
 def has_staff_role(interaction: discord.Interaction) -> bool:
