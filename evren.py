@@ -1040,17 +1040,34 @@ class MultiChoiceView(discord.ui.View):
             btn.callback = self.make_answer_cb(idx)
             self.add_item(btn)
 
-    def make_answer_cb(self, idx: int):
+     def make_answer_cb(self, idx: int):
         async def cb(interaction: discord.Interaction):
             valid_ids = [self.p1.id] + ([self.p2.id] if self.p2 else [])
             if interaction.user.id not in valid_ids:
                 return await interaction.response.send_message("❌ Non sei in questa sfida!", ephemeral=True)
 
             is_p1 = interaction.user.id == self.p1.id
-            correct = (idx == self.correct_idx)
+            player_correct = (idx == self.correct_idx)
             right_text = self.choices[self.correct_idx]
 
-            if correct:
+            if self.mode == "PvE":
+                bot_correct = random.random() < 0.65
+                if player_correct and not bot_correct:
+                    winner = 1
+                    desc = f"✅ Hai risposto correttamente (**{right_text}**), mentre il Bot IA ha sbagliato!"
+                elif bot_correct and not player_correct:
+                    winner = 2
+                    desc = f"❌ Hai risposto `{self.choices[idx]}` e il **Bot IA** ha indovinato (**{right_text}**)!"
+                elif player_correct and bot_correct:
+                    winner = 1 if random.random() < 0.55 else 2
+                    who = "Tu" if winner == 1 else "Il Bot IA"
+                    desc = f"⚡ Entrambi avete risposto **{right_text}**, ma **{who}** è stato più rapido!"
+                else:
+                    winner = 0
+                    desc = f"❌ Nessuno ha indovinato! La risposta corretta era **{right_text}**."
+                return await finalize_game(interaction, self.game_id, "PvE", self.p1, None, winner, desc, self)
+
+            if player_correct:
                 winner = 1 if is_p1 else 2
                 desc = f"✅ **{interaction.user.display_name}** ha risposto per primo correttamente: **{right_text}**!"
             else:
@@ -1059,7 +1076,6 @@ class MultiChoiceView(discord.ui.View):
 
             await finalize_game(interaction, self.game_id, self.mode, self.p1, self.p2, winner, desc, self)
         return cb
-
 
 def build_question_payload(game_id: str) -> Tuple[str, List[str], int]:
     engine = GAMES_BY_ID[game_id][4]
