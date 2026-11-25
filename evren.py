@@ -383,30 +383,34 @@ async def finalize_game(
     g_name, _, g_emoji, base_pts, _, _ = GAMES_BY_ID[game_id]
     p2_name = p2.display_name if p2 else "🤖 Bot IA"
 
+    # In PvE i punti guadagnati sono ridotti al 50% (minimo 3 pt) per evitare farm facile
+    earned_pts = base_pts if mode == "PvP" else max(3, int(round(base_pts * 0.2)))
+    lost_pts = max(5, earned_pts // 2)
+
     if winner == 1:
-        s1 = record_match_result(p1.id, p1.display_name, "win", base_pts, mode, g_name)
+        s1 = record_match_result(p1.id, p1.display_name, "win", earned_pts, mode, g_name)
         if p2:
-            record_match_result(p2.id, p2.display_name, "loss", -max(5, base_pts // 2), mode, g_name)
+            record_match_result(p2.id, p2.display_name, "loss", -lost_pts, mode, g_name)
         res_text = (
-            f"🏆 **VINCITORE:** {p1.mention} (`+{base_pts} pt`)\n"
+            f"🏆 **VINCITORE:** {p1.mention} (`+{earned_pts} pt`)\n"
             f"💀 **SCONFITTO:** {p2.mention if p2 else p2_name}\n"
             f"🔥 **Serie Vittorie:** `{s1['streak']}` • **Totale Punti:** `{s1['points']}`"
         )
         color = WIN_COLOR
     elif winner == 2:
-        record_match_result(p1.id, p1.display_name, "loss", -max(5, base_pts // 2), mode, g_name)
+        record_match_result(p1.id, p1.display_name, "loss", -lost_pts, mode, g_name)
         if p2:
-            s2 = record_match_result(p2.id, p2.display_name, "win", base_pts, mode, g_name)
-            extra = f" (`+{base_pts} pt` | Totale: `{s2['points']}`)"
+            s2 = record_match_result(p2.id, p2.display_name, "win", earned_pts, mode, g_name)
+            extra = f" (`+{earned_pts} pt` | Totale: `{s2['points']}`)"
         else:
-            extra = " (IA Dinamica)"
+            extra = " (IA Competitiva)"
         res_text = (
             f"🏆 **VINCITORE:** {p2.mention if p2 else p2_name}{extra}\n"
-            f"💀 **SCONFITTO:** {p1.mention} (`-{max(5, base_pts // 2)} pt`)"
+            f"💀 **SCONFITTO:** {p1.mention} (`-{lost_pts} pt`)"
         )
         color = LOSE_COLOR
     else:
-        draw_pts = max(5, base_pts // 4)
+        draw_pts = max(2, earned_pts // 4)
         record_match_result(p1.id, p1.display_name, "draw", draw_pts, mode, g_name)
         if p2:
             record_match_result(p2.id, p2.display_name, "draw", draw_pts, mode, g_name)
@@ -422,6 +426,7 @@ async def finalize_game(
         await interaction.edit_original_response(embed=embed, view=view)
     else:
         await interaction.response.edit_message(embed=embed, view=view)
+
 
 
 # ==============================================================================
