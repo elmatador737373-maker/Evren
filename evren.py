@@ -1859,6 +1859,101 @@ async def cmd_lista_giochi(interaction: discord.Interaction):
     embed = make_embed(f"📚 ELENCO COMPLETO ({len(GAMES_CATALOG)} MINIGAME)", "\n\n".join(sections))
     await interaction.response.send_message(embed=embed)
 
+# ==============================================================================
+# COMANDI STAFF PUNTI (SOLO RUOLO STAFF_ROLE_ID)
+# ==============================================================================
+STAFF_ROLE_ID = int(os.getenv("STAFF_ROLE_ID", "0"))
+
+
+def has_staff_role(interaction: discord.Interaction) -> bool:
+    if not STAFF_ROLE_ID or not interaction.guild or not isinstance(interaction.user, discord.Member):
+        return False
+    return any(role.id == STAFF_ROLE_ID for role in interaction.user.roles)
+
+
+def adjust_player_points(user_id: int, username: str, delta: int) -> Dict[str, Any]:
+    player = get_or_create_player(user_id, username)
+    new_points = max(0, player["points"] + delta)
+    payload = {
+        "username": username,
+        "points": new_points,
+        "updated_at": datetime.datetime.now(datetime.timezone.utc).isoformat()
+    }
+    supabase.table("minigame_stats").update(payload).eq("user_id", user_id).execute()
+    player.update(payload)
+    return player
+
+
+@bot.tree.command(name="aggiungi_punti", description="[Staff] Aggiungi punti a un giocatore")
+@app_commands.describe(
+    utente="Giocatore a cui aggiungere punti",
+    punti="Quantità di punti da aggiungere (maggiore di 0)",
+    motivo="Motivazione opzionale"
+)
+async def cmd_aggiungi_punti(
+    interaction: discord.Interaction,
+    utente: discord.Member,
+    punti: int,
+    motivo: Optional[str] = None
+):
+    if not has_staff_role(interaction):
+        return await interaction.response.send_message(
+            "❌ Non hai il ruolo staff autorizzato per usare questo comando.",
+            ephemeral=True
+        )
+    if punti <= 0:
+        return await interaction.response.send_message(
+            "❌ Inserisci un numero di punti maggiore di `0`.",
+            ephemeral=True
+        )
+
+    updated = adjust_player_points(utente.id, utente.display_name, punti)
+    reason_line = f"\n📝 **Motivo:** {motivo}" if motivo else ""
+    embed = make_embed(
+        "➕ PUNTI AGGIUNTI",
+        f"👤 **Giocatore:** {utente.mention}\n"
+        f"💰 **Aggiunti:** `+{punti} pt`\n"
+        f"🏦 **Nuovo Saldo:** `{updated['points']} pt`\n"
+        f"🛡️ **Staffer:** {interaction.user.mention}{reason_line}",
+        WIN_COLOR
+    )
+    await interaction.response.send_message(embed=embed)
+
+
+@bot.tree.command(name="togli_punti", description="[Staff] Rimuovi punti a un giocatore")
+@app_commands.describe(
+    utente="Giocatore a cui togliere punti",
+    punti="Quantità di punti da rimuovere (maggiore di 0)",
+    motivo="Motivazione opzionale"
+)
+async def cmd_togli_punti(
+    interaction: discord.Interaction,
+    utente: discord.Member,
+    punti: int,
+    motivo: Optional[str] = None
+):
+    if not has_staff_role(interaction):
+        return await interaction.response.send_message(
+            "❌ Non hai il ruolo staff autorizzato per usare questo comando.",
+            ephemeral=True
+        )
+    if punti <= 0:
+        return await interaction.response.send_message(
+            "❌ Inserisci un numero di punti maggiore di `0`.",
+            ephemeral=True
+        )
+
+    updated = adjust_player_points(utente.id, utente.display_name, -punti)
+    reason_line = f"\n📝 **Motivo:** {motivo}" if motivo else ""
+    embed = make_embed(
+        "➖ PUNTI RIMOSSI",
+        f"👤 **Giocatore:** {utente.mention}\n"
+        f"💰 **Rimossi:** `-{punti} pt`\n"
+        f"🏦 **Nuovo Saldo:** `{updated['points']} pt`\n"
+        f"🛡️ **Staffer:** {interaction.user.mention}{reason_line}",
+        LOSE_COLOR
+    )
+    await interaction.response.send_message(embed=embed)
 
 # ==============================================================================
 # AVVIO FLASK + BOT
